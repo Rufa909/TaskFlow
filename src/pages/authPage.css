@@ -1,0 +1,209 @@
+/* Import font đặc trưng cho thương hiệu */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
+
+/* ── Reset & Base ───────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+.auth-page {
+  display: flex;
+  min-height: 100vh;
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* ── Left Panel (Brand) ─────────────────────────── */
+.auth-left {
+  width: 420px;
+  min-width: 420px;
+  background: #1a1a2e;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hiệu ứng hình tròn trang trí nền */
+.auth-left::before {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 350px; height: 350px;
+  border-radius: 50%;
+  background: rgba(219, 64, 53, 0.12);
+  pointer-events: none;
+}
+.auth-left::after {
+  content: '';
+  position: absolute;
+  bottom: -80px; left: -60px;
+  width: 250px; height: 250px;
+  border-radius: 50%;
+  background: rgba(92, 79, 224, 0.1);
+  pointer-events: none;
+}
+
+.brand-logo {
+  width: 44px; height: 44px;
+  background: #DB4035;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.brand-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 30px; color: #fff; line-height: 1.1;
+}
+.brand-tagline {
+  font-size: 14px; color: rgba(255,255,255,0.45);
+  margin-top: 8px; font-weight: 300;
+}
+
+.feature-list { position: relative; z-index: 1; }
+.feature-item {
+  display: flex; align-items: flex-start; gap: 14px;
+  margin-bottom: 20px;
+}
+.feature-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #DB4035; flex-shrink: 0; margin-top: 6px;
+}
+.feature-text {
+  font-size: 14px; color: rgba(255,255,255,0.6);
+  line-height: 1.6; font-weight: 300;
+}
+.feature-text strong { color: rgba(255,255,255,0.9); font-weight: 500; }
+
+.left-footer {
+  font-size: 11px; color: rgba(255,255,255,0.2);
+  position: relative; z-index: 1;
+}
+
+/* ── Right Panel (Form) ─────────────────────────── */
+.auth-right {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff;
+  padding: 40px;
+}
+
+.auth-form-box {
+  width: 100%; max-width: 380px;
+  animation: fadeUp 0.4s ease both; /* animation khi form xuất hiện */
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Tabs ─────────────────────────────────────────── */
+.auth-tabs {
+  display: flex;
+  border-bottom: 1.5px solid #f0ede8;
+  margin-bottom: 32px;
+}
+.auth-tab {
+  flex: 1; padding: 10px 0;
+  font-size: 14px; font-weight: 500;
+  background: transparent; border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1.5px;
+  cursor: pointer; color: #999;
+  font-family: 'DM Sans', sans-serif;
+  transition: color 0.2s, border-color 0.2s;
+}
+.auth-tab.active { color: #DB4035; border-bottom-color: #DB4035; }
+
+/* ── Form Title ─────────────────────────────────── */
+.form-heading {
+  font-family: 'DM Serif Display', serif;
+  font-size: 26px; color: #1a1a2e; margin-bottom: 6px;
+}
+.form-subtext {
+  font-size: 14px; color: #999;
+  margin-bottom: 28px; font-weight: 300;
+}
+
+/* ── Field ──────────────────────────────────────── */
+.field-group { margin-bottom: 18px; }
+.field-label {
+  display: block; font-size: 11px; font-weight: 500;
+  color: #888; margin-bottom: 7px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.field-input {
+  width: 100%; padding: 11px 14px;
+  border: 1.5px solid #ece9e4;
+  border-radius: 9px; font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  color: #1a1a1a; background: #faf9f7;
+  outline: none; transition: border-color 0.15s, background 0.15s;
+}
+.field-input:focus {
+  border-color: #DB4035;
+  background: #fff;
+}
+.field-input::placeholder { color: #bbb; }
+.field-input.error { border-color: #e74c3c; }
+
+/* ── Error & Success ─────────────────────────────── */
+.alert-box {
+  padding: 10px 14px;
+  border-radius: 9px; font-size: 13px;
+  margin-bottom: 18px;
+  animation: fadeUp 0.2s ease;
+}
+.alert-box.error   { background: #FEE8E7; color: #c0392b; border: 1px solid #f9c4c1; }
+.alert-box.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+
+/* ── Submit Button ──────────────────────────────── */
+.submit-btn {
+  width: 100%; padding: 12px;
+  background: #DB4035; color: #fff;
+  border: none; border-radius: 9px;
+  font-size: 14px; font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer; margin-top: 6px;
+  transition: background 0.15s, transform 0.1s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.submit-btn:hover:not(:disabled) { background: #c73b31; transform: translateY(-1px); }
+.submit-btn:active:not(:disabled) { transform: translateY(0); }
+.submit-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* Spinner cho trạng thái loading */
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Divider ─────────────────────────────────────── */
+.or-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 20px 0; color: #ccc; font-size: 12px;
+}
+.or-divider::before,
+.or-divider::after { content: ''; flex: 1; height: 1px; background: #f0ede8; }
+
+/* ── OAuth Button ───────────────────────────────── */
+.oauth-btn {
+  width: 100%; padding: 11px 14px;
+  border: 1.5px solid #ece9e4; background: #fff;
+  border-radius: 9px; font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  color: #333; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.oauth-btn:hover { background: #faf9f7; border-color: #d8d4ce; }
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 768px) {
+  .auth-left { display: none; }
+  .auth-right { padding: 24px; }
+}
