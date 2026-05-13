@@ -1,6 +1,7 @@
 // Dùng mysql2/promise để hỗ trợ async/await thay vì callback
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 // createPool giúp tái sử dụng connection thay vì tạo mới mỗi request
 // → tiết kiệm tài nguyên, tăng hiệu suất
@@ -9,6 +10,7 @@ const pool = mysql.createPool({
   user:     process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  port:     process.env.DB_PORT || 3306,
   waitForConnections: true,  // hàng đợi khi hết connection
   connectionLimit: 10,       // tối đa 10 connection song song
   queueLimit: 0              // 0 = không giới hạn hàng đợi
