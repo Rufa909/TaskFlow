@@ -24,8 +24,8 @@ app.use(express.urlencoded({ extended:true }));
 // Tất cả route auth sẽ có prefix /api/auth
 // VD: /api/auth/login, /api/auth/register
 app.use('/api/auth', require('./routes/authRoutes'));
-// (Sẽ thêm sau) Task routes
-// app.use('/api/tasks', require('./routes/taskRoutes'));
+app.use('/api/projects', require('./routes/projectRoutes'));
+app.use('/api', require('./routes/taskRoutes'));
 
 // ─── Global Error Handler
 // Bắt lỗi từ tất cả route, phải có 4 tham số (err, req, res, next)

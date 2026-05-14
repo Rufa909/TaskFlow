@@ -1,8 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import AuthPage from './pages/AuthPage';
-import HomePage from './pages/HomePage';
+import AuthPage from './pages/authPage';
+import HomePage from './pages/homePage';
 
 export default function App() {
   return (

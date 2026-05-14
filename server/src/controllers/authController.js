@@ -8,7 +8,7 @@ const pool = require('../config/db');
 const createToken = (user) => {
     return jwt.sign(
         {
-            id: user.id,
+            id: user.user_id || user.id,  // hỗ trợ cả 2 trường hợp
             username: user.username,
             email: user.email
         },
@@ -61,6 +61,8 @@ exports.register = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         // Bước 4: Lưu user vào database
         const [result] = await pool.query('insert into users (username, email, password) values (?, ?, ?)', [username, email, hashedPassword]);
+        // Bước 4b: Tự động tạo project mặc định "Project1" cho user mới
+        await pool.query('INSERT INTO projects (owner_id, name) VALUES (?, ?)', [result.insertId, 'Project1']);
         // Bước 5: Lấy lại thông tin user vừa tạo (không lấy password)
         const [rows] = await pool.query('select user_id, username, email, created_at from users where user_id = ?', [result.insertId]);
         const newUser = rows[0];
