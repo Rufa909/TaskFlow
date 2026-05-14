@@ -64,7 +64,7 @@ export const translations = {
     // Account Settings
     plan: 'Plan',
     beginner: 'Beginner',
-    managePlan: 'Manage plan',
+    Save: 'Save',
     photo: 'Photo',
     uploadPhoto: 'Upload photo',
     pickPhoto: 'Pick a photo up to 4MB.',
@@ -91,6 +91,7 @@ export const translations = {
     cannotDeleteProject: 'Không thể xóa project. Vui lòng thử lại!',
     errorAddingTask: 'Error adding task',
   },
+  
   vi: {
     // Sidebar Navigation
     addTask: 'Thêm task',
@@ -156,7 +157,7 @@ export const translations = {
     // Account Settings
     plan: 'Gói',
     beginner: 'Người mới bắt đầu',
-    managePlan: 'Quản lý gói',
+    Save: 'Lưu',
     photo: 'Ảnh',
     uploadPhoto: 'Tải ảnh lên',
     pickPhoto: 'Chọn ảnh có kích thước tối đa 4MB.',

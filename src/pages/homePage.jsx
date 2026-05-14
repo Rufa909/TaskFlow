@@ -312,13 +312,7 @@ export default function HomePage() {
 
         <div className="sidebar-footer">
           <button className="nav-item">
-            <span className="icon"><Icon name="teamAdd" size={18} /></span> {t('addTeam')}
-          </button>
-          <button className="nav-item">
             <span className="icon"><Icon name="help" size={18} /></span> {t('helpResources')}
-          </button>
-          <button className="nav-item" onClick={handleLogout}>
-            <span className="icon"><Icon name="logout" size={18} /></span> {t('logout')}
           </button>
         </div>
       </aside>
@@ -655,7 +649,7 @@ export default function HomePage() {
                         className="settings-input"
                         defaultValue={user?.username || 'User'}
                       />
-                      <button className="change-email-btn">{t('managePlan')}</button>
+                      <button className="change-email-btn">{t('Save')}</button>
                     </div>
 
                     {/* Email */}
@@ -663,7 +657,6 @@ export default function HomePage() {
                       <label className="settings-label">{t('email')}</label>
                       <div className="settings-email-section">
                         <span>{user?.email || 'email@example.com'}</span>
-                        <button className="change-email-btn">{t('changeEmail')}</button>
                       </div>
                     </div>
 
@@ -679,13 +672,13 @@ export default function HomePage() {
                 {activeSettingsTab !== 'account' && (
                   <div className="settings-section">
                     <div className="settings-section-header">
-                      <h3>{activeSettingsTab.charAt(0).toUpperCase() + activeSettingsTab.slice(1).replace('-', ' ')}</h3>
+                      <h3>{t(activeSettingsTab)}</h3>
                     </div>
                     {activeSettingsTab === 'general' ? (
                       <div>
                         {/* Language Setting */}
                         <div className="settings-section-item">
-                          <label className="settings-label">Language</label>
+                          <label className="settings-label">{t('Language')}</label>
                           <div className="language-selector">
                             <button
                               className={`language-btn ${language === 'en' ? 'active' : ''}`}
