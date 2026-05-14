@@ -53,6 +53,7 @@ body {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
+  position: relative;
 }
 .user-profile:hover { background-color: var(--sidebar-hover); }
 
@@ -80,6 +81,48 @@ body {
 }
 
 .chevron { display: flex; align-items: center; color: var(--text-secondary); }
+
+/* Profile Dropdown Menu */
+.profile-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-radius: 6px;
+  padding: 4px 0;
+  z-index: 30;
+  min-width: 200px;
+  margin-top: 8px;
+}
+
+.profile-dropdown-item {
+  padding: 10px 16px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  color: var(--text-main);
+  transition: background-color 0.2s;
+}
+.profile-dropdown-item:hover {
+  background-color: var(--sidebar-hover);
+}
+
+.profile-dropdown-item.logout-item {
+  color: #d32f2f;
+}
+.profile-dropdown-item.logout-item:hover {
+  background-color: #ffebee;
+}
+
+.profile-dropdown-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
+}
 
 .sidebar-actions { display: flex; gap: 4px; }
 
@@ -1193,4 +1236,385 @@ body {
 .has-date {
   border-color: #058527 !important;
   background-color: #e6f4ea !important;
+}
+
+/* Settings Modal */
+.settings-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+.settings-modal-wrapper {
+  background: #fff;
+  border-radius: 8px;
+  width: 90vw;
+  height: 90vh;
+  max-width: 1200px;
+  max-height: 800px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.2);
+}
+
+.settings-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-modal-header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.settings-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+.settings-close-btn:hover {
+  background-color: var(--sidebar-hover);
+  border-radius: 4px;
+}
+
+.settings-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Settings Sidebar */
+.settings-sidebar {
+  width: 250px;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background-color: #fafafa;
+}
+
+.settings-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+.settings-search-input:focus {
+  border-color: var(--accent-color);
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-main);
+  font-size: 14px;
+  text-align: left;
+  transition: background-color 0.2s;
+}
+
+.settings-nav-item:hover {
+  background-color: #f0f0f0;
+}
+
+.settings-nav-item.active {
+  background-color: #e3f2fd;
+  color: var(--accent-color);
+  border-left: 3px solid var(--accent-color);
+  padding-left: 13px;
+}
+
+/* Settings Content */
+.settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+}
+
+.settings-section {
+  max-width: 600px;
+}
+
+.settings-section-header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 16px;
+}
+
+.settings-section-header h3 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.settings-section-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-label {
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 100px;
+  padding-top: 4px;
+  color: var(--text-main);
+}
+
+.settings-value {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.manage-plan-btn {
+  padding: 6px 16px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-main);
+  transition: background-color 0.2s;
+}
+.manage-plan-btn:hover {
+  background-color: var(--sidebar-hover);
+}
+
+/* Photo Section */
+.settings-photo-section {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+}
+
+.avatar-large {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: var(--accent-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.photo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upload-photo-btn {
+  padding: 8px 16px;
+  background: #e3f2fd;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-color);
+  transition: background-color 0.2s;
+  align-self: flex-start;
+}
+.upload-photo-btn:hover {
+  background-color: #bbdefb;
+}
+
+.photo-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Input & Buttons */
+.settings-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+}
+.settings-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.1);
+}
+
+/* Email Section */
+.settings-email-section {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.change-email-btn {
+  padding: 6px 16px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-main);
+  transition: background-color 0.2s;
+}
+.change-email-btn:hover {
+  background-color: var(--sidebar-hover);
+}
+
+.add-password-btn {
+  padding: 8px 16px;
+  background: #e3f2fd;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-color);
+  transition: background-color 0.2s;
+  align-self: flex-start;
+}
+.add-password-btn:hover {
+  background-color: #bbdefb;
+}
+
+/* Toggle Section */
+.settings-toggle-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toggle-switch {
+  width: 44px;
+  height: 24px;
+  background-color: #ccc;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
+
+.toggle-switch span {
+  width: 20px;
+  height: 20px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle-switch:hover {
+  background-color: #bbb;
+}
+
+/* Scrollbar Styling */
+.settings-sidebar::-webkit-scrollbar,
+.settings-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-sidebar::-webkit-scrollbar-track,
+.settings-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-sidebar::-webkit-scrollbar-thumb,
+.settings-content::-webkit-scrollbar-thumb {
+  background: #ddd;
+  border-radius: 4px;
+}
+
+.settings-sidebar::-webkit-scrollbar-thumb:hover,
+.settings-content::-webkit-scrollbar-thumb:hover {
+  background: #bbb;
+}
+
+/* Language Selector */
+.language-selector {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+}
+
+.language-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-main);
+  transition: all 0.2s;
+  flex: 1;
+  justify-content: center;
+}
+
+.language-btn:hover {
+  border-color: var(--accent-color);
+  background-color: #f5f5f5;
+}
+
+.language-btn.active {
+  border-color: var(--accent-color);
+  background-color: var(--active-bg);
+  color: var(--accent-color);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(30, 136, 229, 0.2);
+}
+
+.language-flag {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.language-name {
+  flex: 1;
+  text-align: left;
 }

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axiosInstance';
+import { getTranslation } from '../i18n/translations';
 import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
+// import 'react-datepicker/dist/react-datepicker.css';
 import { format, addDays, nextMonday } from 'date-fns';
 import './homePage.css';
 
@@ -31,13 +33,25 @@ const Icon = ({ name, size = 20, color = 'currentColor' }) => {
     paperclip: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>,
     download: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
     trash: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>,
+    logout: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>,
+    setting: <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" id="setting"><path d="M21.32,9.55l-1.89-.63.89-1.78A1,1,0,0,0,20.13,6L18,3.87a1,1,0,0,0-1.15-.19l-1.78.89-.63-1.89A1,1,0,0,0,13.5,2h-3a1,1,0,0,0-.95.68L8.92,4.57,7.14,3.68A1,1,0,0,0,6,3.87L3.87,6a1,1,0,0,0-.19,1.15l.89,1.78-1.89.63A1,1,0,0,0,2,10.5v3a1,1,0,0,0,.68.95l1.89.63-.89,1.78A1,1,0,0,0,3.87,18L6,20.13a1,1,0,0,0,1.15.19l1.78-.89.63,1.89a1,1,0,0,0,.95.68h3a1,1,0,0,0,.95-.68l.63-1.89,1.78.89A1,1,0,0,0,18,20.13L20.13,18a1,1,0,0,0,.19-1.15l-.89-1.78,1.89-.63A1,1,0,0,0,22,13.5v-3A1,1,0,0,0,21.32,9.55ZM20,12.78l-1.2.4A2,2,0,0,0,17.64,16l.57,1.14-1.1,1.1L16,17.64a2,2,0,0,0-2.79,1.16l-.4,1.2H11.22l-.4-1.2A2,2,0,0,0,8,17.64l-1.14.57-1.1-1.1L6.36,16A2,2,0,0,0,5.2,13.18L4,12.78V11.22l1.2-.4A2,2,0,0,0,6.36,8L5.79,6.89l1.1-1.1L8,6.36A2,2,0,0,0,10.82,5.2l.4-1.2h1.56l.4,1.2A2,2,0,0,0,16,6.36l1.14-.57,1.1,1.1L17.64,8a2,2,0,0,0,1.16,2.79l1.2.4ZM12,8a4,4,0,1,0,4,4A4,4,0,0,0,12,8Zm0,6a2,2,0,1,1,2-2A2,2,0,0,1,12,14Z"></path></svg>,
+    user: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
+    sliders: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>,
+    creditCard: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>,
+    palette: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="9" r="1"></circle><circle cx="20" cy="16" r="1"></circle><circle cx="16" cy="20" r="1"></circle><circle cx="8" cy="20" r="1"></circle><circle cx="4" cy="16" r="1"></circle><circle cx="5" cy="9" r="1"></circle><circle cx="12" cy="5" r="1"></circle></svg>,
+    toggle: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="5" width="22" height="14" rx="7" ry="7"></rect><circle cx="16" cy="12" r="3"></circle></svg>,
+    x: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
   };
   return icons[name] || null;
 };
 
 export default function HomePage() {
   const { user, logout } = useAuth();
+  const { language, setLanguage } = useLanguage();
   const navigate = useNavigate();
+
+  // Translation helper
+  const t = (key) => getTranslation(language, key);
 
   // Projects state — loaded from DB
   const [projects, setProjects] = useState([]);
@@ -59,6 +73,11 @@ export default function HomePage() {
   const [taskTime, setTaskTime] = useState('');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
+
+  // Profile dropdown state
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('account');
 
   // Load projects from DB on mount
   useEffect(() => {
@@ -98,7 +117,7 @@ export default function HomePage() {
   }, [activeProject]);
 
   const handleLogout = () => {
-    if (window.confirm('Do you want to logout?')) {
+    if (window.confirm(t('confirmLogout'))) {
       logout();
       navigate('/auth', { replace: true });
     }
@@ -146,7 +165,7 @@ export default function HomePage() {
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
-      alert('Không thể tạo project. Vui lòng thử lại!');
+      alert(t('cannotCreateProject'));
     } finally {
       setSavingProject(false);
     }
@@ -154,7 +173,7 @@ export default function HomePage() {
 
   const handleDeleteProject = async (e, projectId) => {
     e.stopPropagation(); // prevent triggering project selection
-    if (!window.confirm('Are you sure you want to delete this project?')) return;
+    if (!window.confirm(t('deleteProjectConfirm'))) return;
     try {
       await api.delete(`/projects/${projectId}`);
       setProjects(prev => prev.filter(p => p.project_id !== projectId));
@@ -162,7 +181,7 @@ export default function HomePage() {
         setActiveProject(null);
       }
     } catch (err) {
-      alert('Không thể xóa project. Vui lòng thử lại!');
+      alert(t('cannotDeleteProject'));
     }
   };
 
@@ -170,13 +189,45 @@ export default function HomePage() {
 
   return (
     <div className="layout">
-      {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="user-profile" onClick={handleLogout} title="Click to logout">
+          <div 
+            className="user-profile"
+            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            title="Click to see options"
+          >
             <div className="avatar">{user?.username ? user.username.charAt(0).toUpperCase() : 'U'}</div>
             <span className="username">{user?.username || 'User'}</span>
             <span className="chevron"><Icon name="chevronDown" size={14} /></span>
+
+            {/* Profile Dropdown Menu */}
+            {isProfileMenuOpen && (
+              <div className="profile-dropdown-menu">
+                <div className="profile-dropdown-item">
+                    <Icon name="teamAdd" size={14} /> {t('addTeam')}
+                </div>
+                <div 
+                  className="profile-dropdown-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSettingsModalOpen(true);
+                    setIsProfileMenuOpen(false);
+                  }}
+                >
+                  <Icon name="setting" size={14} /> {t('settings')}
+                </div>
+                <div className="profile-dropdown-divider"></div>
+                <div 
+                  className="profile-dropdown-item logout-item"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    handleLogout(); 
+                  }}
+                >
+                  <Icon name="logout" size={14} /> {t('logout')}
+                </div>
+              </div>
+            )}
           </div>
           <div className="sidebar-actions">
             <button className="icon-btn" title="Notifications"><Icon name="bell" size={18} /></button>
@@ -186,36 +237,36 @@ export default function HomePage() {
 
         <div className="sidebar-nav">
           <button className="nav-item add-task" onClick={() => { setIsAddingTask(true); }}>
-            <span className="icon"><Icon name="plus" size={18} /></span> Add task
+            <span className="icon"><Icon name="plus" size={18} /></span> {t('addTask')}
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="search" size={18} /></span> Search
+            <span className="icon"><Icon name="search" size={18} /></span> {t('search')}
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="inbox" size={18} /></span> Inbox
+            <span className="icon"><Icon name="inbox" size={18} /></span> {t('inbox')}
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="calendar" size={18} /></span> Today
+            <span className="icon"><Icon name="calendar" size={18} /></span> {t('today')}
             <span className="count">2</span>
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="upcoming" size={18} /></span> Upcoming
+            <span className="icon"><Icon name="upcoming" size={18} /></span> {t('upcoming')}
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="grid" size={18} /></span> Filters & Labels
+            <span className="icon"><Icon name="grid" size={18} /></span> {t('filtersLabels')}
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="activity" size={18} /></span> Reporting
+            <span className="icon"><Icon name="activity" size={18} /></span> {t('reporting')}
           </button>
         </div>
 
         <div className="sidebar-projects">
           <div className="projects-header">
-            <span>My Projects</span>
+            <span>{t('myProjects')}</span>
             <div className="projects-header-actions">
               <button
                 onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
-                title="Add project"
+                title={t('addProject')}
               >
                 <Icon name="plus" size={16} />
               </button>
@@ -227,7 +278,7 @@ export default function HomePage() {
                     setIsProjectMenuOpen(false);
                     setIsAddProjectModalOpen(true);
                   }}>
-                    <Icon name="hash" size={14} /> Add project
+                    <Icon name="hash" size={14} /> {t('addProject')}
                   </div>
                 </div>
               )}
@@ -261,10 +312,13 @@ export default function HomePage() {
 
         <div className="sidebar-footer">
           <button className="nav-item">
-            <span className="icon"><Icon name="teamAdd" size={18} /></span> Add a team
+            <span className="icon"><Icon name="teamAdd" size={18} /></span> {t('addTeam')}
           </button>
           <button className="nav-item">
-            <span className="icon"><Icon name="help" size={18} /></span> Help & resources
+            <span className="icon"><Icon name="help" size={18} /></span> {t('helpResources')}
+          </button>
+          <button className="nav-item" onClick={handleLogout}>
+            <span className="icon"><Icon name="logout" size={18} /></span> {t('logout')}
           </button>
         </div>
       </aside>
@@ -463,6 +517,199 @@ export default function HomePage() {
                 disabled={!newProjectName.trim() || savingProject}
                 className="submit-btn"
               >{savingProject ? 'Adding...' : 'Add'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {isSettingsModalOpen && (
+        <div className="settings-modal-overlay" onClick={() => setIsSettingsModalOpen(false)}>
+          <div className="settings-modal-wrapper" onClick={e => e.stopPropagation()}>
+            {/* Settings Header */}
+            <div className="settings-modal-header">
+              <h2>Settings</h2>
+              <button 
+                className="settings-close-btn"
+                onClick={() => setIsSettingsModalOpen(false)}
+              >
+                <Icon name="x" size={24} />
+              </button>
+            </div>
+
+            {/* Settings Layout - Sidebar & Content */}
+            <div className="settings-modal-body">
+              {/* Settings Sidebar */}
+              <aside className="settings-sidebar">
+                <div className="settings-search">
+                  <input 
+                    type="text"
+                    placeholder="Search"
+                    className="settings-search-input"
+                  />
+                </div>
+                
+                <div className="settings-nav">
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'account' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('account')}
+                  >
+                    <Icon name="user" size={18} /> {t('account')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'general' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('general')}
+                  >
+                    <Icon name="sliders" size={18} /> {t('general')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'subscription' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('subscription')}
+                  >
+                    <Icon name="creditCard" size={18} /> {t('subscription')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'theme' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('theme')}
+                  >
+                    <Icon name="palette" size={18} /> {t('theme')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'sidebar' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('sidebar')}
+                  >
+                    <Icon name="sidebar" size={18} /> {t('sidebar')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'quick-add' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('quick-add')}
+                  >
+                    <Icon name="plus" size={18} /> {t('quickAdd')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'productivity' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('productivity')}
+                  >
+                    <Icon name="activity" size={18} /> {t('productivity')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'reminders' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('reminders')}
+                  >
+                    <Icon name="clock" size={18} /> {t('reminders')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'notifications' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('notifications')}
+                  >
+                    <Icon name="bell" size={18} /> {t('notifications')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'backups' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('backups')}
+                  >
+                    <Icon name="download" size={18} /> {t('backups')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'integrations' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('integrations')}
+                  >
+                    <Icon name="share" size={18} /> {t('integrations')}
+                  </button>
+                  <button
+                    className={`settings-nav-item ${activeSettingsTab === 'calendars' ? 'active' : ''}`}
+                    onClick={() => setActiveSettingsTab('calendars')}
+                  >
+                    <Icon name="calendar" size={18} /> {t('calendars')}
+                  </button>
+                </div>
+              </aside>
+
+              {/* Settings Content */}
+              <div className="settings-content">
+                {activeSettingsTab === 'account' && (
+                  <div className="settings-section">
+                    <div className="settings-section-header">
+                      <h3>{t('account')}</h3>
+                    </div>
+                    {/* Photo */}
+                    <div className="settings-section-item" style={{ marginTop: '24px' }}>
+                      <label className="settings-label">{t('photo')}</label>
+                      <div className="settings-photo-section">
+                        <div className="avatar-large">
+                          {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                        <div className="photo-info">
+                          <button className="upload-photo-btn">{t('uploadPhoto')}</button>
+                          <p className="photo-hint">{t('pickPhoto')}</p>
+                          <p className="photo-hint">{t('avatarPublic')}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Name */}
+                    <div className="settings-section-item" style={{ marginTop: '24px' }}>
+                      <label className="settings-label">{t('name')}</label>
+                      <input
+                        type="text"
+                        className="settings-input"
+                        defaultValue={user?.username || 'User'}
+                      />
+                      <button className="change-email-btn">{t('managePlan')}</button>
+                    </div>
+
+                    {/* Email */}
+                    <div className="settings-section-item" style={{ marginTop: '24px' }}>
+                      <label className="settings-label">{t('email')}</label>
+                      <div className="settings-email-section">
+                        <span>{user?.email || 'email@example.com'}</span>
+                        <button className="change-email-btn">{t('changeEmail')}</button>
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="settings-section-item" style={{ marginTop: '24px' }}>
+                      <label className="settings-label">{t('password')}</label>
+                      <button className="add-password-btn">{t('changePassword')}</button>
+                    </div>
+
+                  </div>
+                )}
+
+                {activeSettingsTab !== 'account' && (
+                  <div className="settings-section">
+                    <div className="settings-section-header">
+                      <h3>{activeSettingsTab.charAt(0).toUpperCase() + activeSettingsTab.slice(1).replace('-', ' ')}</h3>
+                    </div>
+                    {activeSettingsTab === 'general' ? (
+                      <div>
+                        {/* Language Setting */}
+                        <div className="settings-section-item">
+                          <label className="settings-label">Language</label>
+                          <div className="language-selector">
+                            <button
+                              className={`language-btn ${language === 'en' ? 'active' : ''}`}
+                              onClick={() => setLanguage('en')}
+                            >
+                              <span className="language-name">English</span>
+                            </button>
+                            <button
+                              className={`language-btn ${language === 'vi' ? 'active' : ''}`}
+                              onClick={() => setLanguage('vi')}
+                            >
+                              <span className="language-name">Tiếng Việt</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p style={{ color: '#808080', fontSize: '14px', paddingTop: '20px' }}>
+                        Coming soon...
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
