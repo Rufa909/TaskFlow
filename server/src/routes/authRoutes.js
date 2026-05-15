@@ -1,7 +1,7 @@
 const router = require('express').Router();
 
 // Import controller (xử lý logic)
-const { register, login, getMe } = require('../controllers/authController');
+const { register, login, getMe, updateAvatar } = require('../controllers/authController');
 
 // Import middleware (bảo vệ route)
 const auth = require('../middleware/authMiddleware');
@@ -16,5 +16,6 @@ router.post('/login', login);
 // ─── Protected routes (cần token) ─────────────────
 // GET /api/auth/me → auth chạy trước, nếu pass mới vào getMe
 router.get('/me', auth, getMe);
+router.put('/avatar', auth, updateAvatar);
 
 module.exports = router;

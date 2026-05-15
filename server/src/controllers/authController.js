@@ -1,5 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const fs = require('fs/promises');
+const path = require('path');
 const pool = require('../config/db');
 
 // Hàm tạo JWT Token
@@ -164,6 +166,64 @@ exports.getMe = async (req, res) => {
         });
     } catch (err){
         console.error('Loi getMe:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Co loi xay ra, vui long thu lai sau!'
+        });
+    }
+};
+
+exports.updateAvatar = async (req, res) => {
+    const { image } = req.body;
+    const match = image?.match(/^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/=]+)$/);
+
+    if (!match) {
+        return res.status(400).json({
+            success: false,
+            message: 'Anh khong hop le!'
+        });
+    }
+
+    const imageBuffer = Buffer.from(match[2], 'base64');
+    if (imageBuffer.length > 4 * 1024 * 1024) {
+        return res.status(400).json({
+            success: false,
+            message: 'Anh phai nho hon 4MB!'
+        });
+    }
+
+    try {
+        const extension = match[1] === 'jpeg' ? 'jpg' : match[1];
+        const uploadsDir = path.resolve(__dirname, '../../uploads/avatars');
+        const fileName = `user-${req.user.id}-${Date.now()}.${extension}`;
+        const publicPath = `/uploads/avatars/${fileName}`;
+
+        await fs.mkdir(uploadsDir, { recursive: true });
+        await fs.writeFile(path.join(uploadsDir, fileName), imageBuffer);
+
+        await pool.query(
+            'update users set user_photo = ? where user_id = ?',
+            [publicPath, req.user.id]
+        );
+
+        const [rows] = await pool.query(
+            'select user_id, username, email, user_photo, created_at from users where user_id = ?',
+            [req.user.id]
+        );
+        const user = rows[0];
+
+        return res.json({
+            success: true,
+            user: {
+                id: user.user_id,
+                username: user.username,
+                email: user.email,
+                user_photo: user.user_photo,
+                created_at: user.created_at
+            }
+        });
+    } catch (err) {
+        console.error('Loi update avatar:', err);
         return res.status(500).json({
             success: false,
             message: 'Co loi xay ra, vui long thu lai sau!'

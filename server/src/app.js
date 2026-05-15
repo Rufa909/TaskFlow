@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
+const uploadsPath = path.resolve(__dirname, '../uploads');
 // ─── Middleware toàn cục
 
 // CORS: cho phép frontend (localhost:5173) gọi API
@@ -15,10 +16,11 @@ app.use(cors({
 
 // Parse JSON body từ request
 // Không có dòng này → req.body sẽ là undefined
-app.use(express.json());
+app.use(express.json({ limit: '6mb' }));
 
 // Parse URL-encoded body (form submit truyền thống)
-app.use(express.urlencoded({ extended:true }));
+app.use(express.urlencoded({ extended:true, limit: '6mb' }));
+app.use('/uploads', express.static(uploadsPath));
 // ─── Routes 
 
 // Tất cả route auth sẽ có prefix /api/auth

@@ -15,7 +15,7 @@ import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
 
 export default function HomePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const { language, setLanguage } = useLanguage();
   const [selectedTask, setSelectedTask] = useState(null);
   const navigate = useNavigate();
@@ -295,6 +295,7 @@ export default function HomePage() {
         settingsTab={activeSettingsTab}
         setSettingsTab={setActiveSettingsTab}
         user={user}
+        updateUser={updateUser}
         handleLogout={handleLogout}
         t={t}
         language={language}

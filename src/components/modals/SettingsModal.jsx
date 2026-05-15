@@ -1,4 +1,15 @@
+import { useRef, useState } from "react";
 import Icon from "../common/Icon";
+import api from "../../api/axiosInstance";
+
+const API_URL = "http://localhost:5000";
+
+function avatarUrl(photo) {
+  if (!photo) return "";
+  return photo.startsWith("http") || photo.startsWith("data:")
+    ? photo
+    : `${API_URL}${photo}`;
+}
 
 export default function SettingsModal({
   isSettingsModalOpen,
@@ -8,6 +19,7 @@ export default function SettingsModal({
   setSettingsTab,
 
   user,
+  updateUser,
 
   handleLogout,
 
@@ -15,6 +27,41 @@ export default function SettingsModal({
   language,
   setLanguage
 }) {
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const src = avatarUrl(user?.user_photo);
+
+  const handleAvatarUpload = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Please choose an image file.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Photo must be smaller than 4MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        setUploading(true);
+        const res = await api.put("/auth/avatar", { image: reader.result });
+        updateUser(res.data.user);
+        setImageError(false);
+      } catch (err) {
+        alert(err.response?.data?.message || "Cannot upload avatar.");
+      } finally {
+        setUploading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   if (!isSettingsModalOpen) {
     return null;
@@ -151,13 +198,31 @@ export default function SettingsModal({
                       <label className="settings-label">{t("photo")}</label>
                       <div className="settings-photo-section">
                         <div className="avatar-large">
-                          {user?.username
+                          {src && !imageError ? (
+                            <img
+                              src={src}
+                              alt=""
+                              onError={() => setImageError(true)}
+                            />
+                          ) : user?.username
                             ? user.username.charAt(0).toUpperCase()
                             : "U"}
                         </div>
                         <div className="photo-info">
-                          <button className="upload-photo-btn">
-                            {t("uploadPhoto")}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="avatar-file-input"
+                            onChange={handleAvatarUpload}
+                          />
+                          <button
+                            type="button"
+                            className="upload-photo-btn"
+                            disabled={uploading}
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            {uploading ? "Uploading..." : t("uploadPhoto")}
                           </button>
                           <p className="photo-hint">{t("pickPhoto")}</p>
                           <p className="photo-hint">{t("avatarPublic")}</p>

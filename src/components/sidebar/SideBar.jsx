@@ -1,5 +1,15 @@
+import { useEffect, useState } from "react";
 import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
+
+const API_URL = "http://localhost:5000";
+
+function avatarUrl(photo) {
+  if (!photo) return "";
+  return photo.startsWith("http") || photo.startsWith("data:")
+    ? photo
+    : `${API_URL}${photo}`;
+}
 
 export default function Sidebar({
   user,
@@ -27,6 +37,13 @@ export default function Sidebar({
 
   setIsAddProjectModalOpen,
 }) {
+  const src = avatarUrl(user?.user_photo);
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [user?.user_photo]);
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -36,7 +53,11 @@ export default function Sidebar({
           title="Click to see options"
         >
           <div className="avatar">
-            {user?.username ? user.username.charAt(0).toUpperCase() : "U"}
+            {src && !imageError ? (
+              <img src={src} alt="" onError={() => setImageError(true)} />
+            ) : (
+              user?.username ? user.username.charAt(0).toUpperCase() : "U"
+            )}
           </div>
           <span className="username">{user?.username || "User"}</span>
           <span className="chevron">
