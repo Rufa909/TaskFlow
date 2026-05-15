@@ -19,24 +19,31 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time } = req.body;
+    const { title, description, deadline, time, priority } = req.body;
 
     let deadlineDate = null;
     if (deadline) {
       deadlineDate = new Date(deadline);
     }
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Task title is required",
+      });
+    }
 
     const [result] = await pool.query(
       `
     INSERT INTO tasks 
-    (title, description, deadline, time, project_id, created_by) 
-    VALUES (?, ?, ?, ?, ?, ?)
+    (title, description, deadline, time, priority, project_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
       [
         title,
         description || null,
         deadlineDate,
         time || null,
+        priority || "medium",
         projectId,
         req.user.id,
       ],

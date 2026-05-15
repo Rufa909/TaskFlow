@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Icon from "../common/Icon";
 import DatePicker from "react-datepicker";
 import { format, addDays, nextMonday } from "date-fns";
@@ -18,6 +19,9 @@ export default function AddTaskForm({
   taskTime,
   setTaskTime,
 
+  taskPriority,
+  setTaskPriority,
+
   isDatePickerOpen,
   setIsDatePickerOpen,
 
@@ -31,6 +35,16 @@ export default function AddTaskForm({
 
   setIsAddingTask,
 }) {
+  const [isPriorityOpen, setIsPriorityOpen] = useState(false);
+  const priorities = [
+    { value: "urgent", label: "Urgent", color: "#dc2626" },
+    { value: "high", label: "High", color: "#f97316" },
+    { value: "medium", label: "Medium", color: "#d97706" },
+    { value: "low", label: "Low", color: "#6b7280" },
+  ];
+
+  const selectedPriority =
+    priorities.find((item) => item.value === taskPriority) || priorities[2];
   return (
     <div className="add-task-form">
       <input
@@ -58,7 +72,8 @@ export default function AddTaskForm({
             color={taskDeadline ? "#058527" : "currentColor"}
           />
           <span style={{ color: taskDeadline ? "#058527" : "inherit" }}>
-            {taskDeadline ? format(taskDeadline, "d MMM") : "Date"} {taskTime && `at ${taskTime}`}
+            {taskDeadline ? format(taskDeadline, "d MMM") : "Date"}{" "}
+            {taskTime && `at ${taskTime}`}
           </span>
           {taskDeadline && (
             <span
@@ -76,9 +91,36 @@ export default function AddTaskForm({
         <button>
           <Icon name="paperclip" size={14} /> Attachment
         </button>
-        <button>
-          <Icon name="flag" size={14} /> Priority
-        </button>
+        <div className="priority-picker">
+          <button
+            type="button"
+            className={`priority-trigger priority-${selectedPriority.value}`}
+            onClick={() => setIsPriorityOpen((prev) => !prev)}
+          >
+            <Icon name="flag" size={14} />
+            {selectedPriority.label}
+          </button>
+
+          {isPriorityOpen && (
+            <div className="priority-menu">
+              {priorities.map((priority) => (
+                <button
+                  key={priority.value}
+                  type="button"
+                  className={`priority-option priority-${priority.value}`}
+                  onClick={() => {
+                    setTaskPriority(priority.value);
+                    setIsPriorityOpen(false);
+                  }}
+                >
+                  <Icon name="flag" size={14} />
+                  {priority.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <button>
           <Icon name="clock" size={14} /> Reminders
         </button>
@@ -138,6 +180,9 @@ export default function AddTaskForm({
               setIsAddingTask(false);
               setNewTaskTitle("");
               setNewTaskDesc("");
+              setTaskDeadline(null);
+              setTaskTime("");
+              setTaskPriority("medium");
             }}
           >
             Cancel

@@ -1997,3 +1997,74 @@ body {
   flex: 1;
   text-align: left;
 }
+
+
+.priority-picker {
+  position: relative;
+}
+
+.priority-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.priority-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 160px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+}
+
+.priority-menu::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 12px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-left: 1px solid var(--border-color);
+  border-top: 1px solid var(--border-color);
+  transform: rotate(45deg);
+}
+
+.priority-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.priority-option:hover {
+  background: var(--sidebar-hover);
+}
+
+.priority-urgent {
+  color: #dc2626;
+}
+
+.priority-high {
+  color: #f97316;
+}
+
+.priority-medium {
+  color: #d97706;
+}
+
+.priority-low {
+  color: #6b7280;
+}

@@ -43,10 +43,15 @@ export default function TaskList({
             <Icon name="more" size={16} />
           </button>
           {openMenuId === task.task_id && (
-            <div className="task-dropdown-menu" ref={menuRef}>
+            <div
+              className="task-dropdown-menu"
+              ref={menuRef}
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
                 className="task-dropdown-item"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setSelectedTask(task);
 
                   setOpenMenuId(null);
@@ -63,7 +68,8 @@ export default function TaskList({
 
               <button
                 className="task-dropdown-item delete"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   handleDeleteTask(task.task_id);
                   setOpenMenuId(null);
                 }}
@@ -96,6 +102,11 @@ export default function TaskList({
                 {task.time && (
                   <span className="task-time">{task.time.slice(0, 5)}</span>
                 )}
+              </div>
+            )}
+            {task.priority && (
+              <div className={`task-priority priority-${task.priority}`}>
+                <Icon name="flag" size={12} /> {task.priority}
               </div>
             )}
           </div>
