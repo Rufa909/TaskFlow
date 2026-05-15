@@ -58,7 +58,7 @@ export default function AddTaskForm({
             color={taskDeadline ? "#058527" : "currentColor"}
           />
           <span style={{ color: taskDeadline ? "#058527" : "inherit" }}>
-            {taskDeadline ? format(taskDeadline, "d MMM") : "Date"}
+            {taskDeadline ? format(taskDeadline, "d MMM") : "Date"} {taskTime && `at ${taskTime}`}
           </span>
           {taskDeadline && (
             <span

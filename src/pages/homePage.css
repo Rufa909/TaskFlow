@@ -1,5 +1,5 @@
 /* homePage.css */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap");
 
 :root {
   --sidebar-bg: #fcfaf8;
@@ -18,7 +18,11 @@
 }
 
 body {
-  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Roboto",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   color: var(--text-main);
   background-color: #fff;
 }
@@ -55,7 +59,9 @@ body {
   border-radius: 4px;
   position: relative;
 }
-.user-profile:hover { background-color: var(--sidebar-hover); }
+.user-profile:hover {
+  background-color: var(--sidebar-hover);
+}
 
 .avatar {
   width: 24px;
@@ -80,7 +86,11 @@ body {
   text-overflow: ellipsis;
 }
 
-.chevron { display: flex; align-items: center; color: var(--text-secondary); }
+.chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
 
 /* Profile Dropdown Menu */
 .profile-dropdown-menu {
@@ -89,7 +99,7 @@ body {
   left: 0;
   background: #fff;
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   border-radius: 6px;
   padding: 4px 0;
   z-index: 30;
@@ -124,7 +134,10 @@ body {
   margin: 4px 0;
 }
 
-.sidebar-actions { display: flex; gap: 4px; }
+.sidebar-actions {
+  display: flex;
+  gap: 4px;
+}
 
 .icon-btn {
   background: none;
@@ -138,7 +151,9 @@ body {
   justify-content: center;
   color: var(--text-secondary);
 }
-.icon-btn:hover { background-color: var(--sidebar-hover); }
+.icon-btn:hover {
+  background-color: var(--sidebar-hover);
+}
 
 .sidebar-nav {
   display: flex;
@@ -161,11 +176,27 @@ body {
   font-size: 14px;
   color: var(--text-main);
 }
-.nav-item:hover { background-color: var(--sidebar-hover); }
-.nav-item .icon { display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
-.nav-item.add-task .icon { color: var(--accent-color); }
-.nav-item.add-task { color: var(--accent-color); font-weight: 500; }
-.nav-item .count { margin-left: auto; font-size: 12px; color: var(--text-secondary); }
+.nav-item:hover {
+  background-color: var(--sidebar-hover);
+}
+.nav-item .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.nav-item.add-task .icon {
+  color: var(--accent-color);
+}
+.nav-item.add-task {
+  color: var(--accent-color);
+  font-weight: 500;
+}
+.nav-item .count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 
 /* Sidebar Projects */
 .sidebar-projects {
@@ -193,7 +224,9 @@ body {
   opacity: 0;
   transition: opacity 0.2s;
 }
-.projects-header:hover .projects-header-actions { opacity: 1; }
+.projects-header:hover .projects-header-actions {
+  opacity: 1;
+}
 .projects-header-actions button {
   background: none;
   border: none;
@@ -204,7 +237,10 @@ body {
   padding: 4px;
   border-radius: 4px;
 }
-.projects-header-actions button:hover { background-color: var(--sidebar-hover); color: var(--text-main); }
+.projects-header-actions button:hover {
+  background-color: var(--sidebar-hover);
+  color: var(--text-main);
+}
 
 .project-item {
   display: flex;
@@ -220,17 +256,30 @@ body {
   font-size: 14px;
   color: var(--text-main);
 }
-.project-item:hover { background-color: var(--sidebar-hover); }
-.project-item.active { background-color: var(--active-bg); color: var(--accent-color); }
-.project-item.active .icon svg { stroke: var(--accent-color); }
-.project-item .icon { display: flex; align-items: center; color: var(--text-secondary); }
+.project-item:hover {
+  background-color: var(--sidebar-hover);
+}
+.project-item.active {
+  background-color: var(--active-bg);
+  color: var(--accent-color);
+}
+.project-item.active .icon svg {
+  stroke: var(--accent-color);
+}
+.project-item .icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
 
 .delete-project-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.2s, color 0.2s;
+  transition:
+    opacity 0.2s,
+    color 0.2s;
   color: var(--text-secondary);
 }
 .project-item:hover .delete-project-btn {
@@ -251,7 +300,7 @@ body {
   right: 0;
   background: #fff;
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   border-radius: 6px;
   padding: 4px 0;
   z-index: 20;
@@ -267,7 +316,9 @@ body {
   cursor: pointer;
   color: var(--text-main);
 }
-.project-dropdown-item:hover { background: var(--sidebar-hover); }
+.project-dropdown-item:hover {
+  background: var(--sidebar-hover);
+}
 
 /* Main Content */
 .main-content {
@@ -306,7 +357,9 @@ body {
   gap: 6px;
   cursor: pointer;
 }
-.action-btn:hover { color: var(--text-main); }
+.action-btn:hover {
+  color: var(--text-main);
+}
 
 .task-list-container {
   max-width: 800px;
@@ -322,7 +375,9 @@ body {
 }
 
 /* Tasks */
-.task-section { margin-top: 8px; }
+.task-section {
+  margin-top: 8px;
+}
 
 .task-item {
   display: flex;
@@ -331,7 +386,9 @@ body {
   gap: 12px;
   border-bottom: 1px solid var(--border-color);
 }
-.task-item:hover { background-color: #fafafa; }
+.task-item:hover {
+  background-color: #fafafa;
+}
 
 .checkbox {
   width: 16px;
@@ -342,11 +399,22 @@ body {
   margin-top: 3px;
   flex-shrink: 0;
 }
-.checkbox:hover { background-color: #f0f0f0; }
+.checkbox:hover {
+  background-color: #f0f0f0;
+}
 
-.task-content { flex: 1; }
-.task-title { font-size: 14px; line-height: 1.5; }
-.task-meta { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.task-content {
+  flex: 1;
+}
+.task-title {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.task-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
 
 /* Add Task Form */
 .add-task-btn {
@@ -360,15 +428,21 @@ body {
   padding: 12px 0;
   font-size: 14px;
 }
-.add-task-btn:hover { color: var(--accent-color); }
-.add-task-btn .icon { color: var(--accent-color); display: flex; align-items: center; }
+.add-task-btn:hover {
+  color: var(--accent-color);
+}
+.add-task-btn .icon {
+  color: var(--accent-color);
+  display: flex;
+  align-items: center;
+}
 
 .add-task-form {
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   padding: 12px;
   margin-top: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .add-task-form input {
@@ -410,7 +484,10 @@ body {
   font-size: 12px;
   color: var(--text-secondary);
 }
-.form-actions-row button:hover { background-color: #f5f5f5; color: var(--text-main); }
+.form-actions-row button:hover {
+  background-color: #f5f5f5;
+  color: var(--text-main);
+}
 
 .form-footer {
   display: flex;
@@ -451,7 +528,9 @@ body {
   font-size: 13px;
   font-weight: 500;
 }
-.cancel-btn:hover { background: #e5e5e5; }
+.cancel-btn:hover {
+  background: #e5e5e5;
+}
 
 .submit-btn {
   background: var(--accent-color);
@@ -463,8 +542,13 @@ body {
   font-size: 13px;
   font-weight: 500;
 }
-.submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.submit-btn:not(:disabled):hover { background: #1565c0; }
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.submit-btn:not(:disabled):hover {
+  background: #1565c0;
+}
 
 /* Get Inspired */
 .get-inspired {
@@ -492,19 +576,21 @@ body {
   gap: 8px;
   background: none;
   border: none;
-  color: #2196F3;
+  color: #2196f3;
   cursor: pointer;
   font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.inspired-btn:hover { color: #1565c0; }
+.inspired-btn:hover {
+  color: #1565c0;
+}
 
 /* Add Project Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -515,7 +601,7 @@ body {
   background: #fff;
   border-radius: 10px;
   width: 420px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
 .modal-header {
@@ -525,10 +611,20 @@ body {
   justify-content: space-between;
   align-items: center;
 }
-.modal-header h2 { font-size: 16px; font-weight: 600; }
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
 
-.modal-body { padding: 24px; }
-.modal-body label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.modal-body {
+  padding: 24px;
+}
+.modal-body label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
 .modal-body input {
   width: 100%;
   padding: 8px 12px;
@@ -538,7 +634,9 @@ body {
   outline: none;
   font-family: inherit;
 }
-.modal-body input:focus { border-color: #888; }
+.modal-body input:focus {
+  border-color: #888;
+}
 
 .modal-footer {
   padding: 16px 24px;
@@ -549,7 +647,6 @@ body {
   align-items: center;
 }
 
-
 * {
   box-sizing: border-box;
   margin: 0;
@@ -557,7 +654,11 @@ body {
 }
 
 body {
-  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    "Roboto",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   color: var(--text-main);
   background-color: #fff;
 }
@@ -915,7 +1016,7 @@ body {
   border-radius: 8px;
   padding: 10px;
   margin-top: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .add-task-form input {
@@ -1002,8 +1103,11 @@ body {
 /* --- ADD PROJECT MODAL --- */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.4);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1014,7 +1118,7 @@ body {
   background: #fff;
   border-radius: 8px;
   width: 400px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
 }
@@ -1070,7 +1174,7 @@ body {
   right: 0;
   background: #fff;
   border: 1px solid var(--border-color);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border-radius: 4px;
   padding: 4px 0;
   z-index: 10;
@@ -1096,13 +1200,12 @@ body {
   top: 100%;
   left: 0;
   margin-top: 8px;
+  width: 550px;
   background: #fff;
   border: 1px solid var(--border-color);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
   z-index: 50;
-  display: flex;
-  flex-direction: row;
   overflow: hidden;
   font-size: 13px;
 }
@@ -1119,7 +1222,10 @@ body {
   font-weight: 500;
   color: var(--text-main);
 }
-
+.date-picker-content {
+  display: flex;
+  flex-direction: row;
+}
 .quick-options {
   width: 180px;
   border-right: 1px solid var(--border-color);
@@ -1127,6 +1233,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
 }
 .quick-options button {
   display: flex;
@@ -1153,12 +1260,24 @@ body {
   color: var(--text-secondary);
   font-size: 12px;
 }
+.react-datepicker__navigation {
+  top: 10px !important;
+}
 
+.react-datepicker__navigation--previous {
+  left: 10px !important;
+}
+
+.react-datepicker__navigation--next {
+  right: 10px !important;
+}
 .calendar-section {
   padding: 12px;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
+  flex: 1;
 }
+
 
 /* React DatePicker Customization */
 .react-datepicker {
@@ -1171,10 +1290,12 @@ body {
 }
 .react-datepicker__current-month {
   font-size: 14px !important;
-  text-align: left !important;
-  padding-left: 8px;
+  text-align: center !important;
+  margin-bottom: 10px !important;
 }
-.react-datepicker__day-name, .react-datepicker__day, .react-datepicker__time-name {
+.react-datepicker__day-name,
+.react-datepicker__day,
+.react-datepicker__time-name {
   width: 32px !important;
   line-height: 32px !important;
   margin: 2px !important;
@@ -1194,23 +1315,49 @@ body {
   padding: 12px;
   border-top: 1px solid var(--border-color);
 }
+
 .time-input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #ccc;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
+
+.time-input:hover {
+  border-color: #d0d0d0;
+  background: #fafafa;
+}
+
+.time-input:focus-within {
+  border-color: #357ddb;
+  box-shadow: 0 0 0 3px rgba(53, 142, 219, 0.12);
+}
+
 .time-input .label {
+  font-size: 13px;
   font-weight: 500;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
 .time-input input {
   border: none;
   outline: none;
-  background: none;
-  font-family: inherit;
+  background: transparent;
   font-size: 13px;
+  font-family: inherit;
+  color: #444;
+  cursor: pointer;
 }
 
 .date-picker-footer {
@@ -1231,7 +1378,7 @@ body {
   margin-left: 6px;
 }
 .clear-date-btn:hover {
-  background-color: rgba(0,0,0,0.1);
+  background-color: rgba(0, 0, 0, 0.1);
 }
 .has-date {
   border-color: #058527 !important;
@@ -1242,7 +1389,7 @@ body {
 .settings-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1258,7 +1405,7 @@ body {
   max-height: 800px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 12px 48px rgba(0,0,0,0.2);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
 }
 
 .settings-modal-header {
