@@ -30,10 +30,12 @@ export default function SettingsModal({
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [previewAvatar, setPreviewAvatar] = useState("");
 
-  const src = avatarUrl(user?.user_photo);
+  const savedAvatar = avatarUrl(user?.user_photo);
+  const visibleAvatar = previewAvatar || savedAvatar;
 
-  const handleAvatarUpload = (event) => {
+  const handleAvatarSelect = (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
 
@@ -48,19 +50,27 @@ export default function SettingsModal({
     }
 
     const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        setUploading(true);
-        const res = await api.put("/auth/avatar", { image: reader.result });
-        updateUser(res.data.user);
-        setImageError(false);
-      } catch (err) {
-        alert(err.response?.data?.message || "Cannot upload avatar.");
-      } finally {
-        setUploading(false);
-      }
+    reader.onload = () => {
+      setPreviewAvatar(reader.result);
+      setImageError(false);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleAvatarSave = async () => {
+    if (!previewAvatar) return;
+
+    try {
+      setUploading(true);
+      const res = await api.put("/auth/avatar", { image: previewAvatar });
+      updateUser(res.data.user);
+      setPreviewAvatar("");
+      setImageError(false);
+    } catch (err) {
+      alert(err.response?.data?.message || "Cannot upload avatar.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   if (!isSettingsModalOpen) {
@@ -198,9 +208,9 @@ export default function SettingsModal({
                       <label className="settings-label">{t("photo")}</label>
                       <div className="settings-photo-section">
                         <div className="avatar-large">
-                          {src && !imageError ? (
+                          {visibleAvatar && !imageError ? (
                             <img
-                              src={src}
+                              src={visibleAvatar}
                               alt=""
                               onError={() => setImageError(true)}
                             />
@@ -214,7 +224,7 @@ export default function SettingsModal({
                             type="file"
                             accept="image/png,image/jpeg,image/webp"
                             className="avatar-file-input"
-                            onChange={handleAvatarUpload}
+                            onChange={handleAvatarSelect}
                           />
                           <button
                             type="button"
@@ -222,8 +232,19 @@ export default function SettingsModal({
                             disabled={uploading}
                             onClick={() => fileInputRef.current?.click()}
                           >
-                            {uploading ? "Uploading..." : t("uploadPhoto")}
+                            {t("uploadPhoto")}
                           </button>
+                          {previewAvatar && (
+                            <button
+                              type="button"
+                              className="change-email-btn"
+                              disabled={uploading}
+                              onClick={handleAvatarSave}
+                              style={{ background: "#e3f2fd", color: "#1976d2" }}
+                            >
+                              {uploading ? "Saving..." : t("Save")}
+                            </button>
+                          )}
                           <p className="photo-hint">{t("pickPhoto")}</p>
                           <p className="photo-hint">{t("avatarPublic")}</p>
                         </div>
