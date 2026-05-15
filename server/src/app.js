@@ -20,12 +20,13 @@ app.use(express.json());
 // Parse URL-encoded body (form submit truyền thống)
 app.use(express.urlencoded({ extended:true }));
 // ─── Routes 
-
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Tất cả route auth sẽ có prefix /api/auth
 // VD: /api/auth/login, /api/auth/register
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/projects', require('./routes/projectRoutes'));
 app.use('/api', require('./routes/taskRoutes'));
+app.use('/api/user', require('./routes/userRoutes'));
 
 // ─── Global Error Handler
 // Bắt lỗi từ tất cả route, phải có 4 tham số (err, req, res, next)

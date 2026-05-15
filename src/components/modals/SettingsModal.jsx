@@ -1,4 +1,8 @@
+import { useState, useRef } from "react";
 import Icon from "../common/Icon";
+import "./SettingModal.css";
+import axiosInstance from "../../api/axiosInstance";
+import { useAuth } from "../../context/authContext";
 
 export default function SettingsModal({
   isSettingsModalOpen,
@@ -13,9 +17,68 @@ export default function SettingsModal({
 
   t,
   language,
-  setLanguage
-}) {
+  setLanguage,
 
+}) {
+  const { setUser } = useAuth();
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  // Xử lý khi người dùng chọn file ảnh
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Vui lòng chọn file ảnh!");
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Ảnh phải nhỏ hơn 4MB!");
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+  };
+
+  
+    // Upload avatar lên server
+   // Upload avatar
+  const handleUploadAvatar = async () => {
+    const file = fileInputRef.current?.files[0];
+    if (!file) return;
+
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    try {
+      const { data } = await axiosInstance.post("/user/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (data.success) {
+        alert("✅ Cập nhật ảnh đại diện thành công!");
+
+        // Lấy lại thông tin user mới nhất
+        const userRes = await axiosInstance.get("/auth/me");
+        if (userRes.data.success && userRes.data.user) {
+          setUser(userRes.data.user);        // ← Sẽ hoạt động
+        }
+
+        setPreviewUrl(null);
+        fileInputRef.current.value = "";
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.message || "Có lỗi khi tải ảnh lên");
+    } finally {
+      setUploading(false);
+    }
+  };
   if (!isSettingsModalOpen) {
     return null;
   }
@@ -23,11 +86,8 @@ export default function SettingsModal({
   return (
     <div
       className="modal-overlay"
-      onClick={() =>
-        setIsSettingsModalOpen(false)
-      }
+      onClick={() => setIsSettingsModalOpen(false)}
     >
-
       {isSettingsModalOpen && (
         <div
           className="settings-modal-overlay"
@@ -143,28 +203,66 @@ export default function SettingsModal({
                     <div className="settings-section-header">
                       <h3>{t("account")}</h3>
                     </div>
-                    {/* Photo */}
+                    {/* Photo Section */}
                     <div
                       className="settings-section-item"
                       style={{ marginTop: "24px" }}
                     >
                       <label className="settings-label">{t("photo")}</label>
                       <div className="settings-photo-section">
-                        <div className="avatar-large">
-                          {user?.username
-                            ? user.username.charAt(0).toUpperCase()
-                            : "U"}
+                        <div
+                          className="avatar-large"
+                          style={{
+                            backgroundImage: previewUrl
+                              ? `url(${previewUrl})`
+                              : user?.user_photo
+                                ? `url(${user.user_photo})`
+                                : "none",
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            cursor: "pointer",
+                          }}
+                          onClick={() => fileInputRef.current.click()}
+                        >
+                          {!previewUrl &&
+                            !user?.user_photo &&
+                            (user?.username
+                              ? user.username.charAt(0).toUpperCase()
+                              : "U")}
                         </div>
                         <div className="photo-info">
-                          <button className="upload-photo-btn">
-                            {t("uploadPhoto")}
+                          <input
+                            type="file"
+                            ref={fileInputRef}
+                            style={{ display: "none" }}
+                            accept="image/*"
+                            onChange={handleImageSelect}
+                          />
+
+                          <button
+                            className="upload-photo-btn"
+                            onClick={() => fileInputRef.current.click()}
+                            disabled={uploading}
+                          >
+                            {uploading ? "Đang tải..." : t("uploadPhoto")}
                           </button>
+
                           <p className="photo-hint">{t("pickPhoto")}</p>
                           <p className="photo-hint">{t("avatarPublic")}</p>
+
+                          {previewUrl && (
+                            <button
+                              className="change-email-btn"
+                              style={{ marginTop: "12px" }}
+                              onClick={handleUploadAvatar}
+                              disabled={uploading}
+                            >
+                              {uploading ? "Đang lưu..." : "Lưu ảnh"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
-
                     {/* Name */}
                     <div
                       className="settings-section-item"
@@ -249,7 +347,6 @@ export default function SettingsModal({
           </div>
         </div>
       )}
-
     </div>
   );
 }
