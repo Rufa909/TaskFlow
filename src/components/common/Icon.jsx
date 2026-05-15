@@ -460,6 +460,43 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
     ),
+    edit: (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="#000000"
+      >
+        <g id="SVGRepo_bgCarrier"></g>
+        <g
+          id="SVGRepo_tracerCarrier"
+        ></g>
+        <g id="SVGRepo_iconCarrier">
+          {" "}
+          <title></title>{" "}
+          <g id="Complete">
+            {" "}
+            <g id="edit">
+              {" "}
+              <g>
+                {" "}
+                <path
+                  d="M20,16v4a2,2,0,0,1-2,2H4a2,2,0,0,1-2-2V6A2,2,0,0,1,4,4H8"
+                  fill="none"
+                  stroke="#000000"
+                ></path>{" "}
+                <polygon
+                  fill="none"
+                  points="12.5 15.8 22 6.2 17.8 2 8.3 11.5 8 16 12.5 15.8"
+                  stroke="#000000"
+                ></polygon>{" "}
+              </g>{" "}
+            </g>{" "}
+          </g>{" "}
+        </g>
+      </svg>
+    ),
   };
   return icons[name] || null;
 };

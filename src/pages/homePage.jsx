@@ -12,10 +12,12 @@ import Icon from "../components/common/Icon";
 import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
+import EditTaskModal from "../components/modals/EditTaskModal";
 
 export default function HomePage() {
   const { user, logout } = useAuth();
   const { language, setLanguage } = useLanguage();
+  const [selectedTask, setSelectedTask] = useState(null);
   const navigate = useNavigate();
 
   // Translation helper
@@ -90,6 +92,46 @@ export default function HomePage() {
     if (window.confirm(t("confirmLogout"))) {
       logout();
       navigate("/auth", { replace: true });
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (!activeProject) return;
+
+    try {
+      await api.delete(`/projects/${activeProject.project_id}/tasks/${taskId}`);
+
+      setTasksByProject((prev) => ({
+        ...prev,
+        [activeProject.project_id]: prev[activeProject.project_id].filter(
+          (task) => task.task_id !== taskId,
+        ),
+      }));
+    } catch (err) {
+      console.error(err);
+      alert("Cannot delete task");
+    }
+  };
+  const handleUpdateTask = async (taskId, updatedData) => {
+    if (!activeProject) return;
+
+    try {
+      const res = await api.put(
+        `/projects/${activeProject.project_id}/tasks/${taskId}`,
+        updatedData,
+      );
+
+      const updatedTask = res.data.task;
+
+      setTasksByProject((prev) => ({
+        ...prev,
+        [activeProject.project_id]: prev[activeProject.project_id].map(
+          (task) => (task.task_id === taskId ? updatedTask : task),
+        ),
+      }));
+    } catch (err) {
+      console.error(err);
+      alert("Cannot update task");
     }
   };
 
@@ -197,7 +239,12 @@ export default function HomePage() {
 
           {/* Task list */}
           <div className="task-section">
-            <TaskList tasks={currentTasks} />
+            <TaskList
+              tasks={currentTasks}
+              handleDeleteTask={handleDeleteTask}
+              handleUpdateTask={handleUpdateTask}
+              setSelectedTask={setSelectedTask}
+            />
 
             {isAddingTask ? (
               <AddTaskForm
@@ -252,6 +299,12 @@ export default function HomePage() {
         t={t}
         language={language}
         setLanguage={setLanguage}
+      />
+
+      <EditTaskModal
+        selectedTask={selectedTask}
+        setSelectedTask={setSelectedTask}
+        handleUpdateTask={handleUpdateTask}
       />
     </div>
   );
