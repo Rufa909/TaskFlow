@@ -230,3 +230,189 @@ exports.updateAvatar = async (req, res) => {
         });
     }
 };
+// UPDATE USERNAME
+exports.updateUsername = async (req, res) => {
+    const { username } = req.body;
+
+    // Validate
+    if (!username || username.trim().length < 2) {
+        return res.status(400).json({
+            success: false,
+            message: 'Tên phải có ít nhất 2 ký tự'
+        });
+    }
+
+    try {
+        // Update DB
+        await pool.query(
+            'UPDATE users SET username = ? WHERE user_id = ?',
+            [username.trim(), req.user.id]
+        );
+
+        // Lấy user mới
+        const [rows] = await pool.query(
+            'SELECT user_id, username, email, user_photo, created_at FROM users WHERE user_id = ?',
+            [req.user.id]
+        );
+
+        const user = rows[0];
+
+        return res.json({
+            success: true,
+            message: 'Cap nhat ten thanh cong',
+            user: {
+                id: user.user_id,
+                username: user.username,
+                email: user.email,
+                user_photo: user.user_photo,
+                created_at: user.created_at
+            }
+        });
+
+    } catch (err) {
+        console.error('Loi update username:', err);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Co loi xay ra'
+        });
+    }
+};
+exports.updateEmail = async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({
+            success: false,
+            message: 'Email khong duoc de trong'
+        });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({
+            success: false,
+            message: 'Email khong hop le'
+        });
+    }
+
+    try {
+        // Check email tồn tại
+        const [existingUser] = await pool.query(
+            'SELECT * FROM users WHERE email = ? AND user_id != ?',
+            [email, req.user.id]
+        );
+
+        if (existingUser.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: 'Email da duoc su dung'
+            });
+        }
+
+        // Update email
+        await pool.query(
+            'UPDATE users SET email = ? WHERE user_id = ?',
+            [email, req.user.id]
+        );
+
+        // Lấy user mới
+        const [rows] = await pool.query(
+            'SELECT user_id, username, email, user_photo, created_at FROM users WHERE user_id = ?',
+            [req.user.id]
+        );
+
+        const user = rows[0];
+
+        return res.json({
+            success: true,
+            message: 'Cap nhat email thanh cong',
+            user: {
+                id: user.user_id,
+                username: user.username,
+                email: user.email,
+                user_photo: user.user_photo,
+                created_at: user.created_at
+            }
+        });
+
+    } catch (err) {
+        console.error('Loi update email:', err);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Co loi xay ra'
+        });
+    }
+};
+exports.updatePassword = async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    // Validate
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+            success: false,
+            message: 'Vui long nhap day du thong tin'
+        });
+    }
+
+    if (newPassword.length < 6) {
+        return res.status(400).json({
+            success: false,
+            message: 'Mat khau moi phai co it nhat 6 ky tu'
+        });
+    }
+
+    try {
+        // Lấy user hiện tại
+        const [rows] = await pool.query(
+            'SELECT * FROM users WHERE user_id = ?',
+            [req.user.id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User khong ton tai'
+            });
+        }
+
+        const user = rows[0];
+
+        // Kiểm tra password cũ
+        const isMatch = await bcrypt.compare(
+            currentPassword,
+            user.password
+        );
+
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: 'Mat khau hien tai khong dung'
+            });
+        }
+
+        // Hash password mới
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update DB
+        await pool.query(
+            'UPDATE users SET password = ? WHERE user_id = ?',
+            [hashedPassword, req.user.id]
+        );
+
+        return res.json({
+            success: true,
+            message: 'Cap nhat mat khau thanh cong'
+        });
+
+    } catch (err) {
+        console.error('Loi update password:', err);
+
+        return res.status(500).json({
+            success: false,
+            message: 'Co loi xay ra'
+        });
+    }
+};

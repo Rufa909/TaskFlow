@@ -1,8 +1,15 @@
 const router = require('express').Router();
 
 // Import controller (xử lý logic)
-const { register, login, getMe, updateAvatar } = require('../controllers/authController');
-
+const {
+  register,
+  login,
+  getMe,
+  updateAvatar,
+  updateUsername,
+  updateEmail,
+  updatePassword
+} = require('../controllers/authController');
 // Import middleware (bảo vệ route)
 const auth = require('../middleware/authMiddleware');
 
@@ -17,5 +24,8 @@ router.post('/login', login);
 // GET /api/auth/me → auth chạy trước, nếu pass mới vào getMe
 router.get('/me', auth, getMe);
 router.put('/avatar', auth, updateAvatar);
+router.put('/username', auth, updateUsername);
+router.put('/email', auth, updateEmail);
+router.put('/password', auth, updatePassword);
 
 module.exports = router;

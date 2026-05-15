@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
 import Icon from "../common/Icon";
 import api from "../../api/axiosInstance";
+import { useEffect, useRef, useState } from "react";
 
 const API_URL = "http://localhost:5000";
 
@@ -25,14 +25,28 @@ export default function SettingsModal({
 
   t,
   language,
-  setLanguage
+  setLanguage,
 }) {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [previewAvatar, setPreviewAvatar] = useState("");
+  const [username, setUsername] = useState(user?.username || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
+  const [savingName, setSavingName] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
   const savedAvatar = avatarUrl(user?.user_photo);
+
+  useEffect(() => {
+    setUsername(user?.username || "");
+    setEmail(user?.email || "");
+  }, [user]);
+
   const visibleAvatar = previewAvatar || savedAvatar;
 
   const handleAvatarSelect = (event) => {
@@ -72,7 +86,76 @@ export default function SettingsModal({
       setUploading(false);
     }
   };
+  const handleSaveUsername = async () => {
+    if (!username.trim()) {
+      alert("Name cannot be empty.");
+      return;
+    }
 
+    try {
+      setSavingName(true);
+
+      const res = await api.put("/auth/username", {
+        username,
+      });
+
+      updateUser(res.data.user);
+    } catch (err) {
+      alert(err.response?.data?.message || "Cannot update name.");
+    } finally {
+      setSavingName(false);
+    }
+  };
+  const handleSaveEmail = async () => {
+    if (!email.trim()) {
+      alert("Email cannot be empty.");
+      return;
+    }
+
+    try {
+      setSavingEmail(true);
+
+      const res = await api.put("/auth/email", {
+        email,
+      });
+
+      updateUser(res.data.user);
+    } catch (err) {
+      alert(err.response?.data?.message || "Cannot update email.");
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+  const handleSavePassword = async () => {
+    if (!currentPassword || !newPassword) {
+      alert("Please fill all password fields.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      alert("New password must be at least 6 characters.");
+      return;
+    }
+
+    try {
+      setSavingPassword(true);
+
+      const res = await api.put("/auth/password", {
+        currentPassword,
+        newPassword,
+      });
+
+      alert(res.data.message);
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setShowPasswordForm(false);
+    } catch (err) {
+      alert(err.response?.data?.message || "Cannot update password.");
+    } finally {
+      setSavingPassword(false);
+    }
+  };
   if (!isSettingsModalOpen) {
     return null;
   }
@@ -80,11 +163,8 @@ export default function SettingsModal({
   return (
     <div
       className="modal-overlay"
-      onClick={() =>
-        setIsSettingsModalOpen(false)
-      }
+      onClick={() => setIsSettingsModalOpen(false)}
     >
-
       {isSettingsModalOpen && (
         <div
           className="settings-modal-overlay"
@@ -214,9 +294,11 @@ export default function SettingsModal({
                               alt=""
                               onError={() => setImageError(true)}
                             />
-                          ) : user?.username
-                            ? user.username.charAt(0).toUpperCase()
-                            : "U"}
+                          ) : user?.username ? (
+                            user.username.charAt(0).toUpperCase()
+                          ) : (
+                            "U"
+                          )}
                         </div>
                         <div className="photo-info">
                           <input
@@ -240,7 +322,10 @@ export default function SettingsModal({
                               className="change-email-btn"
                               disabled={uploading}
                               onClick={handleAvatarSave}
-                              style={{ background: "#e3f2fd", color: "#1976d2" }}
+                              style={{
+                                background: "#e3f2fd",
+                                color: "#1976d2",
+                              }}
                             >
                               {uploading ? "Saving..." : t("Save")}
                             </button>
@@ -260,9 +345,16 @@ export default function SettingsModal({
                       <input
                         type="text"
                         className="settings-input"
-                        defaultValue={user?.username || "User"}
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
                       />
-                      <button className="change-email-btn">{t("Save")}</button>
+                      <button
+                        className="change-email-btn"
+                        onClick={handleSaveUsername}
+                        disabled={savingName}
+                      >
+                        {savingName ? "Saving..." : t("Save")}
+                      </button>
                     </div>
 
                     {/* Email */}
@@ -271,9 +363,21 @@ export default function SettingsModal({
                       style={{ marginTop: "24px" }}
                     >
                       <label className="settings-label">{t("email")}</label>
-                      <div className="settings-email-section">
-                        <span>{user?.email || "email@example.com"}</span>
-                      </div>
+                     
+                        <input
+                          type="email"
+                          className="settings-input"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                        />
+                        <button
+                          className="change-email-btn"
+                          onClick={handleSaveEmail}
+                          disabled={savingEmail}
+                        >
+                          {savingEmail ? "Saving..." : t("Save")}
+                        </button>
+                      
                     </div>
 
                     {/* Password */}
@@ -282,9 +386,61 @@ export default function SettingsModal({
                       style={{ marginTop: "24px" }}
                     >
                       <label className="settings-label">{t("password")}</label>
-                      <button className="add-password-btn">
-                        {t("changePassword")}
-                      </button>
+
+                      {!showPasswordForm ? (
+                        <button
+                          className="add-password-btn"
+                          onClick={() => setShowPasswordForm(true)}
+                        >
+                          {t("changePassword")}
+                        </button>
+                      ) : (
+                        <>
+                          <input
+                            type="password"
+                            className="settings-input"
+                            placeholder="Current password"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            style={{ marginBottom: "12px" }}
+                          />
+
+                          <input
+                            type="password"
+                            className="settings-input"
+                            placeholder="New password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                          />
+
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "12px",
+                              marginTop: "12px",
+                            }}
+                          >
+                            <button
+                              className="change-email-btn"
+                              onClick={handleSavePassword}
+                              disabled={savingPassword}
+                            >
+                              {savingPassword ? "Saving..." : t("Save")}
+                            </button>
+
+                            <button
+                              className="add-password-btn"
+                              onClick={() => {
+                                setShowPasswordForm(false);
+                                setCurrentPassword("");
+                                setNewPassword("");
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -335,7 +491,6 @@ export default function SettingsModal({
           </div>
         </div>
       )}
-
     </div>
   );
 }
