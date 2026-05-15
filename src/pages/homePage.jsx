@@ -122,11 +122,14 @@ export default function HomePage() {
         updatedData,
       );
 
-      const updatedTask = res.data.task;
+      const updatedTask = {
+        ...res.data.task,
+        ...updatedData,
+      };
 
       setTasksByProject((prev) => ({
         ...prev,
-        [activeProject.project_id]: prev[activeProject.project_id].map(
+        [activeProject.project_id]: (prev[activeProject.project_id] || []).map(
           (task) => (task.task_id === taskId ? updatedTask : task),
         ),
       }));

@@ -33,7 +33,9 @@ export default function TaskList({
         >
           <div className="checkbox"></div>
           <button
-            className="task-more-btn"
+            className={`task-more-btn ${openMenuId === task.task_id ? "active" : ""}`}
+            type="button"
+            aria-label="Task actions"
             onClick={(e) => {
               e.stopPropagation();
 
@@ -48,23 +50,37 @@ export default function TaskList({
               ref={menuRef}
               onClick={(e) => e.stopPropagation()}
             >
-              <button
-                className="task-dropdown-item"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedTask(task);
+              <div className="task-dropdown-section">
+                <button
+                  className="task-dropdown-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedTask(task);
 
-                  setOpenMenuId(null);
-                }}
-              >
-                <Icon name="edit" size={14} />
-                Edit task
-              </button>
+                    setOpenMenuId(null);
+                  }}
+                >
+                  <span className="task-dropdown-icon">
+                    <Icon name="edit" size={15} />
+                  </span>
+                  <span>Edit task</span>
+                </button>
 
-              <button className="task-dropdown-item">
-                <Icon name="clock" size={14} />
-                Reminders
-              </button>
+                <button
+                  className="task-dropdown-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenMenuId(null);
+                  }}
+                >
+                  <span className="task-dropdown-icon">
+                    <Icon name="clock" size={15} />
+                  </span>
+                  <span>Reminders</span>
+                </button>
+              </div>
+
+              <div className="task-dropdown-divider"></div>
 
               <button
                 className="task-dropdown-item delete"
@@ -74,8 +90,10 @@ export default function TaskList({
                   setOpenMenuId(null);
                 }}
               >
-                <Icon name="trash" size={14} />
-                Delete task
+                <span className="task-dropdown-icon">
+                  <Icon name="trash" size={15} />
+                </span>
+                <span>Delete task</span>
               </button>
             </div>
           )}
