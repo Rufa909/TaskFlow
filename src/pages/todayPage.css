@@ -1,0 +1,43 @@
+.today-content .task-list-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 0 40px;
+}
+
+.today-header {
+    margin-bottom: 24px;
+}
+
+.today-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #202020;
+    margin-bottom: 4px;
+}
+
+.today-task-count {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #666;
+}
+
+/* Adjust task item inside today page to better match the design */
+.today-content .task-item {
+    border-bottom: 1px solid #f0f0f0;
+    padding: 12px 0;
+    position: relative;
+}
+
+.task-project-label {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: #808080;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}

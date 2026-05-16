@@ -148,3 +148,47 @@ exports.deleteTask = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+
+// GET /api/tasks/today
+exports.getTasksToday = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT t.*, p.name as project_name 
+       FROM tasks t 
+       LEFT JOIN projects p ON t.project_id = p.project_id 
+       WHERE t.created_by = ? 
+         AND t.deleted_at IS NULL 
+         AND DATE(t.deadline) = CURDATE() 
+       ORDER BY t.created_at ASC`,
+      [req.user.id]
+    );
+    res.json({ success: true, tasks: rows });
+  } catch (err) {
+    console.error("Loi getTasksToday:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// GET /api/tasks/counts
+exports.getTaskCounts = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Today count
+    const [[{ todayCount }]] = await pool.query(
+      `SELECT COUNT(*) as todayCount FROM tasks WHERE created_by = ? AND deleted_at IS NULL AND DATE(deadline) = CURDATE()`,
+      [userId]
+    );
+    
+    // Inbox count: assume it means all tasks across all projects, or tasks without deadline. Let's just use total active tasks.
+    const [[{ inboxCount }]] = await pool.query(
+      `SELECT COUNT(*) as inboxCount FROM tasks WHERE created_by = ? AND deleted_at IS NULL`,
+      [userId]
+    );
+    
+    res.json({ success: true, counts: { today: todayCount, inbox: inboxCount } });
+  } catch (err) {
+    console.error("Loi getTaskCounts:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
+import api from "../../api/axiosInstance";
 
 const API_URL = "http://localhost:5000";
 
@@ -39,10 +41,27 @@ export default function Sidebar({
 }) {
   const src = avatarUrl(user?.user_photo);
   const [imageError, setImageError] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [counts, setCounts] = useState({ inbox: 0, today: 0 });
 
   useEffect(() => {
     setImageError(false);
   }, [user?.user_photo]);
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const res = await api.get('/tasks/counts');
+        if (res.data.success) {
+          setCounts(res.data.counts);
+        }
+      } catch (err) {
+        console.error("Cannot load task counts", err);
+      }
+    };
+    fetchCounts();
+  }, []);
 
   return (
     <aside className="sidebar">
@@ -103,19 +122,30 @@ export default function Sidebar({
           </span>{" "}
           {t("search")}
         </button>
-        <button className="nav-item">
+        <button 
+          className={`nav-item ${location.pathname === '/' && !activeProject ? 'active' : ''}`} 
+          onClick={() => {
+            if (setActiveProject) setActiveProject(null);
+            navigate('/');
+          }}
+        >
           <span className="icon">
             <Icon name="inbox" size={18} />
           </span>{" "}
-          {t("inbox")}
+          <span style={{flex: 1, textAlign: 'left'}}>{t("inbox")}</span>
+          {counts.inbox > 0 && <span className="count">{counts.inbox}</span>}
         </button>
-        <button className="nav-item">
+        <Link 
+          to="/today"
+          className={`nav-item ${location.pathname === '/today' ? 'active' : ''}`}
+          style={{ textDecoration: 'none', display: 'flex' }}
+        >
           <span className="icon">
             <Icon name="calendar" size={18} />
           </span>{" "}
-          {t("today")}
-          <span className="count">2</span>
-        </button>
+          <span style={{flex: 1, textAlign: 'left'}}>{t("today")}</span>
+          {counts.today > 0 && <span className="count">{counts.today}</span>}
+        </Link>
         <button className="nav-item">
           <span className="icon">
             <Icon name="upcoming" size={18} />
@@ -177,8 +207,9 @@ export default function Sidebar({
                 key={proj.project_id}
                 className={`project-item ${activeProject?.project_id === proj.project_id ? "active" : ""}`}
                 onClick={() => {
-                  setActiveProject(proj);
-                  setIsAddingTask(false);
+                  if (setActiveProject) setActiveProject(proj);
+                  if (setIsAddingTask) setIsAddingTask(false);
+                  if (location.pathname !== '/') navigate('/');
                 }}
               >
                 <span className="icon">

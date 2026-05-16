@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AuthPage from './pages/authPage';
 import HomePage from './pages/homePage';
+import TodayPage from './pages/todayPage';
 
 export default function App() {
   return (
@@ -18,8 +19,15 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/today"
+            element={
+              <ProtectedRoute>
+                <TodayPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
-
         </Routes>
       </BrowserRouter>
     </AuthProvider>

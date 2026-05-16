@@ -188,6 +188,13 @@ body {
 .nav-item:hover {
   background-color: var(--sidebar-hover);
 }
+.nav-item.active {
+  background-color: var(--active-bg);
+  color: var(--accent-color);
+}
+.nav-item.active .icon {
+  color: var(--accent-color);
+}
 .nav-item .icon {
   display: flex;
   align-items: center;

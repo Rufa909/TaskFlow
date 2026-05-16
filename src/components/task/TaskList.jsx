@@ -127,6 +127,12 @@ export default function TaskList({
                 <Icon name="flag" size={12} /> {task.priority}
               </div>
             )}
+            
+            {task.project_name && (
+              <div className="task-project-label">
+                {task.project_name} <Icon name="hash" size={10} />
+              </div>
+            )}
           </div>
         </div>
       ))}
