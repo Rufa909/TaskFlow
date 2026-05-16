@@ -19,24 +19,31 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time } = req.body;
+    const { title, description, deadline, time, priority } = req.body;
 
     let deadlineDate = null;
     if (deadline) {
       deadlineDate = new Date(deadline);
     }
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Task title is required",
+      });
+    }
 
     const [result] = await pool.query(
       `
     INSERT INTO tasks 
-    (title, description, deadline, time, project_id, created_by) 
-    VALUES (?, ?, ?, ?, ?, ?)
+    (title, description, deadline, time, priority, project_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
       [
         title,
         description || null,
         deadlineDate,
         time || null,
+        priority || "medium",
         projectId,
         req.user.id,
       ],
@@ -54,9 +61,16 @@ exports.createTask = async (req, res) => {
 // PUT /api/projects/:projectId/tasks/:taskId
 exports.updateTask = async (req, res) => {
   try {
-    const { taskId } = req.params;
+    const { projectId, taskId } = req.params;
 
-    const { title, description, deadline, time } = req.body;
+    const { title, description, deadline, time, priority } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Task title is required",
+      });
+    }
 
     let deadlineDate = null;
 
@@ -71,22 +85,40 @@ exports.updateTask = async (req, res) => {
       }
     }
 
-    await pool.query(
+    const [result] = await pool.query(
       `
             UPDATE tasks
             SET
                 title = ?,
                 description = ?,
                 deadline = ?,
-                time = ?
-            WHERE task_id = ?
+                time = ?,
+                priority = ?
+            WHERE task_id = ? AND project_id = ? AND created_by = ?
             `,
-      [title, description || null, deadlineDate, time || null, taskId],
+      [
+        title.trim(),
+        description || null,
+        deadlineDate,
+        time || null,
+        priority || "medium",
+        taskId,
+        projectId,
+        req.user.id,
+      ],
     );
 
-    const [rows] = await pool.query("SELECT * FROM tasks WHERE task_id = ?", [
-      taskId,
-    ]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    const [rows] = await pool.query(
+      "SELECT * FROM tasks WHERE task_id = ? AND project_id = ? AND created_by = ?",
+      [taskId, projectId, req.user.id],
+    );
 
     res.json({
       success: true,

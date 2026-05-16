@@ -41,6 +41,7 @@ export default function HomePage() {
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [taskDeadline, setTaskDeadline] = useState(null);
   const [taskTime, setTaskTime] = useState("");
+  const [taskPriority, setTaskPriority] = useState("medium");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
 
@@ -121,11 +122,14 @@ export default function HomePage() {
         updatedData,
       );
 
-      const updatedTask = res.data.task;
+      const updatedTask = {
+        ...res.data.task,
+        ...updatedData,
+      };
 
       setTasksByProject((prev) => ({
         ...prev,
-        [activeProject.project_id]: prev[activeProject.project_id].map(
+        [activeProject.project_id]: (prev[activeProject.project_id] || []).map(
           (task) => (task.task_id === taskId ? updatedTask : task),
         ),
       }));
@@ -145,6 +149,7 @@ export default function HomePage() {
         description: newTaskDesc.trim(),
         deadline: taskDeadline,
         time: taskTime,
+        priority: taskPriority,
       });
       const newTask = res.data.task;
 
@@ -158,6 +163,7 @@ export default function HomePage() {
       setNewTaskDesc("");
       setTaskDeadline(null);
       setTaskTime("");
+      setTaskPriority("medium");
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
@@ -257,6 +263,8 @@ export default function HomePage() {
                 setTaskDeadline={setTaskDeadline}
                 taskTime={taskTime}
                 setTaskTime={setTaskTime}
+                taskPriority={taskPriority}
+                setTaskPriority={setTaskPriority}
                 isDatePickerOpen={isDatePickerOpen}
                 setIsDatePickerOpen={setIsDatePickerOpen}
                 activeProject={activeProject}
