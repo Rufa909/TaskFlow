@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AuthPage from './pages/authPage';
 import HomePage from './pages/homePage';
 import TodayPage from './pages/todayPage';
+import UpcomingPage from './pages/upcomingPage';
 
 export default function App() {
   return (
@@ -24,6 +25,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <TodayPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/upcoming"
+            element={
+              <ProtectedRoute>
+                <UpcomingPage />
               </ProtectedRoute>
             }
           />

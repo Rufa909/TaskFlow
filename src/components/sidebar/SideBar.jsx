@@ -146,12 +146,16 @@ export default function Sidebar({
           <span style={{flex: 1, textAlign: 'left'}}>{t("today")}</span>
           {counts.today > 0 && <span className="count">{counts.today}</span>}
         </Link>
-        <button className="nav-item">
+        <Link
+          to="/upcoming"
+          className={`nav-item ${location.pathname === '/upcoming' ? 'active' : ''}`}
+          style={{ textDecoration: 'none', display: 'flex' }}
+        >
           <span className="icon">
             <Icon name="upcoming" size={18} />
           </span>{" "}
-          {t("upcoming")}
-        </button>
+          <span style={{flex: 1, textAlign: 'left'}}>{t("upcoming")}</span>
+        </Link>
         <button className="nav-item">
           <span className="icon">
             <Icon name="grid" size={18} />
