@@ -3,8 +3,14 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
 import api from "../../api/axiosInstance";
+import "./SideBar.css";
 
 const API_URL = "http://localhost:5000";
+const SIDEBAR_COLLAPSED_KEY = "taskflow.sidebarCollapsed";
+
+function getSavedSidebarCollapsed() {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+}
 
 function avatarUrl(photo) {
   if (!photo) return "";
@@ -37,8 +43,11 @@ export default function Sidebar({
 
   isProjectMenuOpen,
   setIsProjectMenuOpen,
-  setIsSettingsModalOpen,
 
+  isSidebarCollapsed,
+  setIsSidebarCollapsed,
+
+  setIsSettingsModalOpen,
   setIsAddProjectModalOpen,
 }) {
   const src = avatarUrl(user?.user_photo);
@@ -46,6 +55,20 @@ export default function Sidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState({ inbox: 0, today: 0 });
+  const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(
+    getSavedSidebarCollapsed,
+  );
+  const sidebarCollapsed = isSidebarCollapsed ?? localSidebarCollapsed;
+  const toggleSidebar = () => {
+    const nextCollapsed = !sidebarCollapsed;
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(nextCollapsed));
+
+    if (typeof setIsSidebarCollapsed === "function") {
+      setIsSidebarCollapsed(nextCollapsed);
+    } else {
+      setLocalSidebarCollapsed(nextCollapsed);
+    }
+  };
 
   useEffect(() => {
     setImageError(false);
@@ -66,7 +89,7 @@ export default function Sidebar({
   }, []);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
       <div className="sidebar-header">
         <div
           className="user-profile"
@@ -102,7 +125,11 @@ export default function Sidebar({
           <button className="icon-btn" title="Notifications">
             <Icon name="bell" size={18} />
           </button>
-          <button className="icon-btn" title="Toggle Sidebar">
+          <button
+            className="icon-btn"
+            title="Toggle Sidebar"
+            onClick={toggleSidebar}
+          >
             <Icon name="sidebar" size={18} />
           </button>
         </div>
@@ -226,11 +253,12 @@ export default function Sidebar({
                   setActiveView("project");
                   setActiveProject(proj);
                   setIsAddingTask(false);
-                  if (location.pathname !== "/" || location.search) navigate("/");
+                  if (location.pathname !== "/" || location.search)
+                    navigate("/");
                 }}
               >
                 <span className="icon">
-                  <Icon name="hash" size={16} />
+                  <Icon name="hash" size={18} />
                 </span>
                 <span
                   className="project-name"
@@ -249,6 +277,34 @@ export default function Sidebar({
             ))
           )}
         </div>
+      </div>
+
+      <div className="collapsed-account">
+        <button
+          className="collapsed-account-btn"
+          type="button"
+          title="Account"
+          onClick={() => setIsProfileMenuOpen((prev) => !prev)}
+        >
+          <span className="avatar">
+            {src && !imageError ? (
+              <img src={src} alt="" onError={() => setImageError(true)} />
+            ) : user?.username ? (
+              user.username.charAt(0).toUpperCase()
+            ) : (
+              "U"
+            )}
+          </span>
+        </button>
+
+        {isProfileMenuOpen && (
+          <ProfileDropdown
+            handleLogout={handleLogout}
+            setIsSettingsModalOpen={setIsSettingsModalOpen}
+            setIsProfileMenuOpen={setIsProfileMenuOpen}
+            t={t}
+          />
+        )}
       </div>
 
       <div className="sidebar-footer">

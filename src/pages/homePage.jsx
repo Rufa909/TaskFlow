@@ -21,10 +21,8 @@ export default function HomePage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Translation helper
   const t = (key) => getTranslation(language, key);
 
-  // Projects state — loaded from DB
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -34,13 +32,10 @@ export default function HomePage() {
       : "project",
   );
 
-  // Project UI state
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [savingProject, setSavingProject] = useState(false);
-
-  // Task UI state (in-memory per session, per project)
   const [tasksByProject, setTasksByProject] = useState({});
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -52,13 +47,13 @@ export default function HomePage() {
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
   const [reportingTasks, setReportingTasks] = useState([]);
   const [loadingReporting, setLoadingReporting] = useState(false);
-
-  // Profile dropdown state
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("account");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => localStorage.getItem("taskflow.sidebarCollapsed") === "true",
+  );
 
-  // Load projects from DB on mount
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -75,7 +70,6 @@ export default function HomePage() {
     fetchProjects();
   }, []);
 
-  // Fetch tasks when activeProject changes
   useEffect(() => {
     const fetchTasks = async () => {
       if (!activeProject) return;
@@ -83,9 +77,6 @@ export default function HomePage() {
         const res = await api.get(
           `/projects/${activeProject.project_id}/tasks`,
         );
-        // The API returns `tasks` array. Ensure the task fields match what React expects:
-        // Instead of `task.desc`, we should use `task.description` but let's map it for now
-        // or just update JSX later. I'll map it to keep JSX the same for now, or just use description.
         setTasksByProject((prev) => ({
           ...prev,
           [activeProject.project_id]: res.data.tasks || [],
@@ -282,6 +273,8 @@ export default function HomePage() {
         loadingProjects={loadingProjects}
         handleDeleteProject={handleDeleteProject}
         t={t}
+        isSidebarCollapsed={isSidebarCollapsed}
+        setIsSidebarCollapsed={setIsSidebarCollapsed}
         setIsSettingsModalOpen={setIsSettingsModalOpen}
         isProfileMenuOpen={isProfileMenuOpen}
         setIsProfileMenuOpen={setIsProfileMenuOpen}
