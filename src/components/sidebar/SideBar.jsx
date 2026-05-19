@@ -19,6 +19,8 @@ export default function Sidebar({
   projects,
   activeProject,
   setActiveProject,
+  activeView = "project",
+  setActiveView = () => {},
 
   setIsAddingTask,
 
@@ -52,7 +54,7 @@ export default function Sidebar({
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const res = await api.get('/tasks/counts');
+        const res = await api.get("/tasks/counts");
         if (res.data.success) {
           setCounts(res.data.counts);
         }
@@ -74,8 +76,10 @@ export default function Sidebar({
           <div className="avatar">
             {src && !imageError ? (
               <img src={src} alt="" onError={() => setImageError(true)} />
+            ) : user?.username ? (
+              user.username.charAt(0).toUpperCase()
             ) : (
-              user?.username ? user.username.charAt(0).toUpperCase() : "U"
+              "U"
             )}
           </div>
           <span className="username">{user?.username || "User"}</span>
@@ -108,6 +112,8 @@ export default function Sidebar({
         <button
           className="nav-item add-task"
           onClick={() => {
+            setActiveView("project");
+            if (location.pathname !== "/" || location.search) navigate("/");
             setIsAddingTask(true);
           }}
         >
@@ -122,39 +128,33 @@ export default function Sidebar({
           </span>{" "}
           {t("search")}
         </button>
-        <button 
-          className={`nav-item ${location.pathname === '/' && !activeProject ? 'active' : ''}`} 
-          onClick={() => {
-            if (setActiveProject) setActiveProject(null);
-            navigate('/');
-          }}
-        >
+        <button className="nav-item">
           <span className="icon">
             <Icon name="inbox" size={18} />
           </span>{" "}
-          <span style={{flex: 1, textAlign: 'left'}}>{t("inbox")}</span>
+          <span style={{ flex: 1, textAlign: "left" }}>{t("inbox")}</span>
           {counts.inbox > 0 && <span className="count">{counts.inbox}</span>}
         </button>
-        <Link 
+        <Link
           to="/today"
-          className={`nav-item ${location.pathname === '/today' ? 'active' : ''}`}
-          style={{ textDecoration: 'none', display: 'flex' }}
+          className={`nav-item ${location.pathname === "/today" ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex" }}
         >
           <span className="icon">
             <Icon name="calendar" size={18} />
           </span>{" "}
-          <span style={{flex: 1, textAlign: 'left'}}>{t("today")}</span>
+          <span style={{ flex: 1, textAlign: "left" }}>{t("today")}</span>
           {counts.today > 0 && <span className="count">{counts.today}</span>}
         </Link>
         <Link
           to="/upcoming"
-          className={`nav-item ${location.pathname === '/upcoming' ? 'active' : ''}`}
-          style={{ textDecoration: 'none', display: 'flex' }}
+          className={`nav-item ${location.pathname === "/upcoming" ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex" }}
         >
           <span className="icon">
             <Icon name="upcoming" size={18} />
           </span>{" "}
-          <span style={{flex: 1, textAlign: 'left'}}>{t("upcoming")}</span>
+          <span style={{ flex: 1, textAlign: "left" }}>{t("upcoming")}</span>
         </Link>
         <button className="nav-item">
           <span className="icon">
@@ -162,7 +162,14 @@ export default function Sidebar({
           </span>{" "}
           {t("filtersLabels")}
         </button>
-        <button className="nav-item">
+        <button
+          className={`nav-item ${activeView === "reporting" ? "active" : ""}`}
+          onClick={() => {
+            setActiveView("reporting");
+            setIsAddingTask(false);
+            navigate("/?view=reporting");
+          }}
+        >
           <span className="icon">
             <Icon name="activity" size={18} />
           </span>{" "}
@@ -209,11 +216,17 @@ export default function Sidebar({
             projects.map((proj) => (
               <button
                 key={proj.project_id}
-                className={`project-item ${activeProject?.project_id === proj.project_id ? "active" : ""}`}
+                className={`project-item ${
+                  activeView === "project" &&
+                  activeProject?.project_id === proj.project_id
+                    ? "active"
+                    : ""
+                }`}
                 onClick={() => {
-                  if (setActiveProject) setActiveProject(proj);
-                  if (setIsAddingTask) setIsAddingTask(false);
-                  if (location.pathname !== '/') navigate('/');
+                  setActiveView("project");
+                  setActiveProject(proj);
+                  setIsAddingTask(false);
+                  if (location.pathname !== "/" || location.search) navigate("/");
                 }}
               >
                 <span className="icon">

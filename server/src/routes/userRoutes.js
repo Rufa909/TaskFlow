@@ -2,12 +2,11 @@ const express = require('express');
 const router = express.Router();
 
 const { updateAvatar, upload } = require('../controllers/userController');
-const authMiddleware = require('../middleware/authMiddleware');   // ← Đúng tên file
+const authMiddleware = require('../middleware/authMiddleware');
 
-// Route upload avatar
 router.post(
   '/avatar', 
-  authMiddleware,                    // Sử dụng middleware
+  authMiddleware,
   upload.single('avatar'), 
   updateAvatar
 );

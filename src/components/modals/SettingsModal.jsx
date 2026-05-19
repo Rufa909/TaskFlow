@@ -39,12 +39,18 @@ export default function SettingsModal({
   const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   const [savingName, setSavingName] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
+  const [nameError, setNameError] = useState("");
+  const [nameSuggestions, setNameSuggestions] = useState([]);
+  const [nameSavedMessage, setNameSavedMessage] = useState("");
+  
   const savedAvatar = avatarUrl(user?.user_photo);
 
   useEffect(() => {
     setUsername(user?.username || "");
     setEmail(user?.email || "");
+    setNameError("");
+    setNameSuggestions([]);
+    setNameSavedMessage("");
   }, [user]);
 
   const visibleAvatar = previewAvatar || savedAvatar;
@@ -87,7 +93,13 @@ export default function SettingsModal({
     }
   };
   const handleSaveUsername = async () => {
-    if (!username.trim()) {
+    const nextUsername = username.trim();
+
+    setNameError("");
+    setNameSuggestions([]);
+    setNameSavedMessage("");
+
+    if (!nextUsername) {
       alert("Name cannot be empty.");
       return;
     }
@@ -96,36 +108,24 @@ export default function SettingsModal({
       setSavingName(true);
 
       const res = await api.put("/auth/username", {
-        username,
+        username: nextUsername,
       });
 
       updateUser(res.data.user);
+      setNameSavedMessage("Name updated.");
     } catch (err) {
+      if (err.response?.status === 409) {
+        setNameError(err.response.data?.message || "This name is already used.");
+        setNameSuggestions(err.response.data?.suggestions || []);
+        return;
+      }
+
       alert(err.response?.data?.message || "Cannot update name.");
     } finally {
       setSavingName(false);
     }
   };
-  const handleSaveEmail = async () => {
-    if (!email.trim()) {
-      alert("Email cannot be empty.");
-      return;
-    }
-
-    try {
-      setSavingEmail(true);
-
-      const res = await api.put("/auth/email", {
-        email,
-      });
-
-      updateUser(res.data.user);
-    } catch (err) {
-      alert(err.response?.data?.message || "Cannot update email.");
-    } finally {
-      setSavingEmail(false);
-    }
-  };
+  
   const handleSavePassword = async () => {
     if (!currentPassword || !newPassword) {
       alert("Please fill all password fields.");
@@ -342,12 +342,46 @@ export default function SettingsModal({
                       style={{ marginTop: "24px" }}
                     >
                       <label className="settings-label">{t("name")}</label>
-                      <input
-                        type="text"
-                        className="settings-input"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                      />
+                      <div className="settings-name-control">
+                        <input
+                          type="text"
+                          className={`settings-input ${nameError ? "settings-input-error" : ""}`}
+                          value={username}
+                          onChange={(e) => {
+                            setUsername(e.target.value);
+                            setNameError("");
+                            setNameSuggestions([]);
+                            setNameSavedMessage("");
+                          }}
+                        />
+                        {nameError && (
+                          <p className="settings-field-error">{nameError}</p>
+                        )}
+                        {nameSavedMessage && (
+                          <p className="settings-field-success">
+                            {nameSavedMessage}
+                          </p>
+                        )}
+                        {nameSuggestions.length > 0 && (
+                          <div className="settings-name-suggestions">
+                            <span>Available suggestions:</span>
+                            {nameSuggestions.map((suggestion) => (
+                              <button
+                                key={suggestion}
+                                type="button"
+                                onClick={() => {
+                                  setUsername(suggestion);
+                                  setNameError("");
+                                  setNameSuggestions([]);
+                                  setNameSavedMessage("");
+                                }}
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <button
                         className="change-email-btn"
                         onClick={handleSaveUsername}
@@ -357,27 +391,24 @@ export default function SettingsModal({
                       </button>
                     </div>
 
-                    {/* Email */}
+                    {/* Email (disabled - user cannot change email from UI) */}
                     <div
                       className="settings-section-item"
                       style={{ marginTop: "24px" }}
                     >
                       <label className="settings-label">{t("email")}</label>
-                     
+
                         <input
                           type="email"
                           className="settings-input"
                           value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          disabled
                         />
-                        <button
-                          className="change-email-btn"
-                          onClick={handleSaveEmail}
-                          disabled={savingEmail}
-                        >
-                          {savingEmail ? "Saving..." : t("Save")}
-                        </button>
-                      
+
+                        <p style={{ color: "#808080", fontSize: "13px", marginTop: "8px" }}>
+                          Email không thể thay đổi từ đây.
+                        </p>
+
                     </div>
 
                     {/* Password */}

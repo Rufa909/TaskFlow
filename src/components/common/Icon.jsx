@@ -460,6 +460,20 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
     ),
+    check: (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={color}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    ),
     edit: (
       <svg
         width={size}

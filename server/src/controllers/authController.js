@@ -231,11 +231,28 @@ exports.updateAvatar = async (req, res) => {
     }
 };
 // UPDATE USERNAME
+async function getUsernameSuggestions(username, userId) {
+    const base = username.trim();
+    const candidates = Array.from({ length: 20 }, (_, index) => `${base}${index + 1}`);
+    const placeholders = candidates.map(() => '?').join(',');
+
+    const [rows] = await pool.query(
+        `SELECT username FROM users WHERE user_id <> ? AND LOWER(username) IN (${placeholders})`,
+        [userId, ...candidates.map((candidate) => candidate.toLowerCase())]
+    );
+
+    const taken = new Set(rows.map((row) => String(row.username).toLowerCase()));
+    return candidates
+        .filter((candidate) => !taken.has(candidate.toLowerCase()))
+        .slice(0, 3);
+}
+
 exports.updateUsername = async (req, res) => {
     const { username } = req.body;
+    const nextUsername = username?.trim();
 
     // Validate
-    if (!username || username.trim().length < 2) {
+    if (!nextUsername || nextUsername.length < 2) {
         return res.status(400).json({
             success: false,
             message: 'Tên phải có ít nhất 2 ký tự'
@@ -243,10 +260,25 @@ exports.updateUsername = async (req, res) => {
     }
 
     try {
+        const [existingUsers] = await pool.query(
+            'SELECT user_id FROM users WHERE LOWER(username) = LOWER(?) AND user_id <> ? LIMIT 1',
+            [nextUsername, req.user.id]
+        );
+
+        if (existingUsers.length > 0) {
+            const suggestions = await getUsernameSuggestions(nextUsername, req.user.id);
+
+            return res.status(409).json({
+                success: false,
+                message: 'Ten nay da duoc su dung. Vui long chon ten khac.',
+                suggestions
+            });
+        }
+
         // Update DB
         await pool.query(
             'UPDATE users SET username = ? WHERE user_id = ?',
-            [username.trim(), req.user.id]
+            [nextUsername, req.user.id]
         );
 
         // Lấy user mới
@@ -279,72 +311,10 @@ exports.updateUsername = async (req, res) => {
     }
 };
 exports.updateEmail = async (req, res) => {
-    const { email } = req.body;
-
-    if (!email) {
-        return res.status(400).json({
-            success: false,
-            message: 'Email khong duoc de trong'
-        });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email)) {
-        return res.status(400).json({
-            success: false,
-            message: 'Email khong hop le'
-        });
-    }
-
-    try {
-        // Check email tồn tại
-        const [existingUser] = await pool.query(
-            'SELECT * FROM users WHERE email = ? AND user_id != ?',
-            [email, req.user.id]
-        );
-
-        if (existingUser.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Email da duoc su dung'
-            });
-        }
-
-        // Update email
-        await pool.query(
-            'UPDATE users SET email = ? WHERE user_id = ?',
-            [email, req.user.id]
-        );
-
-        // Lấy user mới
-        const [rows] = await pool.query(
-            'SELECT user_id, username, email, user_photo, created_at FROM users WHERE user_id = ?',
-            [req.user.id]
-        );
-
-        const user = rows[0];
-
-        return res.json({
-            success: true,
-            message: 'Cap nhat email thanh cong',
-            user: {
-                id: user.user_id,
-                username: user.username,
-                email: user.email,
-                user_photo: user.user_photo,
-                created_at: user.created_at
-            }
-        });
-
-    } catch (err) {
-        console.error('Loi update email:', err);
-
-        return res.status(500).json({
-            success: false,
-            message: 'Co loi xay ra'
-        });
-    }
+    return res.status(403).json({
+        success: false,
+        message: 'Changing email is disabled.'
+    });
 };
 exports.updatePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;

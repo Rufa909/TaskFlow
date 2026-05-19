@@ -1,12 +1,46 @@
 const pool = require("../config/db");
+let completionColumnReady;
+
+async function ensureTaskCompletionColumn() {
+  if (!completionColumnReady) {
+    completionColumnReady = (async () => {
+      const [columns] = await pool.query(
+        `
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tasks'
+          AND COLUMN_NAME = 'completed_at'
+        `,
+      );
+
+      if (columns.length === 0) {
+        await pool.query(
+          "ALTER TABLE tasks ADD COLUMN completed_at DATETIME NULL",
+        );
+      }
+    })();
+  }
+
+  return completionColumnReady;
+}
 
 // GET /api/projects/:projectId/tasks
 exports.getTasks = async (req, res) => {
   try {
+    await ensureTaskCompletionColumn();
     const { projectId } = req.params;
     const [rows] = await pool.query(
-      "select * from tasks where project_id = ? and deleted_at is null order by created_at asc",
-      [projectId],
+      `
+      SELECT *
+      FROM tasks
+      WHERE project_id = ?
+        AND created_by = ?
+        AND deleted_at IS NULL
+        AND completed_at IS NULL
+      ORDER BY created_at ASC
+      `,
+      [projectId, req.user.id],
     );
     res.json({ success: true, tasks: rows });
   } catch (err) {
@@ -20,6 +54,7 @@ exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
     const { title, description, deadline, time, priority } = req.body;
+    await ensureTaskCompletionColumn();
 
     let deadlineDate = null;
     if (deadline) {
@@ -62,8 +97,9 @@ exports.createTask = async (req, res) => {
 exports.updateTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
-
     const { title, description, deadline, time, priority } = req.body;
+    await ensureTaskCompletionColumn();
+
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -133,11 +169,80 @@ exports.updateTask = async (req, res) => {
     });
   }
 };
+// POST /api/projects/:projectId/tasks/:taskId/complete
+exports.completeTask = async (req, res) => {
+  try {
+    await ensureTaskCompletionColumn();
+    const { projectId, taskId } = req.params;
+
+    const [result] = await pool.query(
+      `
+      UPDATE tasks
+      SET completed_at = COALESCE(completed_at, NOW())
+      WHERE task_id = ?
+        AND project_id = ?
+        AND created_by = ?
+        AND deleted_at IS NULL
+      `,
+      [taskId, projectId, req.user.id],
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    const [rows] = await pool.query(
+      `
+      SELECT tasks.*, projects.name AS project_name
+      FROM tasks
+      LEFT JOIN projects ON projects.project_id = tasks.project_id
+      WHERE tasks.task_id = ?
+        AND tasks.project_id = ?
+        AND tasks.created_by = ?
+      `,
+      [taskId, projectId, req.user.id],
+    );
+
+    res.json({ success: true, task: rows[0] });
+  } catch (err) {
+    console.error("Loi completeTask:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// GET /api/tasks/completed
+exports.getCompletedTasks = async (req, res) => {
+  try {
+    await ensureTaskCompletionColumn();
+
+    const [rows] = await pool.query(
+      `
+      SELECT tasks.*, projects.name AS project_name
+      FROM tasks
+      LEFT JOIN projects ON projects.project_id = tasks.project_id
+      WHERE tasks.created_by = ?
+        AND tasks.deleted_at IS NULL
+        AND tasks.completed_at IS NOT NULL
+      ORDER BY tasks.completed_at DESC
+      `,
+      [req.user.id],
+    );
+
+    res.json({ success: true, tasks: rows });
+  } catch (err) {
+    console.error("Loi getCompletedTasks:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
 
 // DELETE /api/projects/:projectId/tasks/:taskId
 exports.deleteTask = async (req, res) => {
   try {
     const { taskId } = req.params;
+    await ensureTaskCompletionColumn();
     await pool.query(
       "UPDATE tasks SET deleted_at = NOW() WHERE task_id = ? AND created_by = ?",
       [taskId, req.user.id],
@@ -152,15 +257,17 @@ exports.deleteTask = async (req, res) => {
 // GET /api/tasks/today
 exports.getTasksToday = async (req, res) => {
   try {
+    await ensureTaskCompletionColumn();
     const [rows] = await pool.query(
       `SELECT t.*, p.name as project_name 
        FROM tasks t 
        LEFT JOIN projects p ON t.project_id = p.project_id 
        WHERE t.created_by = ? 
          AND t.deleted_at IS NULL 
+         AND t.completed_at IS NULL
          AND DATE(t.deadline) = CURDATE() 
        ORDER BY t.created_at ASC`,
-      [req.user.id]
+      [req.user.id],
     );
     res.json({ success: true, tasks: rows });
   } catch (err) {
@@ -172,23 +279,26 @@ exports.getTasksToday = async (req, res) => {
 // GET /api/tasks/counts
 exports.getTaskCounts = async (req, res) => {
   try {
+    await ensureTaskCompletionColumn();
     const userId = req.user.id;
     // Today count
     const [[{ todayCount }]] = await pool.query(
-      `SELECT COUNT(*) as todayCount FROM tasks WHERE created_by = ? AND deleted_at IS NULL AND DATE(deadline) = CURDATE()`,
-      [userId]
+      `SELECT COUNT(*) as todayCount FROM tasks WHERE created_by = ? AND deleted_at IS NULL AND completed_at IS NULL AND DATE(deadline) = CURDATE()`,
+      [userId],
     );
-    
+
     // Inbox count: assume it means all tasks across all projects, or tasks without deadline. Let's just use total active tasks.
     const [[{ inboxCount }]] = await pool.query(
-      `SELECT COUNT(*) as inboxCount FROM tasks WHERE created_by = ? AND deleted_at IS NULL`,
-      [userId]
+      `SELECT COUNT(*) as inboxCount FROM tasks WHERE created_by = ? AND deleted_at IS NULL AND completed_at IS NULL`,
+      [userId],
     );
-    
-    res.json({ success: true, counts: { today: todayCount, inbox: inboxCount } });
+
+    res.json({
+      success: true,
+      counts: { today: todayCount, inbox: inboxCount },
+    });
   } catch (err) {
     console.error("Loi getTaskCounts:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
-

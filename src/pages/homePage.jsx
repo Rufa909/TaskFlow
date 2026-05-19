@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axiosInstance";
 import { getTranslation } from "../i18n/translations";
 import "./homePage.css";
@@ -19,6 +19,7 @@ export default function HomePage() {
   const { language, setLanguage } = useLanguage();
   const [selectedTask, setSelectedTask] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Translation helper
   const t = (key) => getTranslation(language, key);
@@ -27,6 +28,11 @@ export default function HomePage() {
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
+  const [activeView, setActiveView] = useState(
+    new URLSearchParams(location.search).get("view") === "reporting"
+      ? "reporting"
+      : "project",
+  );
 
   // Project UI state
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
@@ -44,6 +50,8 @@ export default function HomePage() {
   const [taskPriority, setTaskPriority] = useState("medium");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
+  const [reportingTasks, setReportingTasks] = useState([]);
+  const [loadingReporting, setLoadingReporting] = useState(false);
 
   // Profile dropdown state
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -88,6 +96,29 @@ export default function HomePage() {
     };
     fetchTasks();
   }, [activeProject]);
+
+  const fetchReportingTasks = async () => {
+    setLoadingReporting(true);
+    try {
+      const res = await api.get("/tasks/completed");
+      setReportingTasks(res.data.tasks || []);
+    } catch (err) {
+      console.error("Cannot load reporting:", err);
+    } finally {
+      setLoadingReporting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeView === "reporting") {
+      fetchReportingTasks();
+    }
+  }, [activeView]);
+
+  useEffect(() => {
+    const view = new URLSearchParams(location.search).get("view");
+    setActiveView(view === "reporting" ? "reporting" : "project");
+  }, [location.search]);
 
   const handleLogout = () => {
     if (window.confirm(t("confirmLogout"))) {
@@ -170,7 +201,37 @@ export default function HomePage() {
       alert("Error adding task");
     }
   };
+  const handleCompleteTask = async (task) => {
+    if (!activeProject || !task?.task_id) return;
 
+    try {
+      const res = await api.post(
+        `/projects/${activeProject.project_id}/tasks/${task.task_id}/complete`,
+      );
+      const completedTask = res.data.task || {
+        ...task,
+        completed_at: new Date().toISOString(),
+        project_name: activeProject.name,
+      };
+
+      setTasksByProject((prev) => ({
+        ...prev,
+        [activeProject.project_id]: (
+          prev[activeProject.project_id] || []
+        ).filter((item) => item.task_id !== task.task_id),
+      }));
+
+      setReportingTasks((prev) => {
+        const withoutDuplicate = prev.filter(
+          (item) => item.task_id !== completedTask.task_id,
+        );
+        return [completedTask, ...withoutDuplicate];
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Cannot complete task");
+    }
+  };
   const handleAddProject = async () => {
     if (!newProjectName.trim()) return;
     setSavingProject(true);
@@ -179,6 +240,7 @@ export default function HomePage() {
       const created = res.data.project;
       setProjects((prev) => [...prev, created]);
       setActiveProject(created);
+      setActiveView("project");
       setNewProjectName("");
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
@@ -214,6 +276,8 @@ export default function HomePage() {
         projects={projects}
         activeProject={activeProject}
         setActiveProject={setActiveProject}
+        activeView={activeView}
+        setActiveView={setActiveView}
         setIsAddingTask={setIsAddingTask}
         loadingProjects={loadingProjects}
         handleDeleteProject={handleDeleteProject}
@@ -239,53 +303,93 @@ export default function HomePage() {
         </header>
 
         <div className="task-list-container">
-          <h1 className="page-title">
-            {activeProject?.name || "Select a project"}
-          </h1>
+          {activeView === "reporting" ? (
+            <>
+              <h1 className="page-title">{t("reporting")}</h1>
+              <div className="reporting-summary">
+                <span className="reporting-number">
+                  {reportingTasks.length}
+                </span>
+                <span className="reporting-label">completed tasks</span>
+              </div>
 
-          {/* Task list */}
-          <div className="task-section">
-            <TaskList
-              tasks={currentTasks}
-              handleDeleteTask={handleDeleteTask}
-              handleUpdateTask={handleUpdateTask}
-              setSelectedTask={setSelectedTask}
-            />
+              <div className="reporting-list">
+                {loadingReporting ? (
+                  <div className="empty-state">Loading...</div>
+                ) : reportingTasks.length === 0 ? (
+                  <div className="empty-state">
+                    Completed tasks will appear here.
+                  </div>
+                ) : (
+                  reportingTasks.map((task) => (
+                    <div key={task.task_id} className="reporting-item">
+                      <span className="reporting-check">
+                        <Icon name="check" size={13} />
+                      </span>
+                      <div className="reporting-content">
+                        <div className="reporting-title">{task.title}</div>
+                        <div className="reporting-meta">
+                          {task.project_name || "Project"} - Completed{" "}
+                          {new Date(task.completed_at).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className="page-title">
+                {activeProject?.name || "Select a project"}
+              </h1>
 
-            {isAddingTask ? (
-              <AddTaskForm
-                newTaskTitle={newTaskTitle}
-                setNewTaskTitle={setNewTaskTitle}
-                newTaskDesc={newTaskDesc}
-                setNewTaskDesc={setNewTaskDesc}
-                handleAddTask={handleAddTask}
-                taskDeadline={taskDeadline}
-                setTaskDeadline={setTaskDeadline}
-                taskTime={taskTime}
-                setTaskTime={setTaskTime}
-                taskPriority={taskPriority}
-                setTaskPriority={setTaskPriority}
-                isDatePickerOpen={isDatePickerOpen}
-                setIsDatePickerOpen={setIsDatePickerOpen}
-                activeProject={activeProject}
-                projects={projects}
-                setActiveProject={setActiveProject}
-                isTaskProjectMenuOpen={isTaskProjectMenuOpen}
-                setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
-                setIsAddingTask={setIsAddingTask}
-              />
-            ) : (
-              <button
-                className="add-task-btn"
-                onClick={() => setIsAddingTask(true)}
-              >
-                <span className="icon">
-                  <Icon name="plus" size={18} />
-                </span>{" "}
-                Add task
-              </button>
-            )}
-          </div>
+              {/* Task list */}
+              <div className="task-section">
+                <TaskList
+                  tasks={currentTasks}
+                  handleDeleteTask={handleDeleteTask}
+                  handleUpdateTask={handleUpdateTask}
+                  handleCompleteTask={handleCompleteTask}
+                  setSelectedTask={setSelectedTask}
+                />
+
+                {isAddingTask ? (
+                  <AddTaskForm
+                    newTaskTitle={newTaskTitle}
+                    setNewTaskTitle={setNewTaskTitle}
+                    newTaskDesc={newTaskDesc}
+                    setNewTaskDesc={setNewTaskDesc}
+                    handleAddTask={handleAddTask}
+                    taskDeadline={taskDeadline}
+                    setTaskDeadline={setTaskDeadline}
+                    taskTime={taskTime}
+                    setTaskTime={setTaskTime}
+                    taskPriority={taskPriority}
+                    setTaskPriority={setTaskPriority}
+                    isDatePickerOpen={isDatePickerOpen}
+                    setIsDatePickerOpen={setIsDatePickerOpen}
+                    activeProject={activeProject}
+                    projects={projects}
+                    setActiveProject={setActiveProject}
+                    isTaskProjectMenuOpen={isTaskProjectMenuOpen}
+                    setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
+                    setIsAddingTask={setIsAddingTask}
+                  />
+                ) : (
+                  <button
+                    className="add-task-btn"
+                    onClick={() => setIsAddingTask(true)}
+                  >
+                    <span className="icon">
+                      <Icon name="plus" size={18} />
+                    </span>{" "}
+                    Add task
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </main>
 

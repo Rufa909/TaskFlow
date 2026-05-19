@@ -7,6 +7,8 @@ const {
   updateTask,
   getTasksToday,
   getTaskCounts,
+  completeTask,
+  getCompletedTasks,
 } = require("../controllers/taskController");
 const authMiddleware = require("../middleware/authMiddleware");
 
@@ -19,6 +21,11 @@ router.get("/projects/:projectId/tasks", authMiddleware, getTasks);
 router.post("/projects/:projectId/tasks", authMiddleware, createTask);
 router.delete("/projects/:projectId/tasks/:taskId", authMiddleware, deleteTask);
 router.put("/projects/:projectId/tasks/:taskId", authMiddleware, updateTask);
+router.post(
+  "/projects/:projectId/tasks/:taskId/complete",
+  authMiddleware,
+  completeTask,
+);
+router.get("/tasks/completed", authMiddleware, getCompletedTasks);
 
 module.exports = router;
-

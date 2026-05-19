@@ -5,6 +5,7 @@ export default function TaskList({
   tasks,
   handleDeleteTask,
   handleUpdateTask,
+  handleCompleteTask = () => {},
   setSelectedTask,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -31,7 +32,16 @@ export default function TaskList({
           className="task-item"
           onClick={() => setSelectedTask(task)}
         >
-          <div className="checkbox"></div>
+          <button
+            className="checkbox"
+            type="button"
+            aria-label="Complete task"
+            title="Complete task"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCompleteTask(task);
+            }}
+          ></button>
           <button
             className={`task-more-btn ${openMenuId === task.task_id ? "active" : ""}`}
             type="button"
@@ -127,7 +137,7 @@ export default function TaskList({
                 <Icon name="flag" size={12} /> {task.priority}
               </div>
             )}
-            
+
             {task.project_name && (
               <div className="task-project-label">
                 {task.project_name} <Icon name="hash" size={10} />

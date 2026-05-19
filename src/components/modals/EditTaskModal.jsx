@@ -85,8 +85,7 @@ export default function EditTaskModal({
       >
         <div className="edit-task-header">
           <div>
-            <p className="edit-task-eyebrow">Task</p>
-            <h2>Edit task</h2>
+            <Icon name="edit" size={14} /> Editing task
           </div>
           <button
             type="button"
@@ -197,8 +196,6 @@ export default function EditTaskModal({
 
           <div className="form-footer">
             <div className="edit-task-footer-label">
-              <Icon name="edit" size={14} />
-              Editing task
             </div>
 
             <div className="footer-actions">

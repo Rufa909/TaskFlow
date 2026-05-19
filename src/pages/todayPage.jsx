@@ -121,6 +121,18 @@ export default function TodayPage() {
     }
   };
 
+  const handleCompleteTask = async (task) => {
+    if (!task?.task_id || !task?.project_id) return;
+
+    try {
+      await api.post(`/projects/${task.project_id}/tasks/${task.task_id}/complete`);
+      setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
+    } catch (err) {
+      console.error(err);
+      alert("Cannot complete task");
+    }
+  };
+
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !activeProject) return;
     const projId = activeProject.project_id;
@@ -231,6 +243,7 @@ export default function TodayPage() {
                   tasks={tasks}
                   handleDeleteTask={handleDeleteTask}
                   handleUpdateTask={handleUpdateTask}
+                  handleCompleteTask={handleCompleteTask}
                   setSelectedTask={setSelectedTask}
                 />
             )}
