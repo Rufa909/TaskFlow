@@ -89,6 +89,8 @@ export const translations = {
     cannotLoadProjects: 'Cannot load projects:',
     cannotCreateProject: 'Không thể tạo project. Vui lòng thử lại!',
     cannotDeleteProject: 'Không thể xóa project. Vui lòng thử lại!',
+    cannotEditProject: 'Không thể đổi tên project. Vui lòng thử lại!',
+    renameProjectPrompt: 'Nhập tên mới cho project:',
     errorAddingTask: 'Error adding task',
   },
   
@@ -182,6 +184,8 @@ export const translations = {
     cannotLoadProjects: 'Không thể tải projects:',
     cannotCreateProject: 'Không thể tạo project. Vui lòng thử lại!',
     cannotDeleteProject: 'Không thể xóa project. Vui lòng thử lại!',
+    cannotEditProject: 'Không thể đổi tên project. Vui lòng thử lại!',
+    renameProjectPrompt: 'Nhập tên mới cho project:',
     errorAddingTask: 'Lỗi khi thêm task',
   }
 };

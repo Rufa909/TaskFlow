@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from "react-router-dom";
 import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
 import api from "../../api/axiosInstance";
+import { useFilters } from "../../context/FiltersContext";
 import "./SideBar.css";
 
 const API_URL = "http://localhost:5000";
@@ -33,6 +34,7 @@ export default function Sidebar({
   loadingProjects,
 
   handleDeleteProject,
+  onRequestEditProject,
 
   t,
 
@@ -55,6 +57,7 @@ export default function Sidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState({ inbox: 0, today: 0 });
+  const [projectCounts, setProjectCounts] = useState({});
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(
     getSavedSidebarCollapsed,
   );
@@ -87,6 +90,30 @@ export default function Sidebar({
     };
     fetchCounts();
   }, []);
+
+  const { setIsFiltersOpen } = useFilters();
+
+  // fetch per-project counts and poll for realtime-ish updates
+  useEffect(() => {
+    let mounted = true;
+    const fetchProjectCounts = async () => {
+      try {
+        const res = await api.get("/tasks/counts/projects");
+        if (res.data.success && mounted) {
+          setProjectCounts(res.data.counts || {});
+        }
+      } catch (err) {
+        console.error("Cannot load project counts", err);
+      }
+    };
+
+    fetchProjectCounts();
+    const id = setInterval(fetchProjectCounts, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [projects]);
 
   return (
     <aside className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
@@ -155,13 +182,17 @@ export default function Sidebar({
           </span>{" "}
           {t("search")}
         </button>
-        <button className="nav-item">
+        <Link
+          to="/inbox"
+          className={`nav-item ${location.pathname === "/inbox" ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex" }}
+        >
           <span className="icon">
             <Icon name="inbox" size={18} />
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("inbox")}</span>
           {counts.inbox > 0 && <span className="count">{counts.inbox}</span>}
-        </button>
+        </Link>
         <Link
           to="/today"
           className={`nav-item ${location.pathname === "/today" ? "active" : ""}`}
@@ -183,10 +214,14 @@ export default function Sidebar({
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("upcoming")}</span>
         </Link>
-        <button className="nav-item">
+        <button
+          className="nav-item filters-btn"
+          onClick={() => setIsFiltersOpen(true)}
+          title={t("filtersLabels")}
+        >
           <span className="icon">
-            <Icon name="grid" size={18} />
-          </span>{" "}
+            <Icon name="sliders" size={18} />
+          </span>
           {t("filtersLabels")}
         </button>
         <button
@@ -260,12 +295,22 @@ export default function Sidebar({
                 <span className="icon">
                   <Icon name="hash" size={18} />
                 </span>
-                <span
-                  className="project-name"
-                  style={{ flex: 1, textAlign: "left" }}
-                >
+                <span className="project-name" style={{ flex: 1, textAlign: "left" }}>
                   {proj.name}
                 </span>
+                {projectCounts[proj.project_id] > 0 && (
+                  <span className="project-count">{projectCounts[proj.project_id]}</span>
+                )}
+                <div
+                  className="edit-project-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (typeof onRequestEditProject === "function") onRequestEditProject(proj);
+                  }}
+                  title="Edit project"
+                >
+                  <Icon name="edit" size={14} />
+                </div>
                 <div
                   className="delete-project-btn"
                   onClick={(e) => handleDeleteProject(e, proj.project_id)}

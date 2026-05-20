@@ -276,6 +276,21 @@ exports.getTasksToday = async (req, res) => {
   }
 };
 
+// GET /api/tasks -> all active tasks for inbox
+exports.getAllTasks = async (req, res) => {
+  try {
+    await ensureTaskCompletionColumn();
+    const [rows] = await pool.query(
+      `SELECT t.*, p.name as project_name FROM tasks t LEFT JOIN projects p ON t.project_id = p.project_id WHERE t.created_by = ? AND t.deleted_at IS NULL AND t.completed_at IS NULL ORDER BY t.created_at ASC`,
+      [req.user.id],
+    );
+    res.json({ success: true, tasks: rows });
+  } catch (err) {
+    console.error('Loi getAllTasks:', err);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
+  }
+};
+
 // GET /api/tasks/counts
 exports.getTaskCounts = async (req, res) => {
   try {
@@ -300,5 +315,27 @@ exports.getTaskCounts = async (req, res) => {
   } catch (err) {
     console.error("Loi getTaskCounts:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// GET /api/tasks/counts/projects -> returns active task counts grouped by project
+exports.getTaskCountsByProject = async (req, res) => {
+  try {
+    await ensureTaskCompletionColumn();
+    const userId = req.user.id;
+    const [rows] = await pool.query(
+      `SELECT project_id, COUNT(*) as count FROM tasks WHERE created_by = ? AND deleted_at IS NULL AND completed_at IS NULL GROUP BY project_id`,
+      [userId],
+    );
+
+    const counts = {};
+    rows.forEach((r) => {
+      counts[r.project_id] = r.count;
+    });
+
+    res.json({ success: true, counts });
+  } catch (err) {
+    console.error('Loi getTaskCountsByProject:', err);
+    res.status(500).json({ success: false, message: 'Lỗi server' });
   }
 };

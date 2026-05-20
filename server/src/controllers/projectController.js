@@ -59,3 +59,27 @@ exports.deleteProject = async (req, res) => {
         res.status(500).json({ success: false, message: 'Co loi xay ra!' });
     }
 };
+
+// PUT /api/projects/:id → update project name
+exports.updateProject = async (req, res) => {
+    const { id } = req.params;
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ success: false, message: 'Ten project khong duoc de trong!' });
+    }
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM projects WHERE project_id = ? AND owner_id = ?',
+            [id, req.user.id]
+        );
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Project khong ton tai!' });
+        }
+        await pool.query('UPDATE projects SET name = ? WHERE project_id = ?', [name.trim(), id]);
+        const [updated] = await pool.query('SELECT * FROM projects WHERE project_id = ?', [id]);
+        res.json({ success: true, project: updated[0] });
+    } catch (err) {
+        console.error('Loi updateProject:', err);
+        res.status(500).json({ success: false, message: 'Co loi xay ra!' });
+    }
+};

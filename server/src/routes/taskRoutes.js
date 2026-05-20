@@ -7,6 +7,8 @@ const {
   updateTask,
   getTasksToday,
   getTaskCounts,
+  getTaskCountsByProject,
+  getAllTasks,
   completeTask,
   getCompletedTasks,
 } = require("../controllers/taskController");
@@ -15,6 +17,8 @@ const authMiddleware = require("../middleware/authMiddleware");
 // The route prefix in app.js will be /api
 router.get("/tasks/today", authMiddleware, getTasksToday);
 router.get("/tasks/counts", authMiddleware, getTaskCounts);
+router.get("/tasks/counts/projects", authMiddleware, getTaskCountsByProject);
+router.get("/tasks", authMiddleware, getAllTasks);
 
 // These routes need the project ID in the path
 router.get("/projects/:projectId/tasks", authMiddleware, getTasks);

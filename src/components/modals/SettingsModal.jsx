@@ -405,10 +405,6 @@ export default function SettingsModal({
                           disabled
                         />
 
-                        <p style={{ color: "#808080", fontSize: "13px", marginTop: "8px" }}>
-                          Email không thể thay đổi từ đây.
-                        </p>
-
                     </div>
 
                     {/* Password */}

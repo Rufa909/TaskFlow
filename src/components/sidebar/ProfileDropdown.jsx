@@ -1,4 +1,5 @@
 import Icon from "../common/Icon";
+import { useTeams } from "../../context/TeamsContext";
 
 export default function ProfileDropdown({
   handleLogout,
@@ -6,9 +7,18 @@ export default function ProfileDropdown({
   setIsProfileMenuOpen,
   t,
 }) {
+  const { openTeamModal } = useTeams();
+
   return (
     <div className="profile-dropdown-menu" onClick={(e) => e.stopPropagation()}>
-      <div className="profile-dropdown-item">
+      <div
+        className="profile-dropdown-item"
+        onClick={(e) => {
+          e.stopPropagation();
+          openTeamModal();
+          setIsProfileMenuOpen(false);
+        }}
+      >
         <Icon name="teamAdd" size={14} /> {t("addTeam")}
       </div>
 

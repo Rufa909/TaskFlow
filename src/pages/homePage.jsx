@@ -9,8 +9,10 @@ import "./homePage.css";
 import AddTaskForm from "../components/task/AddTaskForm";
 import TaskList from "../components/task/TaskList";
 import Icon from "../components/common/Icon";
+import { useFilters } from "../context/FiltersContext";
 import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
+import EditProjectModal from "../components/modals/EditProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
 
@@ -36,6 +38,10 @@ export default function HomePage() {
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [savingProject, setSavingProject] = useState(false);
+  const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState(null);
+  const [editProjectName, setEditProjectName] = useState("");
+  const [editingProjectSaving, setEditingProjectSaving] = useState(false);
   const [tasksByProject, setTasksByProject] = useState({});
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -256,9 +262,41 @@ export default function HomePage() {
     }
   };
 
+  const openEditProjectModal = (project) => {
+    setProjectToEdit(project);
+    setEditProjectName(project?.name || "");
+    setIsEditProjectModalOpen(true);
+  };
+
+  const handleEditProjectSave = async () => {
+    if (!projectToEdit || !editProjectName.trim()) return;
+    setEditingProjectSaving(true);
+    try {
+      const res = await api.put(`/projects/${projectToEdit.project_id}`, { name: editProjectName.trim() });
+      const updated = res.data.project;
+      setProjects((prev) => prev.map((p) => (p.project_id === projectToEdit.project_id ? updated : p)));
+      if (activeProject?.project_id === projectToEdit.project_id) setActiveProject(updated);
+      setIsEditProjectModalOpen(false);
+      setProjectToEdit(null);
+    } catch (err) {
+      console.error(err);
+      alert(t("cannotEditProject"));
+    } finally {
+      setEditingProjectSaving(false);
+    }
+  };
+
   const currentTasks = activeProject
     ? tasksByProject[activeProject.project_id] || []
     : [];
+
+  const { filters } = useFilters();
+
+  const filteredTasks = currentTasks.filter((task) => {
+    if (filters.priorities.length > 0 && (!task.priority || !filters.priorities.includes(task.priority))) return false;
+    // labels not implemented on tasks
+    return true;
+  });
 
   return (
     <div className="layout">
@@ -272,6 +310,7 @@ export default function HomePage() {
         setIsAddingTask={setIsAddingTask}
         loadingProjects={loadingProjects}
         handleDeleteProject={handleDeleteProject}
+        onRequestEditProject={openEditProjectModal}
         t={t}
         isSidebarCollapsed={isSidebarCollapsed}
         setIsSidebarCollapsed={setIsSidebarCollapsed}
@@ -282,6 +321,16 @@ export default function HomePage() {
         isProjectMenuOpen={isProjectMenuOpen}
         setIsProjectMenuOpen={setIsProjectMenuOpen}
         setIsAddProjectModalOpen={setIsAddProjectModalOpen}
+      />
+
+      <EditProjectModal
+        isOpen={isEditProjectModalOpen}
+        setIsOpen={setIsEditProjectModalOpen}
+        project={projectToEdit}
+        name={editProjectName}
+        setName={setEditProjectName}
+        onSave={handleEditProjectSave}
+        saving={editingProjectSaving}
       />
 
       {/* Main Content */}
@@ -340,7 +389,7 @@ export default function HomePage() {
               {/* Task list */}
               <div className="task-section">
                 <TaskList
-                  tasks={currentTasks}
+                  tasks={filteredTasks}
                   handleDeleteTask={handleDeleteTask}
                   handleUpdateTask={handleUpdateTask}
                   handleCompleteTask={handleCompleteTask}
@@ -392,6 +441,7 @@ export default function HomePage() {
         newProjectName={newProjectName}
         setNewProjectName={setNewProjectName}
         handleAddProject={handleAddProject}
+        savingProject={savingProject}
       />
 
       <SettingsModal
