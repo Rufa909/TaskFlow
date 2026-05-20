@@ -7,7 +7,7 @@ export default function ProfileDropdown({
   setIsProfileMenuOpen,
   t,
 }) {
-  const { openTeamModal } = useTeams();
+  const { openTeamModal, activeProject } = useTeams();
 
   return (
     <div className="profile-dropdown-menu" onClick={(e) => e.stopPropagation()}>

@@ -4,6 +4,7 @@ import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
 import api from "../../api/axiosInstance";
 import { useFilters } from "../../context/FiltersContext";
+import { useTeams } from "../../context/TeamsContext";
 import "./SideBar.css";
 
 const API_URL = "http://localhost:5000";
@@ -57,6 +58,13 @@ export default function Sidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState({ inbox: 0, today: 0 });
+  const { setActiveProject: setContextActiveProject } = useTeams();
+
+  useEffect(() => {
+    if (activeProject) {
+      setContextActiveProject(activeProject);
+    }
+  }, [activeProject, setContextActiveProject]);
   const [projectCounts, setProjectCounts] = useState({});
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(
     getSavedSidebarCollapsed,
@@ -92,6 +100,7 @@ export default function Sidebar({
   }, []);
 
   const { setIsFiltersOpen } = useFilters();
+  const { invitationCount } = useTeams();
 
   // fetch per-project counts and poll for realtime-ish updates
   useEffect(() => {
@@ -138,13 +147,13 @@ export default function Sidebar({
           </span>
 
           {/* Profile Dropdown Menu */}
-          {/* Profile Dropdown Menu */}
           {isProfileMenuOpen && (
             <ProfileDropdown
               handleLogout={handleLogout}
               setIsSettingsModalOpen={setIsSettingsModalOpen}
               setIsProfileMenuOpen={setIsProfileMenuOpen}
               t={t}
+              activeProject={activeProject}
             />
           )}
         </div>
@@ -191,7 +200,9 @@ export default function Sidebar({
             <Icon name="inbox" size={18} />
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("inbox")}</span>
-          {counts.inbox > 0 && <span className="count">{counts.inbox}</span>}
+          {(counts.inbox + (invitationCount || 0)) > 0 && (
+            <span className="count">{counts.inbox + (invitationCount || 0)}</span>
+          )}
         </Link>
         <Link
           to="/today"
@@ -348,6 +359,7 @@ export default function Sidebar({
             setIsSettingsModalOpen={setIsSettingsModalOpen}
             setIsProfileMenuOpen={setIsProfileMenuOpen}
             t={t}
+            activeProject={activeProject}
           />
         )}
       </div>

@@ -1,0 +1,314 @@
+/* ============================================
+   InboxPage — Team Invitations Section
+   ============================================ */
+
+/* --- Invitations section wrapper ---------- */
+.inbox-invitations-section {
+  margin-bottom: 32px;
+}
+
+/* --- Section title ------------------------ */
+.inbox-invitations-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main, #202020);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1.5px solid var(--border-color, #f0f0f0);
+}
+
+.inbox-invitations-title .title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #1e88e5 0%, #42a5f5 100%);
+  color: #fff;
+}
+
+.inbox-invitations-title .invitation-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #ef5350 0%, #e53935 100%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 4px;
+  box-shadow: 0 2px 6px rgba(229, 57, 53, 0.3);
+}
+
+/* --- Invitation card ---------------------- */
+.inbox-invitation-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  margin-bottom: 10px;
+  background: #fff;
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-left: 4px solid var(--accent-color, #1e88e5);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.04),
+    0 4px 16px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s ease;
+  animation: inv-slideIn 0.35s ease;
+}
+
+@keyframes inv-slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.inbox-invitation-card:hover {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.04);
+  border-left-color: #1565c0;
+  transform: translateY(-1px);
+}
+
+/* fade-out when responding */
+.inbox-invitation-card.fading-out {
+  animation: inv-fadeOut 0.45s ease forwards;
+}
+
+@keyframes inv-fadeOut {
+  to {
+    opacity: 0;
+    transform: translateX(20px) scale(0.97);
+    max-height: 0;
+    padding: 0 20px;
+    margin-bottom: 0;
+    overflow: hidden;
+  }
+}
+
+/* --- Sender avatar ------------------------ */
+.inv-sender-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--accent-color, #1e88e5);
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(30, 136, 229, 0.12);
+}
+
+.inv-sender-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* --- Invitation info ---------------------- */
+.inv-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.inv-sender-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inv-sender-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main, #202020);
+}
+
+.inv-sender-email {
+  font-size: 12px;
+  color: var(--text-secondary, #808080);
+}
+
+.inv-details-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.inv-project-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #e3f2fd 0%, #e8eaf6 100%);
+  color: var(--accent-color, #1e88e5);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.inv-timestamp {
+  font-size: 11px;
+  color: var(--text-secondary, #808080);
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+/* --- Action buttons ----------------------- */
+.inv-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.inv-accept-btn,
+.inv-decline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Roboto', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.inv-accept-btn {
+  background: linear-gradient(135deg, #43a047 0%, #66bb6a 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(67, 160, 71, 0.25);
+}
+
+.inv-accept-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(67, 160, 71, 0.35);
+}
+
+.inv-accept-btn:active {
+  transform: translateY(0);
+}
+
+.inv-decline-btn {
+  background: transparent;
+  color: #e53935;
+  border: 1.5px solid rgba(229, 57, 53, 0.25);
+}
+
+.inv-decline-btn:hover {
+  background: #ffebee;
+  border-color: rgba(229, 57, 53, 0.4);
+  transform: translateY(-1px);
+}
+
+.inv-decline-btn:active {
+  transform: translateY(0);
+}
+
+.inv-accept-btn:disabled,
+.inv-decline-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* --- Section divider ---------------------- */
+.inbox-section-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--border-color, #f0f0f0) 15%,
+    var(--border-color, #f0f0f0) 85%,
+    transparent 100%
+  );
+  margin: 28px 0 24px;
+}
+
+/* --- Invitations empty state -------------- */
+.inv-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.inv-empty-icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+  opacity: 0.45;
+}
+
+.inv-empty-text {
+  font-size: 14px;
+  color: var(--text-secondary, #808080);
+  line-height: 1.5;
+}
+
+/* --- Loading state ------------------------ */
+.inv-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--text-secondary, #808080);
+  font-size: 13px;
+}
+
+.inv-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgba(30, 136, 229, 0.15);
+  border-top-color: var(--accent-color, #1e88e5);
+  border-radius: 50%;
+  animation: inv-spin 0.7s linear infinite;
+}
+
+@keyframes inv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Responsive --------------------------- */
+@media (max-width: 600px) {
+  .inbox-invitation-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .inv-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

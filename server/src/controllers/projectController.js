@@ -4,8 +4,13 @@ const pool = require('../config/db');
 exports.getProjects = async (req, res) => {
     try {
         let [rows] = await pool.query(
-            'SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at ASC',
-            [req.user.id]
+            `SELECT p.* 
+             FROM projects p
+             LEFT JOIN project_members pm ON p.project_id = pm.project_id
+             WHERE p.owner_id = ? OR pm.user_id = ?
+             GROUP BY p.project_id
+             ORDER BY p.created_at ASC`,
+            [req.user.id, req.user.id]
         );
         // Nếu user chưa có project nào → tự động tạo "Project1"
         if (rows.length === 0) {
