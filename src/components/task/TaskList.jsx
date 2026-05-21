@@ -138,6 +138,17 @@ export default function TaskList({
               </div>
             )}
 
+            {task.labels && task.labels.length > 0 && (
+              <div className="task-labels">
+                {task.labels.map((label, idx) => (
+                  <span key={idx} className="task-label-badge">
+                    <Icon name="hash" size={10} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+
             {task.project_name && (
               <div className="task-project-label">
                 {task.project_name} <Icon name="hash" size={10} />

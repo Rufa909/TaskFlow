@@ -1,4 +1,32 @@
 /* ============================================
+   InboxPage — Main Layout
+   ============================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap");
+
+:root {
+  --sidebar-bg: #fcfaf8;
+  --sidebar-hover: #f0ece6;
+  --text-main: #202020;
+  --text-secondary: #808080;
+  --accent-color: #1e88e5;
+  --border-color: #f0f0f0;
+  --active-bg: #e3f2fd;
+}
+
+.inbox-content {
+  max-width: 860px;
+  padding: 0 40px;
+}
+
+.inbox-content .page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 28px;
+}
+
+/* ============================================
    InboxPage — Team Invitations Section
    ============================================ */
 
@@ -299,16 +327,287 @@
   }
 }
 
-/* --- Responsive --------------------------- */
+/* ============================================
+   InboxPage — Tasks Section
+   ============================================ */
+
+/* --- Task list container ------------------- */
+.inbox-content .task-list-container {
+  max-width: 100%;
+  padding: 0;
+}
+
+.inbox-content .task-section {
+  margin-top: 0;
+}
+
+/* --- Add task button ----------------------- */
+.add-task-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: transparent;
+  border: 1.5px solid var(--border-color, #f0f0f0);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-color, #1e88e5);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Roboto', sans-serif;
+}
+
+.add-task-btn:hover {
+  border-color: var(--accent-color, #1e88e5);
+  background: linear-gradient(135deg, rgba(30, 136, 229, 0.04), rgba(30, 136, 229, 0.02));
+}
+
+.add-task-btn .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- No tasks state ----------------------- */
+.inbox-no-tasks-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 40px;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(30, 136, 229, 0.02), rgba(66, 165, 245, 0.01));
+  border-radius: 16px;
+  border: 1px solid var(--border-color, #f0f0f0);
+}
+
+.inbox-no-tasks-state .inbox-empty-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.8;
+  animation: bounce-in 0.5s ease;
+}
+
+.inbox-no-tasks-state h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main, #202020);
+  margin-bottom: 8px;
+}
+
+.inbox-no-tasks-state p {
+  font-size: 14px;
+  color: var(--text-secondary, #808080);
+  margin-bottom: 0;
+  line-height: 1.6;
+}
+
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+}
+
+/* --- Task items in inbox ------------------- */
+.inbox-content .task-item {
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+  padding: 14px 0;
+  transition: background-color 0.15s ease;
+}
+
+.inbox-content .task-item:hover {
+  background-color: #fafafa;
+}
+
+.inbox-content .task-project-label {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--text-secondary, #808080);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* --- Empty state for tasks ------------------- */
+.inbox-content .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+  text-align: center;
+  color: var(--text-secondary, #808080);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.inbox-content .empty-state::before {
+  content: '📭';
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+
+/* --- Responsive Design ---------------------- */
+@media (max-width: 768px) {
+  .inbox-content {
+    padding: 0 32px;
+  }
+
+  .inbox-content .page-title {
+    font-size: 24px;
+    margin-bottom: 20px;
+  }
+
+  .inbox-invitations-section {
+    margin-bottom: 24px;
+  }
+
+  .inbox-invitation-card {
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .inv-sender-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 15px;
+  }
+
+  .inv-sender-name {
+    font-size: 13px;
+  }
+
+  .inv-sender-email {
+    display: none;
+  }
+
+  .inv-accept-btn,
+  .inv-decline-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .inbox-content .task-item {
+    padding: 12px 0;
+  }
+
+  .add-task-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  .inbox-no-tasks-state {
+    padding: 48px 32px;
+  }
+
+  .inbox-no-tasks-state .inbox-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  .inbox-no-tasks-state h3 {
+    font-size: 18px;
+  }
+}
+
 @media (max-width: 600px) {
+  .inbox-content {
+    padding: 0 20px;
+    max-width: 100%;
+  }
+
+  .inbox-content .page-title {
+    font-size: 22px;
+    margin-bottom: 18px;
+  }
+
+  .inbox-invitations-title {
+    font-size: 14px;
+  }
+
+  .inbox-invitations-title .title-icon {
+    width: 28px;
+    height: 28px;
+  }
+
   .inbox-invitation-card {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+    padding: 12px 16px;
+  }
+
+  .inv-sender-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .inv-details-row {
+    gap: 8px;
   }
 
   .inv-actions {
     width: 100%;
     justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .inv-accept-btn,
+  .inv-decline-btn {
+    padding: 5px 10px;
+    font-size: 11px;
+    gap: 3px;
+  }
+
+  .inbox-content .empty-state {
+    padding: 40px 20px;
+    font-size: 13px;
+  }
+
+  .inbox-content .empty-state::before {
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+
+  .inbox-content .task-project-label {
+    display: none;
+  }
+
+  .add-task-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 12px;
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+
+  .inbox-no-tasks-state {
+    padding: 40px 20px;
+    border-radius: 12px;
+  }
+
+  .inbox-no-tasks-state .inbox-empty-icon {
+    font-size: 40px;
+    margin-bottom: 10px;
+  }
+
+  .inbox-no-tasks-state h3 {
+    font-size: 16px;
+  }
+
+  .inbox-no-tasks-state p {
+    font-size: 12px;
   }
 }

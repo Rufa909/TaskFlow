@@ -13,12 +13,35 @@ export function FiltersProvider({ children }) {
     });
   };
 
+  const toggleLabel = (label) => {
+    setFilters((prev) => {
+      const exists = prev.labels.includes(label);
+      return { ...prev, labels: exists ? prev.labels.filter(l => l !== label) : [...prev.labels, label] };
+    });
+  };
+
   const setLabels = (labels) => {
     setFilters((prev) => ({ ...prev, labels }));
   };
 
+  const clearFilters = () => {
+    setFilters({ priorities: [], labels: [] });
+  };
+
+  const hasActiveFilters = filters.priorities.length > 0 || filters.labels.length > 0;
+
   return (
-    <FiltersContext.Provider value={{ filters, setFilters, togglePriority, setLabels, isFiltersOpen, setIsFiltersOpen }}>
+    <FiltersContext.Provider value={{ 
+      filters, 
+      setFilters, 
+      togglePriority, 
+      toggleLabel,
+      setLabels, 
+      clearFilters,
+      hasActiveFilters,
+      isFiltersOpen, 
+      setIsFiltersOpen 
+    }}>
       {children}
     </FiltersContext.Provider>
   );
