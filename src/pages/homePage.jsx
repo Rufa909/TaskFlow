@@ -118,6 +118,27 @@ export default function HomePage() {
     setActiveView(view === "reporting" ? "reporting" : "project");
   }, [location.search]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const emailVerified = params.get("emailVerified");
+
+    if (!emailVerified) return;
+
+    if (emailVerified === "success") {
+      api
+        .get("/auth/me")
+        .then((res) => updateUser(res.data.user))
+        .catch((err) => console.error("Cannot refresh user:", err));
+      alert("Email verified successfully.");
+    } else {
+      alert("Email verification link is invalid or expired.");
+    }
+
+    params.delete("emailVerified");
+    const query = params.toString();
+    navigate(query ? `/?${query}` : "/", { replace: true });
+  }, [location.search, navigate, updateUser]);
+
   const handleLogout = () => {
     if (window.confirm(t("confirmLogout"))) {
       logout();

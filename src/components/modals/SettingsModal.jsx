@@ -37,6 +37,8 @@ export default function SettingsModal({
   const [newPassword, setNewPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [sendingVerificationEmail, setSendingVerificationEmail] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState("");
 
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -51,6 +53,7 @@ export default function SettingsModal({
     setNameError("");
     setNameSuggestions([]);
     setNameSavedMessage("");
+    setVerificationMessage("");
   }, [user]);
 
   const visibleAvatar = previewAvatar || savedAvatar;
@@ -154,6 +157,29 @@ export default function SettingsModal({
       alert(err.response?.data?.message || "Cannot update password.");
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleSendVerificationEmail = async () => {
+    setVerificationMessage("");
+
+    try {
+      setSendingVerificationEmail(true);
+      const res = await api.post("/auth/send-verification-email");
+
+      if (res.data.user) {
+        updateUser(res.data.user);
+      }
+
+      setVerificationMessage(
+        res.data.message || "Verification link sent to your email.",
+      );
+    } catch (err) {
+      setVerificationMessage(
+        err.response?.data?.message || "Cannot send verification email.",
+      );
+    } finally {
+      setSendingVerificationEmail(false);
     }
   };
   if (!isSettingsModalOpen) {
@@ -397,14 +423,42 @@ export default function SettingsModal({
                       style={{ marginTop: "24px" }}
                     >
                       <label className="settings-label">{t("email")}</label>
-
-                        <input
-                          type="email"
-                          className="settings-input"
-                          value={email}
-                          disabled
-                        />
-
+                      <div className="settings-email-control">
+                        <div className="settings-email-row">
+                          <input
+                            type="email"
+                            className="settings-input"
+                            value={email}
+                            disabled
+                          />
+                          {user?.email_verified ? (
+                            <span className="settings-email-status verified">
+                              {t("emailVerified")}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="change-email-btn"
+                              onClick={handleSendVerificationEmail}
+                              disabled={sendingVerificationEmail}
+                            >
+                              {sendingVerificationEmail
+                                ? t("sending")
+                                : t("verifyEmail")}
+                            </button>
+                          )}
+                        </div>
+                        {!user?.email_verified && (
+                          <span className="settings-email-status unverified">
+                            {t("emailNotVerified")}
+                          </span>
+                        )}
+                        {verificationMessage && (
+                          <p className="settings-field-success">
+                            {verificationMessage}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Password */}

@@ -8,7 +8,9 @@ const {
   updateAvatar,
   updateUsername,
   updateEmail,
-  updatePassword
+  updatePassword,
+  sendVerificationEmail,
+  verifyEmail
 } = require('../controllers/authController');
 // Import middleware (bảo vệ route)
 const auth = require('../middleware/authMiddleware');
@@ -19,6 +21,7 @@ router.post('/register', register);
 
 // POST /api/auth/login → đăng nhập, nhận token
 router.post('/login', login);
+router.get('/verify-email', verifyEmail);
 
 // ─── Protected routes (cần token) ─────────────────
 // GET /api/auth/me → auth chạy trước, nếu pass mới vào getMe
@@ -27,5 +30,6 @@ router.put('/avatar', auth, updateAvatar);
 router.put('/username', auth, updateUsername);
 router.put('/email', auth, updateEmail);
 router.put('/password', auth, updatePassword);
+router.post('/send-verification-email', auth, sendVerificationEmail);
 
 module.exports = router;

@@ -1,8 +1,54 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const fs = require('fs/promises');
 const path = require('path');
 const pool = require('../config/db');
+
+const getPublicUser = (user) => ({
+    id: user.user_id,
+    username: user.username,
+    email: user.email,
+    user_photo: user.user_photo,
+    email_verified: Boolean(user.email_verified),
+    created_at: user.created_at
+});
+
+const ensureEmailVerificationColumns = async () => {
+    const [columns] = await pool.query(
+        `SHOW COLUMNS FROM users WHERE Field IN (
+            'email_verified',
+            'email_verification_token_hash',
+            'email_verification_expires'
+        )`
+    );
+    const existing = new Set(columns.map((column) => column.Field));
+
+    if (!existing.has('email_verified')) {
+        await pool.query('ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 0');
+    }
+    if (!existing.has('email_verification_token_hash')) {
+        await pool.query('ALTER TABLE users ADD COLUMN email_verification_token_hash VARCHAR(64) NULL');
+    }
+    if (!existing.has('email_verification_expires')) {
+        await pool.query('ALTER TABLE users ADD COLUMN email_verification_expires DATETIME NULL');
+    }
+};
+
+const getMailTransporter = () => {
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        throw new Error('Missing EMAIL_USER or EMAIL_PASS');
+    }
+
+    return nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+        }
+    });
+};
 
 // Hàm tạo JWT Token
 // Payload: thông tin lưu trong token (KHÔNG lưu password!)
@@ -74,12 +120,7 @@ exports.register = async (req, res) => {
             success: true,
             message: 'Dang ky thanh cong',
             token, // client lưu token này vào localStorage
-            user: {
-                id: newUser.user_id,
-                username: newUser.username,
-                email: newUser.email,
-                created_at: newUser.created_at
-            }
+            user: getPublicUser(newUser)
         });
     } catch (err) {
         console.error('Loi dang ky:', err);
@@ -131,13 +172,7 @@ exports.login = async (req, res) => {
             success: true,
             message: 'Dang nhap thanh cong',
             token,
-            user: {
-                id: user.user_id,
-                username: user.username,
-                email: user.email,
-                user_photo: user.user_photo,
-                created_at: user.created_at
-            }
+            user: getPublicUser(user)
         });
     } catch (err){
         console.error('Loi dang nhap:', err);
@@ -162,7 +197,7 @@ exports.getMe = async (req, res) => {
         }
         res.json({
             success: true,
-            user: rows[0]
+            user: getPublicUser(rows[0])
         });
     } catch (err){
         console.error('Loi getMe:', err);
@@ -206,21 +241,12 @@ exports.updateAvatar = async (req, res) => {
             [publicPath, req.user.id]
         );
 
-        const [rows] = await pool.query(
-            'select user_id, username, email, user_photo, created_at from users where user_id = ?',
-            [req.user.id]
-        );
+        const [rows] = await pool.query('select * from users where user_id = ?', [req.user.id]);
         const user = rows[0];
 
         return res.json({
             success: true,
-            user: {
-                id: user.user_id,
-                username: user.username,
-                email: user.email,
-                user_photo: user.user_photo,
-                created_at: user.created_at
-            }
+            user: getPublicUser(user)
         });
     } catch (err) {
         console.error('Loi update avatar:', err);
@@ -282,23 +308,14 @@ exports.updateUsername = async (req, res) => {
         );
 
         // Lấy user mới
-        const [rows] = await pool.query(
-            'SELECT user_id, username, email, user_photo, created_at FROM users WHERE user_id = ?',
-            [req.user.id]
-        );
+        const [rows] = await pool.query('SELECT * FROM users WHERE user_id = ?', [req.user.id]);
 
         const user = rows[0];
 
         return res.json({
             success: true,
             message: 'Cap nhat ten thanh cong',
-            user: {
-                id: user.user_id,
-                username: user.username,
-                email: user.email,
-                user_photo: user.user_photo,
-                created_at: user.created_at
-            }
+            user: getPublicUser(user)
         });
 
     } catch (err) {
@@ -315,6 +332,115 @@ exports.updateEmail = async (req, res) => {
         success: false,
         message: 'Changing email is disabled.'
     });
+};
+
+exports.sendVerificationEmail = async (req, res) => {
+    try {
+        await ensureEmailVerificationColumns();
+
+        const [rows] = await pool.query('SELECT * FROM users WHERE user_id = ?', [req.user.id]);
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User khong ton tai'
+            });
+        }
+
+        const user = rows[0];
+        if (user.email_verified) {
+            return res.json({
+                success: true,
+                message: 'Email nay da duoc xac thuc.',
+                user: getPublicUser(user)
+            });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+        await pool.query(
+            `UPDATE users
+             SET email_verification_token_hash = ?,
+                 email_verification_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR)
+             WHERE user_id = ?`,
+            [tokenHash, req.user.id]
+        );
+
+        const apiBaseUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const verifyUrl = `${apiBaseUrl}/api/auth/verify-email?token=${token}`;
+        const transporter = getMailTransporter();
+
+        await transporter.sendMail({
+            from: `"TaskFlow" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: 'Xac thuc email TaskFlow',
+            html: `
+                <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #222;">
+                    <h2>Xac thuc tai khoan TaskFlow</h2>
+                    <p>Chao ${user.username || 'ban'},</p>
+                    <p>Bam vao nut ben duoi de xac thuc email cua tai khoan. Link co hieu luc trong 1 gio.</p>
+                    <p>
+                        <a href="${verifyUrl}" style="display:inline-block;padding:10px 16px;background:#3b82f6;color:#fff;text-decoration:none;border-radius:6px;">
+                            Xac thuc email
+                        </a>
+                    </p>
+                    <p>Neu nut khong hoat dong, copy link nay vao trinh duyet:</p>
+                    <p>${verifyUrl}</p>
+                </div>
+            `
+        });
+
+        return res.json({
+            success: true,
+            message: 'Da gui link xac thuc vao email cua ban.'
+        });
+    } catch (err) {
+        console.error('Loi gui email xac thuc:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Khong the gui email xac thuc. Vui long kiem tra cau hinh Gmail.'
+        });
+    }
+};
+
+exports.verifyEmail = async (req, res) => {
+    const { token } = req.query;
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+
+    if (!token) {
+        return res.redirect(`${clientUrl}/?emailVerified=invalid`);
+    }
+
+    try {
+        await ensureEmailVerificationColumns();
+
+        const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
+        const [rows] = await pool.query(
+            `SELECT * FROM users
+             WHERE email_verification_token_hash = ?
+               AND email_verification_expires > NOW()
+             LIMIT 1`,
+            [tokenHash]
+        );
+
+        if (rows.length === 0) {
+            return res.redirect(`${clientUrl}/?emailVerified=invalid`);
+        }
+
+        await pool.query(
+            `UPDATE users
+             SET email_verified = 1,
+                 email_verification_token_hash = NULL,
+                 email_verification_expires = NULL
+             WHERE user_id = ?`,
+            [rows[0].user_id]
+        );
+
+        return res.redirect(`${clientUrl}/?emailVerified=success`);
+    } catch (err) {
+        console.error('Loi xac thuc email:', err);
+        return res.redirect(`${clientUrl}/?emailVerified=error`);
+    }
 };
 exports.updatePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;

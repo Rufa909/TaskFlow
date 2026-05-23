@@ -2260,6 +2260,40 @@ body {
   align-items: center;
 }
 
+.settings-email-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-email-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-email-row .settings-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-email-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-email-status.verified {
+  color: #0f9d58;
+}
+
+.settings-email-status.unverified {
+  color: #b7791f;
+  margin-top: 6px;
+}
+
 .change-email-btn {
   padding: 6px 16px;
   background: none;
@@ -2272,6 +2306,11 @@ body {
 }
 .change-email-btn:hover {
   background-color: var(--sidebar-hover);
+}
+
+.change-email-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .add-password-btn {
