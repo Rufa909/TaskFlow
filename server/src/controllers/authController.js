@@ -392,13 +392,13 @@ exports.sendVerificationEmail = async (req, res) => {
 
         return res.json({
             success: true,
-            message: 'Da gui link xac thuc vao email cua ban.'
+            message: 'Sent verification email. Please check your inbox.',
         });
     } catch (err) {
         console.error('Loi gui email xac thuc:', err);
         return res.status(500).json({
             success: false,
-            message: 'Khong the gui email xac thuc. Vui long kiem tra cau hinh Gmail.'
+            message: 'cant send verification email, please try again later.'
         });
     }
 };

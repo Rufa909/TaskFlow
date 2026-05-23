@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useTeams } from '../../context/TeamsContext';
-import api from '../../api/axiosInstance';
-import Icon from '../common/Icon';
-import './AddTeamModal.css';
+import React, { useEffect, useState, useCallback } from "react";
+import { useTeams } from "../../context/TeamsContext";
+import api from "../../api/axiosInstance";
+import Icon from "../common/Icon";
+import "./AddTeamModal.css";
 
-const API_URL = 'http://localhost:5000';
+const API_URL = "http://localhost:5000";
 
 function avatarUrl(photo) {
-  if (!photo) return '';
-  return photo.startsWith('http') || photo.startsWith('data:')
+  if (!photo) return "";
+  return photo.startsWith("http") || photo.startsWith("data:")
     ? photo
     : `${API_URL}${photo}`;
 }
@@ -17,7 +17,7 @@ export default function AddTeamModal() {
   const { isOpen, closeTeamModal, activeProject } = useTeams();
 
   // Search states
-  const [searchEmail, setSearchEmail] = useState('');
+  const [searchEmail, setSearchEmail] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -35,10 +35,12 @@ export default function AddTeamModal() {
     if (!activeProject?.project_id) return;
     setLoadingMembers(true);
     try {
-      const res = await api.get(`/teams/projects/${activeProject.project_id}/members`);
+      const res = await api.get(
+        `/teams/projects/${activeProject.project_id}/members`,
+      );
       setMembers(res.data.members || []);
     } catch (err) {
-      console.error('Cannot load members', err);
+      console.error("Cannot load members", err);
     } finally {
       setLoadingMembers(false);
     }
@@ -48,7 +50,7 @@ export default function AddTeamModal() {
     if (isOpen && activeProject) {
       loadMembers();
       // Reset states on open
-      setSearchEmail('');
+      setSearchEmail("");
       setSearchResult(null);
       setHasSearched(false);
       setStatusMessage(null);
@@ -66,22 +68,27 @@ export default function AddTeamModal() {
     setStatusMessage(null);
 
     try {
-      const res = await api.get(`/teams/search?email=${encodeURIComponent(email)}`);
+      const res = await api.get(
+        `/teams/search?email=${encodeURIComponent(email)}`,
+      );
       if (res.data.user) {
         setSearchResult(res.data.user);
       } else {
-        setStatusMessage({ type: 'error', text: 'No user found with that email address.' });
+        setStatusMessage({
+          type: "error",
+          text: "No user found with that email address.",
+        });
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'User not found.';
-      setStatusMessage({ type: 'error', text: msg });
+      const msg = err.response?.data?.message || "User not found.";
+      setStatusMessage({ type: "error", text: msg });
     } finally {
       setSearching(false);
     }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       handleSearch();
     }
@@ -95,20 +102,23 @@ export default function AddTeamModal() {
     setStatusMessage(null);
 
     try {
-      await api.post('/teams/invite', {
+      await api.post("/teams/invite", {
         project_id: activeProject.project_id,
         receiver_id: searchResult.user_id,
       });
-      setStatusMessage({ type: 'success', text: `Invitation sent to ${searchResult.username}!` });
+      setStatusMessage({
+        type: "success",
+        text: `Invitation sent to ${searchResult.username}!`,
+      });
       alert(`Đã gửi lời mời thành công đến ${searchResult.username}!`);
       setSearchResult(null);
-      setSearchEmail('');
+      setSearchEmail("");
       setHasSearched(false);
       // Refresh members
       loadMembers();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to send invitation.';
-      setStatusMessage({ type: 'error', text: msg });
+      const msg = err.response?.data?.message || "Failed to send invitation.";
+      setStatusMessage({ type: "error", text: msg });
     } finally {
       setInviteSending(false);
     }
@@ -116,11 +126,19 @@ export default function AddTeamModal() {
 
   if (!isOpen) return null;
 
-  const statusIcon = statusMessage?.type === 'success' ? '✓' : statusMessage?.type === 'error' ? '✕' : 'ℹ';
+  const statusIcon =
+    statusMessage?.type === "success"
+      ? "✓"
+      : statusMessage?.type === "error"
+        ? "✕"
+        : "ℹ";
 
   return (
     <div className="modal-overlay" onClick={() => closeTeamModal()}>
-      <div className="modal-content add-team-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal-content add-team-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="modal-header">
           <h2>
@@ -187,24 +205,34 @@ export default function AddTeamModal() {
                   <img
                     src={avatarUrl(searchResult.user_photo)}
                     alt=""
-                    onError={(e) => { e.target.style.display = 'none'; }}
+                    onError={(e) => {
+                      e.target.style.display = "none";
+                    }}
                   />
                 ) : (
-                  (searchResult.username || 'U').charAt(0).toUpperCase()
+                  (searchResult.username || "U").charAt(0).toUpperCase()
                 )}
               </div>
               <div className="atm-result-info">
                 <div className="atm-result-name">{searchResult.username}</div>
                 <div className="atm-result-email">{searchResult.email}</div>
+                {!searchResult.email_verified && (
+                  <div className="atm-result-email">
+                    Người này chưa xác thực email.
+                  </div>
+                )}
               </div>
               <button
                 className="atm-invite-btn"
                 onClick={handleInvite}
-                disabled={inviteSending}
+                disabled={inviteSending || !searchResult.email_verified}
               >
                 {inviteSending ? (
                   <>
-                    <div className="atm-spinner white" style={{ width: 14, height: 14 }} />
+                    <div
+                      className="atm-spinner white"
+                      style={{ width: 14, height: 14 }}
+                    />
                     Sending...
                   </>
                 ) : (
@@ -221,7 +249,9 @@ export default function AddTeamModal() {
           {hasSearched && !searchResult && !searching && !statusMessage && (
             <div className="atm-empty">
               <div className="atm-empty-icon">🔍</div>
-              <div className="atm-empty-text">No user found. Check the email and try again.</div>
+              <div className="atm-empty-text">
+                No user found. Check the email and try again.
+              </div>
             </div>
           )}
 
@@ -244,7 +274,9 @@ export default function AddTeamModal() {
           ) : members.length === 0 ? (
             <div className="atm-empty">
               <div className="atm-empty-icon">👥</div>
-              <div className="atm-empty-text">No members yet. Invite someone to get started!</div>
+              <div className="atm-empty-text">
+                No members yet. Invite someone to get started!
+              </div>
             </div>
           ) : (
             <div className="atm-members-list">
@@ -255,10 +287,12 @@ export default function AddTeamModal() {
                       <img
                         src={avatarUrl(member.user_photo)}
                         alt=""
-                        onError={(e) => { e.target.style.display = 'none'; }}
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
                       />
                     ) : (
-                      (member.username || 'U').charAt(0).toUpperCase()
+                      (member.username || "U").charAt(0).toUpperCase()
                     )}
                   </div>
                   <span className="atm-member-name">{member.username}</span>
