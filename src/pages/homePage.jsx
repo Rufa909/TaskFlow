@@ -146,19 +146,22 @@ export default function HomePage() {
     if (!activeProject) return;
 
     try {
+      const projectId =
+        updatedData instanceof FormData
+          ? updatedData.get("project_id") || activeProject.project_id
+          : updatedData.project_id || activeProject.project_id;
       const res = await api.put(
-        `/projects/${activeProject.project_id}/tasks/${taskId}`,
+        `/projects/${projectId}/tasks/${taskId}`,
         updatedData,
       );
 
       const updatedTask = {
         ...res.data.task,
-        ...updatedData,
       };
 
       setTasksByProject((prev) => ({
         ...prev,
-        [activeProject.project_id]: (prev[activeProject.project_id] || []).map(
+        [projectId]: (prev[projectId] || []).map(
           (task) => (task.task_id === taskId ? updatedTask : task),
         ),
       }));

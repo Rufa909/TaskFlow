@@ -150,7 +150,6 @@ export default function InboxPage() {
       );
       const updatedTask = {
         ...res.data.task,
-        ...updatedData,
         project_name: task.project_name,
       };
       setTasks((prev) =>

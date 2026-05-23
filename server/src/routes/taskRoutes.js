@@ -49,6 +49,6 @@ router.post("/projects/:projectId/tasks/:taskId/complete", authMiddleware, compl
 
 router.delete("/projects/:projectId/tasks/:taskId", authMiddleware, deleteTask);
 
-router.put("/projects/:projectId/tasks/:taskId", authMiddleware, updateTask);
+router.put("/projects/:projectId/tasks/:taskId", authMiddleware, uploadAttachment, updateTask);
 
 module.exports = router;

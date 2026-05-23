@@ -53,18 +53,40 @@ async function ensureTaskAttachmentTable() {
 exports.getTasks = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
     const { projectId } = req.params;
     const [rows] = await pool.query(
       `
-      SELECT t.*
+      SELECT
+        t.*,
+        ta.attachment_id,
+        ta.originalName AS attachment_name,
+        ta.file_url AS attachment_url,
+        ta.mimeType AS attachment_type,
+        ta.size AS attachment_size
       FROM tasks t
       JOIN projects p ON t.project_id = p.project_id
-      LEFT JOIN project_members pm ON p.project_id = pm.project_id
+      LEFT JOIN (
+        SELECT a.*
+        FROM attachments a
+        JOIN (
+          SELECT task_id, MIN(attachment_id) AS attachment_id
+          FROM attachments
+          GROUP BY task_id
+        ) first_attachment ON first_attachment.attachment_id = a.attachment_id
+      ) ta ON ta.task_id = t.task_id
       WHERE t.project_id = ?
-        AND (p.owner_id = ? OR pm.user_id = ?)
+        AND (
+          p.owner_id = ?
+          OR EXISTS (
+            SELECT 1
+            FROM project_members pm
+            WHERE pm.project_id = p.project_id
+              AND pm.user_id = ?
+          )
+        )
         AND t.deleted_at IS NULL
         AND t.completed_at IS NULL
-      GROUP BY t.task_id
       ORDER BY t.created_at ASC
       `,
       [projectId, req.user.id, req.user.id],
@@ -124,7 +146,7 @@ exports.createTask = async (req, res) => {
         [
           taskId,
           req.file.originalname,
-          `/uploads/${req.file.filename}`,
+          `/uploads/files/${req.file.filename}`,
           req.file.filename,
           req.file.mimetype,
           req.file.size,
@@ -160,6 +182,7 @@ exports.updateTask = async (req, res) => {
     const { projectId, taskId } = req.params;
     const { title, description, deadline, time, priority } = req.body;
     await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -210,8 +233,67 @@ exports.updateTask = async (req, res) => {
       });
     }
 
+    if (req.file) {
+      const [attachments] = await pool.query(
+        "SELECT attachment_id FROM attachments WHERE task_id = ? ORDER BY attachment_id ASC LIMIT 1",
+        [taskId],
+      );
+
+      if (attachments.length > 0) {
+        await pool.query(
+          `
+          UPDATE attachments
+          SET originalName = ?,
+              file_url = ?,
+              fileName = ?,
+              mimeType = ?,
+              size = ?,
+              upload_by = ?
+          WHERE attachment_id = ?
+          `,
+          [
+            req.file.originalname,
+            `/uploads/files/${req.file.filename}`,
+            req.file.filename,
+            req.file.mimetype,
+            req.file.size,
+            req.user.id,
+            attachments[0].attachment_id,
+          ],
+        );
+      } else {
+        await pool.query(
+          `
+          INSERT INTO attachments
+          (task_id, originalName, file_url, fileName, mimeType, size, upload_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            taskId,
+            req.file.originalname,
+            `/uploads/files/${req.file.filename}`,
+            req.file.filename,
+            req.file.mimetype,
+            req.file.size,
+            req.user.id,
+          ],
+        );
+      }
+    }
+
     const [rows] = await pool.query(
-      "SELECT * FROM tasks WHERE task_id = ? AND project_id = ?",
+      `
+      SELECT
+        t.*,
+        ta.attachment_id,
+        ta.originalName AS attachment_name,
+        ta.file_url AS attachment_url,
+        ta.mimeType AS attachment_type,
+        ta.size AS attachment_size
+      FROM tasks t
+      LEFT JOIN attachments ta ON ta.task_id = t.task_id
+      WHERE t.task_id = ? AND t.project_id = ?
+      `,
       [taskId, projectId],
     );
 
@@ -274,17 +356,40 @@ exports.completeTask = async (req, res) => {
 exports.getCompletedTasks = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
 
     const [rows] = await pool.query(
       `
-      SELECT t.*, p.name AS project_name
+      SELECT
+        t.*,
+        p.name AS project_name,
+        ta.attachment_id,
+        ta.originalName AS attachment_name,
+        ta.file_url AS attachment_url,
+        ta.mimeType AS attachment_type,
+        ta.size AS attachment_size
       FROM tasks t
       JOIN projects p ON p.project_id = t.project_id
-      LEFT JOIN project_members pm ON p.project_id = pm.project_id
-      WHERE (p.owner_id = ? OR pm.user_id = ?)
+      LEFT JOIN (
+        SELECT a.*
+        FROM attachments a
+        JOIN (
+          SELECT task_id, MIN(attachment_id) AS attachment_id
+          FROM attachments
+          GROUP BY task_id
+        ) first_attachment ON first_attachment.attachment_id = a.attachment_id
+      ) ta ON ta.task_id = t.task_id
+      WHERE (
+          p.owner_id = ?
+          OR EXISTS (
+            SELECT 1
+            FROM project_members pm
+            WHERE pm.project_id = p.project_id
+              AND pm.user_id = ?
+          )
+        )
         AND t.deleted_at IS NULL
         AND t.completed_at IS NOT NULL
-      GROUP BY t.task_id
       ORDER BY t.completed_at DESC
       `,
       [req.user.id, req.user.id],
@@ -317,16 +422,39 @@ exports.deleteTask = async (req, res) => {
 exports.getTasksToday = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
     const [rows] = await pool.query(
-      `SELECT t.*, p.name as project_name 
+      `SELECT
+         t.*,
+         p.name as project_name,
+         ta.attachment_id,
+         ta.originalName AS attachment_name,
+         ta.file_url AS attachment_url,
+         ta.mimeType AS attachment_type,
+         ta.size AS attachment_size
        FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
-       LEFT JOIN project_members pm ON p.project_id = pm.project_id
-       WHERE (p.owner_id = ? OR pm.user_id = ?) 
+       LEFT JOIN (
+         SELECT a.*
+         FROM attachments a
+         JOIN (
+           SELECT task_id, MIN(attachment_id) AS attachment_id
+           FROM attachments
+           GROUP BY task_id
+         ) first_attachment ON first_attachment.attachment_id = a.attachment_id
+       ) ta ON ta.task_id = t.task_id
+       WHERE (
+           p.owner_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM project_members pm
+             WHERE pm.project_id = p.project_id
+               AND pm.user_id = ?
+           )
+         ) 
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL
          AND DATE(t.deadline) = CURDATE() 
-       GROUP BY t.task_id
        ORDER BY t.created_at ASC`,
       [req.user.id, req.user.id],
     );
@@ -341,15 +469,38 @@ exports.getTasksToday = async (req, res) => {
 exports.getAllTasks = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
     const [rows] = await pool.query(
-      `SELECT t.*, p.name as project_name 
+      `SELECT
+         t.*,
+         p.name as project_name,
+         ta.attachment_id,
+         ta.originalName AS attachment_name,
+         ta.file_url AS attachment_url,
+         ta.mimeType AS attachment_type,
+         ta.size AS attachment_size
        FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
-       LEFT JOIN project_members pm ON p.project_id = pm.project_id 
-       WHERE (p.owner_id = ? OR pm.user_id = ?) 
+       LEFT JOIN (
+         SELECT a.*
+         FROM attachments a
+         JOIN (
+           SELECT task_id, MIN(attachment_id) AS attachment_id
+           FROM attachments
+           GROUP BY task_id
+         ) first_attachment ON first_attachment.attachment_id = a.attachment_id
+       ) ta ON ta.task_id = t.task_id
+       WHERE (
+           p.owner_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM project_members pm
+             WHERE pm.project_id = p.project_id
+               AND pm.user_id = ?
+           )
+         ) 
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL 
-       GROUP BY t.task_id
        ORDER BY t.created_at ASC`,
       [req.user.id, req.user.id],
     );

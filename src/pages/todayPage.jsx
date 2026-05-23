@@ -112,7 +112,6 @@ export default function TodayPage() {
       );
       const updatedTask = {
         ...res.data.task,
-        ...updatedData,
         project_name: task.project_name,
       };
       setTasks((prev) =>

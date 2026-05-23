@@ -46,8 +46,22 @@ export default function AddTaskForm({
     { value: "low", label: "Low", color: "#6b7280" },
   ];
 
-  const selectedPriority =
+const selectedPriority =
     priorities.find((item) => item.value === taskPriority) || priorities[2];
+
+  const handleAttachmentChange = (e) => {
+    const file = e.target.files[0] || null;
+
+    if (file && file.size > 5 * 1024 * 1024) {
+      e.target.value = "";
+      setTaskAttachment(null);
+      alert("File vượt quá dung lượng tối đa 5MB");
+      return;
+    }
+
+    setTaskAttachment(file);
+  };
+
   return (
     <div className="add-task-form">
       <input
@@ -98,7 +112,7 @@ export default function AddTaskForm({
             type="file"
             hidden
             accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-            onChange={(e) => setTaskAttachment(e.target.files[0] || null)}
+            onChange={handleAttachmentChange}
           />
         </label>
         <div className="priority-picker">

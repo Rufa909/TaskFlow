@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import Icon from "../common/Icon";
 import DatePickerPopover from "../task/DatePickerPopover";
 
+const API_ORIGIN = "http://localhost:5000";
+
 export default function EditTaskModal({
   selectedTask,
   setSelectedTask,
@@ -16,6 +18,7 @@ export default function EditTaskModal({
   const [saving, setSaving] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
+  const [attachment, setAttachment] = useState(null);
 
   const priorities = [
     { value: "urgent", label: "Urgent" },
@@ -37,6 +40,7 @@ export default function EditTaskModal({
       setSaving(false);
       setIsDatePickerOpen(false);
       setIsPriorityOpen(false);
+      setAttachment(null);
     }
   }, [selectedTask]);
 
@@ -60,18 +64,37 @@ export default function EditTaskModal({
 
     try {
       setSaving(true);
-      await handleUpdateTask(selectedTask.task_id, {
-        title: title.trim(),
-        description: description.trim(),
-        deadline: deadline || null,
-        time,
-        priority,
-      });
+      const formData = new FormData();
+      formData.append("title", title.trim());
+      formData.append("description", description.trim());
+      formData.append("deadline", deadline ? deadline.toISOString() : "");
+      formData.append("time", time || "");
+      formData.append("priority", priority);
+      formData.append("project_id", selectedTask.project_id || "");
+
+      if (attachment) {
+        formData.append("attachment", attachment);
+      }
+
+      await handleUpdateTask(selectedTask.task_id, formData);
 
       setSelectedTask(null);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAttachmentChange = (event) => {
+    const file = event.target.files[0] || null;
+
+    if (file && file.size > 5 * 1024 * 1024) {
+      event.target.value = "";
+      setAttachment(null);
+      alert("File vuot qua dung luong toi da 5MB");
+      return;
+    }
+
+    setAttachment(file);
   };
 
   return (
@@ -84,8 +107,9 @@ export default function EditTaskModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="edit-task-header">
-          <div>
-            <Icon name="edit" size={14} /> Editing task
+          <div className="edit-task-context">
+            <Icon name="hash" size={14} />
+            <span>{selectedTask.project_name || "Task"}</span>
           </div>
           <button
             type="button"
@@ -97,8 +121,8 @@ export default function EditTaskModal({
           </button>
         </div>
 
-        <div className="add-task-form edit-task-form">
-          <input
+        <div className="edit-task-form">
+          <textarea
             className="input-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -106,18 +130,18 @@ export default function EditTaskModal({
             autoFocus
           />
 
-          <input
+          <textarea
             className="input-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Description"
           />
 
-          <div className="form-actions-row" style={{ position: "relative" }}>
+          <div className="edit-task-actions" style={{ position: "relative" }}>
             <button
               type="button"
               onClick={() => setIsDatePickerOpen((prev) => !prev)}
-              className={deadline ? "has-date" : ""}
+              className={`edit-task-chip ${deadline ? "has-date" : ""}`}
             >
               <Icon
                 name="calendar"
@@ -142,14 +166,27 @@ export default function EditTaskModal({
               )}
             </button>
 
-            <button type="button">
-              <Icon name="paperclip" size={14} /> Attachment
-            </button>
+            <label
+              className={`edit-task-chip attachment-btn ${
+                attachment || selectedTask.attachment_url ? "has-attachment" : ""
+              }`}
+            >
+              <Icon name="paperclip" size={14} />
+              <span>
+                {attachment?.name || selectedTask.attachment_name || "Attachment"}
+              </span>
+              <input
+                type="file"
+                hidden
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                onChange={handleAttachmentChange}
+              />
+            </label>
 
             <div className="priority-picker">
               <button
                 type="button"
-                className={`priority-trigger priority-${selectedPriority.value}`}
+                className={`edit-task-chip priority-trigger priority-${selectedPriority.value}`}
                 onClick={() => setIsPriorityOpen((prev) => !prev)}
               >
                 <Icon name="flag" size={14} />
@@ -176,13 +213,6 @@ export default function EditTaskModal({
               )}
             </div>
 
-            <button type="button">
-              <Icon name="clock" size={14} /> Reminders
-            </button>
-            <button type="button">
-              <Icon name="more" size={14} />
-            </button>
-
             {isDatePickerOpen && (
               <DatePickerPopover
                 taskDeadline={deadline}
@@ -194,10 +224,32 @@ export default function EditTaskModal({
             )}
           </div>
 
-          <div className="form-footer">
-            <div className="edit-task-footer-label">
+          {(attachment || selectedTask.attachment_url) && (
+            <div className="edit-task-attachment-row">
+              <Icon name="paperclip" size={14} />
+              {selectedTask.attachment_url && !attachment ? (
+                <a
+                  href={`${API_ORIGIN}${selectedTask.attachment_url}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {selectedTask.attachment_name || "Attachment"}
+                </a>
+              ) : (
+                <span>{attachment.name}</span>
+              )}
+              {attachment && (
+                <button
+                  type="button"
+                  onClick={() => setAttachment(null)}
+                >
+                  Remove
+                </button>
+              )}
             </div>
+          )}
 
+          <div className="edit-task-footer">
             <div className="footer-actions">
               <button
                 className="cancel-btn"
