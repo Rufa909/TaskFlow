@@ -1,16 +1,32 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
-import { LanguageProvider } from './context/LanguageContext';
+import { LanguageProvider, useLanguage } from './context/LanguageContext';
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
+function LocalizedGoogleOAuthProvider({ children }) {
+  const { language } = useLanguage();
+  const googleLocale = language === 'vi' ? 'vi' : 'en_US';
+
+  return (
+    <GoogleOAuthProvider
+      key={googleLocale}
+      clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}
+      locale={googleLocale}
+      nonce={googleLocale}
+    >
+      {children}
+    </GoogleOAuthProvider>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}>
-      <LanguageProvider>
+    <LanguageProvider>
+      <LocalizedGoogleOAuthProvider>
         <App />
-      </LanguageProvider>
-    </GoogleOAuthProvider>
+      </LocalizedGoogleOAuthProvider>
+    </LanguageProvider>
   </React.StrictMode>
 );

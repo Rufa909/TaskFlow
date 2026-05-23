@@ -13,6 +13,7 @@ const getPublicUser = (user) => ({
     email: user.email,
     user_photo: user.user_photo,
     email_verified: Boolean(user.email_verified),
+    auth_provider: user.auth_provider || 'local',
     created_at: user.created_at
 });
 
@@ -478,6 +479,13 @@ exports.updatePassword = async (req, res) => {
         const user = rows[0];
 
         // Kiểm tra password cũ
+        if (user.auth_provider === 'google') {
+            return res.status(403).json({
+                success: false,
+                message: 'Tai khoan Google khong the doi mat khau trong ung dung'
+            });
+        }
+
         const isMatch = await bcrypt.compare(
             currentPassword,
             user.password
@@ -514,19 +522,35 @@ exports.updatePassword = async (req, res) => {
     }
 };
 exports.googleLogin = async (req, res) => {
-  const { credential } = req.body;
+  const { credential, accessToken } = req.body;
 
-  if (!credential) {
+  if (!credential && !accessToken) {
     return res.status(400).json({ success: false, message: 'Missing Google credential' });
   }
 
   try {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID
-    });
+    let payload;
 
-    const payload = ticket.getPayload();
+    if (credential) {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID
+      });
+      payload = ticket.getPayload();
+    } else {
+      const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+
+      if (!googleRes.ok) {
+        return res.status(401).json({ success: false, message: 'Google login failed' });
+      }
+
+      payload = await googleRes.json();
+    }
+
     const email = payload.email;
     const username = payload.name || email.split('@')[0];
     const photo = payload.picture || null;
@@ -539,8 +563,8 @@ exports.googleLogin = async (req, res) => {
       const randomPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 
       const [result] = await pool.query(
-        'INSERT INTO users (username, email, password, user_photo, email_verified) VALUES (?, ?, ?, ?, 1)',
-        [username, email, randomPassword, photo]
+        'INSERT INTO users (username, email, password, user_photo, email_verified, auth_provider) VALUES (?, ?, ?, ?, 1, ?)',
+        [username, email, randomPassword, photo, 'google']
       );
 
       await pool.query('INSERT INTO projects (owner_id, name) VALUES (?, ?)', [result.insertId, 'Project1']);

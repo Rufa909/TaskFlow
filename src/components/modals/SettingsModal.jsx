@@ -48,6 +48,7 @@ export default function SettingsModal({
   const [nameSavedMessage, setNameSavedMessage] = useState("");
 
   const savedAvatar = avatarUrl(user?.user_photo);
+  const isGoogleAccount = user?.auth_provider === "google";
 
   useEffect(() => {
     setUsername(user?.username || "");
@@ -470,19 +471,23 @@ export default function SettingsModal({
                     </div>
 
                     {/* Password */}
-                    <div
-                      className="settings-section-item"
-                      style={{ marginTop: "24px" }}
-                    >
-                      <label className="settings-label">{t("password")}</label>
-
-                      <button
-                        className="change-password-btn"
-                        onClick={() => setShowPasswordForm(true)}
+                    {!isGoogleAccount && (
+                      <div
+                        className="settings-section-item"
+                        style={{ marginTop: "24px" }}
                       >
-                        {t("changePassword")}
-                      </button>
-                    </div>
+                        <label className="settings-label">
+                          {t("password")}
+                        </label>
+
+                        <button
+                          className="change-password-btn"
+                          onClick={() => setShowPasswordForm(true)}
+                        >
+                          {t("changePassword")}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -544,10 +549,7 @@ export default function SettingsModal({
             setConfirmNewPassword("");
           }}
         >
-          <div
-            className="password-popup"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="password-popup" onClick={(e) => e.stopPropagation()}>
             <div className="password-popup-header">
               <h3>Change password</h3>
               <button

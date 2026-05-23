@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../api/axiosInstance';
+import { useAuth } from './AuthContext';
 
 const TeamsContext = createContext();
 
@@ -7,6 +8,7 @@ export function TeamsProvider({ children }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
   const [invitationCount, setInvitationCount] = useState(0);
+  const { user, loading } = useAuth();
 
   const openTeamModal = (project) => {
     if (project) {
@@ -20,6 +22,11 @@ export function TeamsProvider({ children }) {
   };
 
   const refreshInvitationCount = useCallback(async () => {
+    if (!user) {
+      setInvitationCount(0);
+      return;
+    }
+
     try {
       const res = await api.get('/teams/invitations');
       const invitations = res.data.invitations || [];
@@ -27,12 +34,13 @@ export function TeamsProvider({ children }) {
     } catch (err) {
       console.error('Cannot load invitation count', err);
     }
-  }, []);
+  }, [user]);
 
   // Refresh count on mount
   useEffect(() => {
+    if (loading) return;
     refreshInvitationCount();
-  }, [refreshInvitationCount]);
+  }, [loading, refreshInvitationCount]);
 
   return (
     <TeamsContext.Provider
