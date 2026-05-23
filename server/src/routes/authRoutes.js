@@ -4,6 +4,7 @@ const router = require('express').Router();
 const {
   register,
   login,
+  googleLogin,
   getMe,
   updateAvatar,
   updateUsername,
@@ -18,7 +19,7 @@ const auth = require('../middleware/authMiddleware');
 // ─── Public routes (không cần token) ──────────────
 // POST /api/auth/register → tạo tài khoản mới
 router.post('/register', register);
-
+router.post('/google', googleLogin);
 // POST /api/auth/login → đăng nhập, nhận token
 router.post('/login', login);
 router.get('/verify-email', verifyEmail);

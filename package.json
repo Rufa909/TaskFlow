@@ -12,17 +12,21 @@
     "dev:all": "start npm run server && npm run dev"
   },
   "dependencies": {
+    "@react-oauth/google": "^0.13.5",
     "axios": "^1.16.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "google-auth-library": "^10.6.2",
+    "i18next": "^26.2.0",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.22.3",
     "nodemailer": "^8.0.7",
     "react": "^19.2.6",
     "react-datepicker": "^9.1.0",
     "react-dom": "^19.2.6",
+    "react-i18next": "^17.0.8",
     "react-router-dom": "^7.15.0"
   },
   "devDependencies": {

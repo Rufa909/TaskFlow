@@ -5,7 +5,8 @@ const nodemailer = require('nodemailer');
 const fs = require('fs/promises');
 const path = require('path');
 const pool = require('../config/db');
-
+const { OAuth2Client } = require('google-auth-library');
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const getPublicUser = (user) => ({
     id: user.user_id,
     username: user.username,
@@ -511,4 +512,53 @@ exports.updatePassword = async (req, res) => {
             message: 'Co loi xay ra'
         });
     }
+};
+exports.googleLogin = async (req, res) => {
+  const { credential } = req.body;
+
+  if (!credential) {
+    return res.status(400).json({ success: false, message: 'Missing Google credential' });
+  }
+
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const username = payload.name || email.split('@')[0];
+    const photo = payload.picture || null;
+
+    const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+
+    let user = rows[0];
+
+    if (!user) {
+      const randomPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+
+      const [result] = await pool.query(
+        'INSERT INTO users (username, email, password, user_photo, email_verified) VALUES (?, ?, ?, ?, 1)',
+        [username, email, randomPassword, photo]
+      );
+
+      await pool.query('INSERT INTO projects (owner_id, name) VALUES (?, ?)', [result.insertId, 'Project1']);
+
+      const [newRows] = await pool.query('SELECT * FROM users WHERE user_id = ?', [result.insertId]);
+      user = newRows[0];
+    }
+
+    const token = createToken(user);
+
+    return res.json({
+      success: true,
+      message: 'Dang nhap Google thanh cong',
+      token,
+      user: getPublicUser(user)
+    });
+  } catch (err) {
+    console.error('Loi Google login:', err);
+    return res.status(401).json({ success: false, message: 'Google login failed' });
+  }
 };

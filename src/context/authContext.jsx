@@ -60,6 +60,16 @@ export const AuthProvider = ({ children }) => {
     return res.data;
   };
 
+  const loginWithGoogle = async (credential) => {
+    const res = await api.post('/auth/google', { credential });
+
+    localStorage.setItem('token', res.data.token);
+    localStorage.setItem('user', JSON.stringify(res.data.user));
+
+    setUser(res.data.user);
+    return res.data;
+  };
+
   // Hàm logout: xóa token và reset state
   const logout = () => {
     localStorage.removeItem('token');
@@ -73,12 +83,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
 };
-
 // Custom hook để dùng AuthContext dễ hơn
 // Thay vì useContext(AuthContext) ở mọi nơi → chỉ cần useAuth()
 export const useAuth = () => {
