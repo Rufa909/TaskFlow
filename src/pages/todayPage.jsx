@@ -42,9 +42,10 @@ export default function TodayPage() {
   const [taskPriority, setTaskPriority] = useState("medium");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
-  
+  const [taskAttachment, setTaskAttachment] = useState(null);
+
   // To allow selecting project in AddTaskForm if needed
-  const [activeProject, setActiveProject] = useState(null); 
+  const [activeProject, setActiveProject] = useState(null);
 
   // Profile dropdown state
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -90,7 +91,7 @@ export default function TodayPage() {
 
   const handleDeleteTask = async (taskId) => {
     // We need project_id to delete. task object from /tasks/today has project_id
-    const task = tasks.find(t => t.task_id === taskId);
+    const task = tasks.find((t) => t.task_id === taskId);
     if (!task) return;
     try {
       await api.delete(`/projects/${task.project_id}/tasks/${taskId}`);
@@ -102,7 +103,7 @@ export default function TodayPage() {
   };
 
   const handleUpdateTask = async (taskId, updatedData) => {
-    const task = tasks.find(t => t.task_id === taskId);
+    const task = tasks.find((t) => t.task_id === taskId);
     if (!task) return;
     try {
       const res = await api.put(
@@ -112,9 +113,11 @@ export default function TodayPage() {
       const updatedTask = {
         ...res.data.task,
         ...updatedData,
-        project_name: task.project_name
+        project_name: task.project_name,
       };
-      setTasks((prev) => prev.map((t) => (t.task_id === taskId ? updatedTask : t)));
+      setTasks((prev) =>
+        prev.map((t) => (t.task_id === taskId ? updatedTask : t)),
+      );
     } catch (err) {
       console.error(err);
       alert("Cannot update task");
@@ -125,7 +128,9 @@ export default function TodayPage() {
     if (!task?.task_id || !task?.project_id) return;
 
     try {
-      await api.post(`/projects/${task.project_id}/tasks/${task.task_id}/complete`);
+      await api.post(
+        `/projects/${task.project_id}/tasks/${task.task_id}/complete`,
+      );
       setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
@@ -138,16 +143,24 @@ export default function TodayPage() {
     const projId = activeProject.project_id;
 
     try {
-      const res = await api.post(`/projects/${projId}/tasks`, {
-        title: newTaskTitle.trim(),
-        description: newTaskDesc.trim(),
-        deadline: taskDeadline,
-        time: taskTime,
-        priority: taskPriority,
-      });
+      const formData = new FormData();
+      formData.append("title", newTaskTitle.trim());
+      formData.append("description", newTaskDesc.trim());
+      formData.append(
+        "deadline",
+        taskDeadline ? taskDeadline.toISOString() : "",
+      );
+      formData.append("time", taskTime || "");
+      formData.append("priority", taskPriority);
+
+      if (taskAttachment) {
+        formData.append("attachment", taskAttachment);
+      }
+
+      const res = await api.post(`/projects/${projId}/tasks`, formData);
       const newTask = {
         ...res.data.task,
-        project_name: activeProject.name
+        project_name: activeProject.name,
       };
 
       setTasks([...tasks, newTask]);
@@ -157,10 +170,11 @@ export default function TodayPage() {
       setTaskDeadline(new Date());
       setTaskTime("");
       setTaskPriority("medium");
+      setTaskAttachment(null);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert("Error adding task");
+      alert(err.response?.data?.message || "Error adding task");
     }
   };
 
@@ -189,7 +203,11 @@ export default function TodayPage() {
       await api.delete(`/projects/${projectId}`);
       setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
       if (activeProject?.project_id === projectId) {
-        setActiveProject(projects.length > 1 ? projects.find(p => p.project_id !== projectId) : null);
+        setActiveProject(
+          projects.length > 1
+            ? projects.find((p) => p.project_id !== projectId)
+            : null,
+        );
       }
     } catch (err) {
       alert(t("cannotDeleteProject"));
@@ -229,23 +247,24 @@ export default function TodayPage() {
 
         <div className="task-list-container">
           <div className="today-header">
-             <h1 className="page-title today-title">Today</h1>
-             <div className="today-task-count">
-                <Icon name="checkCircle" size={14} /> {tasks.length} task{tasks.length !== 1 ? 's' : ''}
-             </div>
+            <h1 className="page-title today-title">Today</h1>
+            <div className="today-task-count">
+              <Icon name="checkCircle" size={14} /> {tasks.length} task
+              {tasks.length !== 1 ? "s" : ""}
+            </div>
           </div>
 
           <div className="task-section">
             {loadingTasks ? (
-               <div style={{ color: '#666' }}>Loading tasks...</div>
+              <div style={{ color: "#666" }}>Loading tasks...</div>
             ) : (
-                <TaskList
-                  tasks={tasks}
-                  handleDeleteTask={handleDeleteTask}
-                  handleUpdateTask={handleUpdateTask}
-                  handleCompleteTask={handleCompleteTask}
-                  setSelectedTask={setSelectedTask}
-                />
+              <TaskList
+                tasks={tasks}
+                handleDeleteTask={handleDeleteTask}
+                handleUpdateTask={handleUpdateTask}
+                handleCompleteTask={handleCompleteTask}
+                setSelectedTask={setSelectedTask}
+              />
             )}
 
             {isAddingTask ? (
@@ -259,6 +278,8 @@ export default function TodayPage() {
                 setTaskDeadline={setTaskDeadline}
                 taskTime={taskTime}
                 setTaskTime={setTaskTime}
+                taskAttachment={taskAttachment}
+                setTaskAttachment={setTaskAttachment}
                 taskPriority={taskPriority}
                 setTaskPriority={setTaskPriority}
                 isDatePickerOpen={isDatePickerOpen}

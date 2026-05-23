@@ -55,6 +55,8 @@ export default function UpcomingPage() {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [selectedTask, setSelectedTask] = useState(null);
 
+  const [taskAttachment, setTaskAttachment] = useState(null);
+
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
@@ -174,7 +176,9 @@ export default function UpcomingPage() {
     if (!task?.task_id || !task?.project_id) return;
 
     try {
-      await api.post(`/projects/${task.project_id}/tasks/${task.task_id}/complete`);
+      await api.post(
+        `/projects/${task.project_id}/tasks/${task.task_id}/complete`,
+      );
       setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
@@ -186,13 +190,24 @@ export default function UpcomingPage() {
     if (!newTaskTitle.trim() || !activeProject) return;
 
     try {
-      const res = await api.post(`/projects/${activeProject.project_id}/tasks`, {
-        title: newTaskTitle.trim(),
-        description: newTaskDesc.trim(),
-        deadline: taskDeadline,
-        time: taskTime,
-        priority: taskPriority,
-      });
+      const formData = new FormData();
+      formData.append("title", newTaskTitle.trim());
+      formData.append("description", newTaskDesc.trim());
+      formData.append(
+        "deadline",
+        taskDeadline ? taskDeadline.toISOString() : "",
+      );
+      formData.append("time", taskTime || "");
+      formData.append("priority", taskPriority);
+
+      if (taskAttachment) {
+        formData.append("attachment", taskAttachment);
+      }
+
+      const res = await api.post(
+        `/projects/${activeProject.project_id}/tasks`,
+        formData,
+      );
       const newTask = {
         ...res.data.task,
         project_name: activeProject.name,
@@ -211,10 +226,11 @@ export default function UpcomingPage() {
       setTaskDeadline(tomorrow());
       setTaskTime("");
       setTaskPriority("medium");
+      setTaskAttachment(null);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert("Error adding task");
+      alert(err.response?.data?.message || "Error adding task");
     }
   };
 
@@ -243,10 +259,14 @@ export default function UpcomingPage() {
 
     try {
       await api.delete(`/projects/${projectId}`);
-      setProjects((prev) => prev.filter((project) => project.project_id !== projectId));
+      setProjects((prev) =>
+        prev.filter((project) => project.project_id !== projectId),
+      );
       setTasks((prev) => prev.filter((task) => task.project_id !== projectId));
       if (activeProject?.project_id === projectId) {
-        setActiveProject(projects.find((project) => project.project_id !== projectId) || null);
+        setActiveProject(
+          projects.find((project) => project.project_id !== projectId) || null,
+        );
       }
     } catch (err) {
       alert(t("cannotDeleteProject"));
@@ -287,7 +307,9 @@ export default function UpcomingPage() {
           <div className="upcoming-header">
             <div>
               <h1 className="page-title upcoming-title">Upcoming</h1>
-              <p className="upcoming-subtitle">Future tasks across all projects</p>
+              <p className="upcoming-subtitle">
+                Future tasks across all projects
+              </p>
             </div>
             <div className="upcoming-task-count">
               <Icon name="upcoming" size={14} />
@@ -326,6 +348,8 @@ export default function UpcomingPage() {
                 setTaskDeadline={setTaskDeadline}
                 taskTime={taskTime}
                 setTaskTime={setTaskTime}
+                taskAttachment={taskAttachment}
+                setTaskAttachment={setTaskAttachment}
                 taskPriority={taskPriority}
                 setTaskPriority={setTaskPriority}
                 isDatePickerOpen={isDatePickerOpen}
@@ -338,7 +362,10 @@ export default function UpcomingPage() {
                 setIsAddingTask={setIsAddingTask}
               />
             ) : (
-              <button className="add-task-btn" onClick={() => setIsAddingTask(true)}>
+              <button
+                className="add-task-btn"
+                onClick={() => setIsAddingTask(true)}
+              >
                 <span className="icon">
                   <Icon name="plus" size={18} />
                 </span>

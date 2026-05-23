@@ -458,6 +458,29 @@ body {
   color: var(--text-secondary);
   margin-top: 4px;
 }
+
+.task-attachment-link {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #2563eb;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.task-attachment-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-attachment-link:hover {
+  text-decoration: underline;
+}
+
 .task-more-btn {
   position: absolute;
   top: 8px;
@@ -869,7 +892,8 @@ body {
   gap: 8px;
   margin-bottom: 12px;
 }
-.form-actions-row button {
+.form-actions-row button,
+.form-actions-row .attachment-btn {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -880,8 +904,18 @@ body {
   cursor: pointer;
   font-size: 12px;
   color: var(--text-secondary);
+  line-height: 1.2;
+  white-space: nowrap;
 }
-.form-actions-row button:hover {
+
+.form-actions-row .attachment-btn {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.form-actions-row button:hover,
+.form-actions-row .attachment-btn:hover {
   background-color: #f5f5f5;
   color: var(--text-main);
 }
@@ -1448,7 +1482,8 @@ body {
   margin-bottom: 12px;
 }
 
-.form-actions-row button {
+.form-actions-row button,
+.form-actions-row .attachment-btn {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1459,9 +1494,18 @@ body {
   cursor: pointer;
   font-size: 12px;
   color: var(--text-secondary);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
-.form-actions-row button:hover {
+.form-actions-row .attachment-btn {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.form-actions-row button:hover,
+.form-actions-row .attachment-btn:hover {
   background-color: #f5f5f5;
   color: var(--text-main);
 }

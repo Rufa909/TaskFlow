@@ -1,34 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { useLanguage } from '../context/LanguageContext';
-import api from '../api/axiosInstance';
-import { getTranslation } from '../i18n/translations';
-import TaskList from '../components/task/TaskList';
-import AddTaskForm from '../components/task/AddTaskForm';
-import Icon from '../components/common/Icon';
-import Sidebar from '../components/sidebar/Sidebar';
-import SettingsModal from '../components/modals/SettingsModal';
-import EditTaskModal from '../components/modals/EditTaskModal';
-import { useFilters } from '../context/FiltersContext';
-import { useTeams } from '../context/TeamsContext';
-import './InboxPage.css';
+import React, { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
+import api from "../api/axiosInstance";
+import { getTranslation } from "../i18n/translations";
+import TaskList from "../components/task/TaskList";
+import AddTaskForm from "../components/task/AddTaskForm";
+import Icon from "../components/common/Icon";
+import Sidebar from "../components/sidebar/Sidebar";
+import SettingsModal from "../components/modals/SettingsModal";
+import EditTaskModal from "../components/modals/EditTaskModal";
+import { useFilters } from "../context/FiltersContext";
+import { useTeams } from "../context/TeamsContext";
+import "./InboxPage.css";
 
-const API_URL = 'http://localhost:5000';
+const API_URL = "http://localhost:5000";
 
 function avatarUrl(photo) {
-  if (!photo) return '';
-  return photo.startsWith('http') || photo.startsWith('data:')
+  if (!photo) return "";
+  return photo.startsWith("http") || photo.startsWith("data:")
     ? photo
     : `${API_URL}${photo}`;
 }
 
 function timeAgo(dateStr) {
-  if (!dateStr) return '';
+  if (!dateStr) return "";
   const now = new Date();
   const date = new Date(dateStr);
   const diffMs = now - date;
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return 'Just now';
+  if (diffMins < 1) return "Just now";
   if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
@@ -40,9 +40,9 @@ function timeAgo(dateStr) {
 export default function InboxPage() {
   const { user, logout, updateUser } = useAuth();
   const { language, setLanguage } = useLanguage();
-  
+
   const t = (key) => getTranslation(language, key);
-  
+
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,18 +60,20 @@ export default function InboxPage() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState('account');
+  const [activeSettingsTab, setActiveSettingsTab] = useState("account");
 
   // Task UI states
   const [isAddingTask, setIsAddingTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDesc, setNewTaskDesc] = useState('');
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDesc, setNewTaskDesc] = useState("");
   const [taskDeadline, setTaskDeadline] = useState(null);
-  const [taskTime, setTaskTime] = useState('');
-  const [taskPriority, setTaskPriority] = useState('medium');
+  const [taskTime, setTaskTime] = useState("");
+  const [taskPriority, setTaskPriority] = useState("medium");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
+
+  const [taskAttachment, setTaskAttachment] = useState(null);
 
   // Selected task for editing
   const [selectedTask, setSelectedTask] = useState(null);
@@ -83,10 +85,10 @@ export default function InboxPage() {
     const fetchProjects = async () => {
       setLoadingProjects(true);
       try {
-        const res = await api.get('/projects');
+        const res = await api.get("/projects");
         setProjects(res.data.projects || []);
       } catch (err) {
-        console.error('Cannot load projects', err);
+        console.error("Cannot load projects", err);
       } finally {
         setLoadingProjects(false);
       }
@@ -99,10 +101,10 @@ export default function InboxPage() {
     const fetchTasks = async () => {
       setLoading(true);
       try {
-        const res = await api.get('/tasks');
+        const res = await api.get("/tasks");
         setTasks(res.data.tasks || []);
       } catch (err) {
-        console.error('Cannot load inbox tasks', err);
+        console.error("Cannot load inbox tasks", err);
       } finally {
         setLoading(false);
       }
@@ -115,10 +117,10 @@ export default function InboxPage() {
     const fetchInvitations = async () => {
       setLoadingInvitations(true);
       try {
-        const res = await api.get('/teams/invitations');
+        const res = await api.get("/teams/invitations");
         setInvitations(res.data.invitations || []);
       } catch (err) {
-        console.error('Cannot load invitations', err);
+        console.error("Cannot load invitations", err);
       } finally {
         setLoadingInvitations(false);
       }
@@ -134,7 +136,7 @@ export default function InboxPage() {
       setTasks((prev) => prev.filter((t) => t.task_id !== taskId));
     } catch (err) {
       console.error(err);
-      alert('Cannot delete task');
+      alert("Cannot delete task");
     }
   };
 
@@ -151,28 +153,32 @@ export default function InboxPage() {
         ...updatedData,
         project_name: task.project_name,
       };
-      setTasks((prev) => prev.map((t) => (t.task_id === taskId ? updatedTask : t)));
+      setTasks((prev) =>
+        prev.map((t) => (t.task_id === taskId ? updatedTask : t)),
+      );
       setSelectedTask(null);
     } catch (err) {
       console.error(err);
-      alert('Cannot update task');
+      alert("Cannot update task");
     }
   };
 
   const handleCompleteTask = async (task) => {
     if (!task?.task_id || !task?.project_id) return;
     try {
-      await api.post(`/projects/${task.project_id}/tasks/${task.task_id}/complete`);
+      await api.post(
+        `/projects/${task.project_id}/tasks/${task.task_id}/complete`,
+      );
       setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
-      alert('Cannot complete task');
+      alert("Cannot complete task");
     }
   };
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim()) return;
-    
+
     try {
       // If no project selected, try to add to first project or create as inbox task
       let projId = activeProject?.project_id;
@@ -181,33 +187,42 @@ export default function InboxPage() {
       }
 
       if (!projId) {
-        alert('Please select a project first');
+        alert("Please select a project first");
         return;
       }
 
-      const res = await api.post(`/projects/${projId}/tasks`, {
-        title: newTaskTitle.trim(),
-        description: newTaskDesc.trim(),
-        deadline: taskDeadline,
-        time: taskTime,
-        priority: taskPriority,
-      });
-      
+      const formData = new FormData();
+      formData.append("title", newTaskTitle.trim());
+      formData.append("description", newTaskDesc.trim());
+      formData.append(
+        "deadline",
+        taskDeadline ? taskDeadline.toISOString() : "",
+      );
+      formData.append("time", taskTime || "");
+      formData.append("priority", taskPriority);
+
+      if (taskAttachment) {
+        formData.append("attachment", taskAttachment);
+      }
+
+      const res = await api.post(`/projects/${projId}/tasks`, formData);
+
       const newTask = {
         ...res.data.task,
-        project_name: activeProject?.name || projects[0]?.name || 'Project',
+        project_name: activeProject?.name || projects[0]?.name || "Project",
       };
-      
+
       setTasks((prev) => [newTask, ...prev]);
-      setNewTaskTitle('');
-      setNewTaskDesc('');
+      setNewTaskTitle("");
+      setNewTaskDesc("");
       setTaskDeadline(null);
-      setTaskTime('');
-      setTaskPriority('medium');
+      setTaskTime("");
+      setTaskPriority("medium");
+      setTaskAttachment(null);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert('Cannot add task');
+      alert(err.response?.data?.message || "Cannot add task");
     }
   };
 
@@ -223,7 +238,9 @@ export default function InboxPage() {
 
       // Remove from list after animation
       setTimeout(() => {
-        setInvitations((prev) => prev.filter((inv) => inv.invitation_id !== invitationId));
+        setInvitations((prev) =>
+          prev.filter((inv) => inv.invitation_id !== invitationId),
+        );
         setFadingIds((prev) => {
           const next = new Set(prev);
           next.delete(invitationId);
@@ -232,7 +249,7 @@ export default function InboxPage() {
         refreshInvitationCount();
       }, 450);
     } catch (err) {
-      console.error('Cannot respond to invitation', err);
+      console.error("Cannot respond to invitation", err);
     } finally {
       setRespondingId(null);
     }
@@ -241,7 +258,11 @@ export default function InboxPage() {
   const { filters } = useFilters();
 
   const filtered = tasks.filter((task) => {
-    if (filters.priorities.length > 0 && (!task.priority || !filters.priorities.includes(task.priority))) return false;
+    if (
+      filters.priorities.length > 0 &&
+      (!task.priority || !filters.priorities.includes(task.priority))
+    )
+      return false;
     if (filters.labels.length > 0) {
       // tasks don't have labels in DB; skip label filtering for now
     }
@@ -249,7 +270,7 @@ export default function InboxPage() {
   });
 
   const handleLogout = () => {
-    if (window.confirm(t('confirmLogout'))) {
+    if (window.confirm(t("confirmLogout"))) {
       logout();
     }
   };
@@ -301,7 +322,9 @@ export default function InboxPage() {
               </span>
               Team Invitations
               {invitations.length > 0 && (
-                <span className="invitation-count-badge">{invitations.length}</span>
+                <span className="invitation-count-badge">
+                  {invitations.length}
+                </span>
               )}
             </div>
 
@@ -319,7 +342,7 @@ export default function InboxPage() {
               invitations.map((inv) => (
                 <div
                   key={inv.invitation_id}
-                  className={`inbox-invitation-card ${fadingIds.has(inv.invitation_id) ? 'fading-out' : ''}`}
+                  className={`inbox-invitation-card ${fadingIds.has(inv.invitation_id) ? "fading-out" : ""}`}
                 >
                   {/* Sender avatar */}
                   <div className="inv-sender-avatar">
@@ -327,28 +350,36 @@ export default function InboxPage() {
                       <img
                         src={avatarUrl(inv.sender_photo)}
                         alt=""
-                        onError={(e) => { e.target.style.display = 'none'; }}
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
                       />
                     ) : (
-                      (inv.sender_username || 'U').charAt(0).toUpperCase()
+                      (inv.sender_username || "U").charAt(0).toUpperCase()
                     )}
                   </div>
 
                   {/* Info */}
                   <div className="inv-info">
                     <div className="inv-sender-row">
-                      <span className="inv-sender-name">{inv.sender_username || 'Unknown'}</span>
+                      <span className="inv-sender-name">
+                        {inv.sender_username || "Unknown"}
+                      </span>
                       {inv.sender_email && (
-                        <span className="inv-sender-email">{inv.sender_email}</span>
+                        <span className="inv-sender-email">
+                          {inv.sender_email}
+                        </span>
                       )}
                     </div>
                     <div className="inv-details-row">
                       <span className="inv-project-badge">
                         <Icon name="hash" size={11} />
-                        {inv.project_name || 'Project'}
+                        {inv.project_name || "Project"}
                       </span>
                       {inv.created_at && (
-                        <span className="inv-timestamp">{timeAgo(inv.created_at)}</span>
+                        <span className="inv-timestamp">
+                          {timeAgo(inv.created_at)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -357,7 +388,7 @@ export default function InboxPage() {
                   <div className="inv-actions">
                     <button
                       className="inv-accept-btn"
-                      onClick={() => handleRespond(inv.invitation_id, 'accept')}
+                      onClick={() => handleRespond(inv.invitation_id, "accept")}
                       disabled={respondingId === inv.invitation_id}
                     >
                       <Icon name="check" size={14} />
@@ -365,7 +396,9 @@ export default function InboxPage() {
                     </button>
                     <button
                       className="inv-decline-btn"
-                      onClick={() => handleRespond(inv.invitation_id, 'decline')}
+                      onClick={() =>
+                        handleRespond(inv.invitation_id, "decline")
+                      }
                       disabled={respondingId === inv.invitation_id}
                     >
                       <Icon name="x" size={14} />
@@ -391,7 +424,7 @@ export default function InboxPage() {
                 <button
                   className="add-task-btn"
                   onClick={() => setIsAddingTask(true)}
-                  style={{ marginTop: '16px' }}
+                  style={{ marginTop: "16px" }}
                 >
                   <span className="icon">
                     <Icon name="plus" size={18} />
@@ -413,6 +446,8 @@ export default function InboxPage() {
                   setTaskDeadline={setTaskDeadline}
                   taskTime={taskTime}
                   setTaskTime={setTaskTime}
+                  taskAttachment={taskAttachment}
+                  setTaskAttachment={setTaskAttachment}
                   taskPriority={taskPriority}
                   setTaskPriority={setTaskPriority}
                   isDatePickerOpen={isDatePickerOpen}
@@ -428,7 +463,7 @@ export default function InboxPage() {
                 <button
                   className="add-task-btn"
                   onClick={() => setIsAddingTask(true)}
-                  style={{ marginBottom: '20px' }}
+                  style={{ marginBottom: "20px" }}
                 >
                   <span className="icon">
                     <Icon name="plus" size={18} />

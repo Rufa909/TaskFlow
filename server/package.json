@@ -6,5 +6,8 @@
   "scripts": {
     "dev": "node src/app.js",
     "start": "node src/app.js"
+  },
+  "dependencies": {
+    "multer": "^2.1.1"
   }
 }

@@ -43,6 +43,7 @@ export default function HomePage() {
   const [editProjectName, setEditProjectName] = useState("");
   const [editingProjectSaving, setEditingProjectSaving] = useState(false);
   const [tasksByProject, setTasksByProject] = useState({});
+  const [taskAttachment, setTaskAttachment] = useState(null);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
@@ -172,13 +173,21 @@ export default function HomePage() {
     const projId = activeProject.project_id;
 
     try {
-      const res = await api.post(`/projects/${projId}/tasks`, {
-        title: newTaskTitle.trim(),
-        description: newTaskDesc.trim(),
-        deadline: taskDeadline,
-        time: taskTime,
-        priority: taskPriority,
-      });
+      const formData = new FormData();
+      formData.append("title", newTaskTitle.trim());
+      formData.append("description", newTaskDesc.trim());
+      formData.append(
+        "deadline",
+        taskDeadline ? taskDeadline.toISOString() : "",
+      );
+      formData.append("time", taskTime || "");
+      formData.append("priority", taskPriority);
+
+      if (taskAttachment) {
+        formData.append("attachment", taskAttachment);
+      }
+
+      const res = await api.post(`/projects/${projId}/tasks`, formData);
       const newTask = res.data.task;
 
       const existing = tasksByProject[projId] || [];
@@ -192,10 +201,11 @@ export default function HomePage() {
       setTaskDeadline(null);
       setTaskTime("");
       setTaskPriority("medium");
+      setTaskAttachment(null);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert("Error adding task");
+      alert(err.response?.data?.message || "Error adding task");
     }
   };
   const handleCompleteTask = async (task) => {
@@ -272,10 +282,17 @@ export default function HomePage() {
     if (!projectToEdit || !editProjectName.trim()) return;
     setEditingProjectSaving(true);
     try {
-      const res = await api.put(`/projects/${projectToEdit.project_id}`, { name: editProjectName.trim() });
+      const res = await api.put(`/projects/${projectToEdit.project_id}`, {
+        name: editProjectName.trim(),
+      });
       const updated = res.data.project;
-      setProjects((prev) => prev.map((p) => (p.project_id === projectToEdit.project_id ? updated : p)));
-      if (activeProject?.project_id === projectToEdit.project_id) setActiveProject(updated);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.project_id === projectToEdit.project_id ? updated : p,
+        ),
+      );
+      if (activeProject?.project_id === projectToEdit.project_id)
+        setActiveProject(updated);
       setIsEditProjectModalOpen(false);
       setProjectToEdit(null);
     } catch (err) {
@@ -293,7 +310,11 @@ export default function HomePage() {
   const { filters } = useFilters();
 
   const filteredTasks = currentTasks.filter((task) => {
-    if (filters.priorities.length > 0 && (!task.priority || !filters.priorities.includes(task.priority))) return false;
+    if (
+      filters.priorities.length > 0 &&
+      (!task.priority || !filters.priorities.includes(task.priority))
+    )
+      return false;
     // labels not implemented on tasks
     return true;
   });
@@ -407,6 +428,8 @@ export default function HomePage() {
                     setTaskDeadline={setTaskDeadline}
                     taskTime={taskTime}
                     setTaskTime={setTaskTime}
+                    taskAttachment={taskAttachment}
+                    setTaskAttachment={setTaskAttachment}
                     taskPriority={taskPriority}
                     setTaskPriority={setTaskPriority}
                     isDatePickerOpen={isDatePickerOpen}

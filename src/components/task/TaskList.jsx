@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "../common/Icon";
 
+const API_ORIGIN = "http://localhost:5000";
+
 export default function TaskList({
   tasks,
   handleDeleteTask,
@@ -112,6 +114,19 @@ export default function TaskList({
 
             {task.description && (
               <div className="task-meta">{task.description}</div>
+            )}
+
+            {task.attachment_url && (
+              <a
+                href={`${API_ORIGIN}${task.attachment_url}`}
+                target="_blank"
+                rel="noreferrer"
+                className="task-attachment-link"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Icon name="paperclip" size={14} />
+                <span>{task.attachment_name || "Attachment"}</span>
+              </a>
             )}
 
             {task.deadline && (

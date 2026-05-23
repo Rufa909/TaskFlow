@@ -19,6 +19,9 @@ export default function AddTaskForm({
   taskTime,
   setTaskTime,
 
+  taskAttachment,
+  setTaskAttachment,
+
   taskPriority,
   setTaskPriority,
 
@@ -88,9 +91,16 @@ export default function AddTaskForm({
             </span>
           )}
         </button>
-        <button>
-          <Icon name="paperclip" size={14} /> Attachment
-        </button>
+        <label className="attachment-btn">
+          <Icon name="paperclip" size={14} />
+          {taskAttachment ? taskAttachment.name : "Attachment"}
+          <input
+            type="file"
+            hidden
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+            onChange={(e) => setTaskAttachment(e.target.files[0] || null)}
+          />
+        </label>
         <div className="priority-picker">
           <button
             type="button"
@@ -182,6 +192,7 @@ export default function AddTaskForm({
               setNewTaskDesc("");
               setTaskDeadline(null);
               setTaskTime("");
+              setTaskAttachment(null);
               setTaskPriority("medium");
             }}
           >

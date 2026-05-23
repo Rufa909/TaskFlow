@@ -1,5 +1,6 @@
 const pool = require("../config/db");
 let completionColumnReady;
+let attachmentTableReady;
 
 async function ensureTaskCompletionColumn() {
   if (!completionColumnReady) {
@@ -23,6 +24,29 @@ async function ensureTaskCompletionColumn() {
   }
 
   return completionColumnReady;
+}
+
+async function ensureTaskAttachmentTable() {
+  if (!attachmentTableReady) {
+    attachmentTableReady = pool.query(
+      `
+      CREATE TABLE IF NOT EXISTS attachments (
+        attachment_id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        originalName VARCHAR(255) NOT NULL,
+        file_url VARCHAR(500) NOT NULL,
+        fileName VARCHAR(255) NOT NULL,
+        mimeType VARCHAR(100),
+        size INT,
+        upload_by INT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_attachments_task_id (task_id)
+      )
+      `,
+    );
+  }
+
+  return attachmentTableReady;
 }
 
 // GET /api/projects/:projectId/tasks
@@ -58,6 +82,7 @@ exports.createTask = async (req, res) => {
     const { projectId } = req.params;
     const { title, description, deadline, time, priority } = req.body;
     await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
 
     let deadlineDate = null;
     if (deadline) {
@@ -87,9 +112,42 @@ exports.createTask = async (req, res) => {
       ],
     );
 
-    const [rows] = await pool.query("SELECT * FROM tasks WHERE task_id = ?", [
-      result.insertId,
-    ]);
+    const taskId = result.insertId;
+
+    if (req.file) {
+      await pool.query(
+        `
+        INSERT INTO attachments
+        (task_id, originalName, file_url, fileName, mimeType, size, upload_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          taskId,
+          req.file.originalname,
+          `/uploads/${req.file.filename}`,
+          req.file.filename,
+          req.file.mimetype,
+          req.file.size,
+          req.user.id,
+        ],
+      );
+    }
+
+    const [rows] = await pool.query(
+      `
+      SELECT
+        t.*,
+        ta.attachment_id,
+        ta.originalName AS attachment_name,
+        ta.file_url AS attachment_url,
+        ta.mimeType AS attachment_type,
+        ta.size AS attachment_size
+      FROM tasks t
+      LEFT JOIN attachments ta ON ta.task_id = t.task_id
+      WHERE t.task_id = ?
+      `,
+      [taskId],
+    );
     res.status(201).json({ success: true, task: rows[0] });
   } catch (err) {
     console.error("Loi createTask:", err);
@@ -102,7 +160,6 @@ exports.updateTask = async (req, res) => {
     const { projectId, taskId } = req.params;
     const { title, description, deadline, time, priority } = req.body;
     await ensureTaskCompletionColumn();
-
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -298,8 +355,8 @@ exports.getAllTasks = async (req, res) => {
     );
     res.json({ success: true, tasks: rows });
   } catch (err) {
-    console.error('Loi getAllTasks:', err);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
+    console.error("Loi getAllTasks:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 
@@ -367,7 +424,7 @@ exports.getTaskCountsByProject = async (req, res) => {
 
     res.json({ success: true, counts });
   } catch (err) {
-    console.error('Loi getTaskCountsByProject:', err);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
+    console.error("Loi getTaskCountsByProject:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
