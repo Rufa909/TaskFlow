@@ -35,16 +35,18 @@ export default function SettingsModal({
   const [email, setEmail] = useState(user?.email || "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [sendingVerificationEmail, setSendingVerificationEmail] = useState(false);
+  const [sendingVerificationEmail, setSendingVerificationEmail] =
+    useState(false);
   const [verificationMessage, setVerificationMessage] = useState("");
 
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState("");
   const [nameSuggestions, setNameSuggestions] = useState([]);
   const [nameSavedMessage, setNameSavedMessage] = useState("");
-  
+
   const savedAvatar = avatarUrl(user?.user_photo);
 
   useEffect(() => {
@@ -118,7 +120,9 @@ export default function SettingsModal({
       setNameSavedMessage("Name updated.");
     } catch (err) {
       if (err.response?.status === 409) {
-        setNameError(err.response.data?.message || "This name is already used.");
+        setNameError(
+          err.response.data?.message || "This name is already used.",
+        );
         setNameSuggestions(err.response.data?.suggestions || []);
         return;
       }
@@ -128,7 +132,7 @@ export default function SettingsModal({
       setSavingName(false);
     }
   };
-  
+
   const handleSavePassword = async () => {
     if (!currentPassword || !newPassword) {
       alert("Please fill all password fields.");
@@ -139,7 +143,10 @@ export default function SettingsModal({
       alert("New password must be at least 6 characters.");
       return;
     }
-
+    if (newPassword !== confirmNewPassword) {
+      alert("Confirm password does not match.");
+      return;
+    }
     try {
       setSavingPassword(true);
 
@@ -152,6 +159,7 @@ export default function SettingsModal({
 
       setCurrentPassword("");
       setNewPassword("");
+      setConfirmNewPassword("");
       setShowPasswordForm(false);
     } catch (err) {
       alert(err.response?.data?.message || "Cannot update password.");
@@ -468,60 +476,12 @@ export default function SettingsModal({
                     >
                       <label className="settings-label">{t("password")}</label>
 
-                      {!showPasswordForm ? (
-                        <button
-                          className="add-password-btn"
-                          onClick={() => setShowPasswordForm(true)}
-                        >
-                          {t("changePassword")}
-                        </button>
-                      ) : (
-                        <>
-                          <input
-                            type="password"
-                            className="settings-input"
-                            placeholder="Current password"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            style={{ marginBottom: "12px" }}
-                          />
-
-                          <input
-                            type="password"
-                            className="settings-input"
-                            placeholder="New password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                          />
-
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: "12px",
-                              marginTop: "12px",
-                            }}
-                          >
-                            <button
-                              className="change-email-btn"
-                              onClick={handleSavePassword}
-                              disabled={savingPassword}
-                            >
-                              {savingPassword ? "Saving..." : t("Save")}
-                            </button>
-
-                            <button
-                              className="add-password-btn"
-                              onClick={() => {
-                                setShowPasswordForm(false);
-                                setCurrentPassword("");
-                                setNewPassword("");
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </>
-                      )}
+                      <button
+                        className="change-password-btn"
+                        onClick={() => setShowPasswordForm(true)}
+                      >
+                        {t("changePassword")}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -568,6 +528,91 @@ export default function SettingsModal({
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPasswordForm && (
+        <div
+          className="password-popup-overlay"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowPasswordForm(false);
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmNewPassword("");
+          }}
+        >
+          <div
+            className="password-popup"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="password-popup-header">
+              <h3>Change password</h3>
+              <button
+                className="settings-close-btn"
+                onClick={() => {
+                  setShowPasswordForm(false);
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmNewPassword("");
+                }}
+              >
+                <Icon name="x" size={20} />
+              </button>
+            </div>
+
+            <div className="field-group">
+              <label className="settings-label">Current password</label>
+              <input
+                type="password"
+                className="settings-input"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+              />
+            </div>
+
+            <div className="field-group">
+              <label className="settings-label">New password</label>
+              <input
+                type="password"
+                className="settings-input"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+              />
+            </div>
+
+            <div className="field-group">
+              <label className="settings-label">Confirm new password</label>
+              <input
+                type="password"
+                className="settings-input"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+              />
+            </div>
+
+            <div className="password-popup-actions">
+              <button
+                className="change-email-btn"
+                onClick={handleSavePassword}
+                disabled={savingPassword}
+              >
+                {savingPassword ? "Saving..." : t("Save")}
+              </button>
+
+              <button
+                className="add-password-btn"
+                onClick={() => {
+                  setShowPasswordForm(false);
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmNewPassword("");
+                }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
