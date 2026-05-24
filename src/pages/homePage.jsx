@@ -287,12 +287,18 @@ export default function HomePage() {
     if (!window.confirm(t("deleteProjectConfirm"))) return;
     try {
       await api.delete(`/projects/${projectId}`);
-      setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
+      const nextProjects = projects.filter((p) => p.project_id !== projectId);
+      setProjects(nextProjects);
+      setTasksByProject((prev) => {
+        const next = { ...prev };
+        delete next[projectId];
+        return next;
+      });
       if (activeProject?.project_id === projectId) {
-        setActiveProject(null);
+        setActiveProject(nextProjects[0] || null);
       }
     } catch (err) {
-      alert(t("cannotDeleteProject"));
+      alert(err.response?.data?.message || t("cannotDeleteProject"));
     }
   };
 

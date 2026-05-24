@@ -76,6 +76,7 @@ exports.getTasks = async (req, res) => {
         ) first_attachment ON first_attachment.attachment_id = a.attachment_id
       ) ta ON ta.task_id = t.task_id
       WHERE t.project_id = ?
+        AND p.deleted_at IS NULL
         AND (
           p.owner_id = ?
           OR EXISTS (
@@ -105,6 +106,30 @@ exports.createTask = async (req, res) => {
     const { title, description, deadline, time, priority } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+
+    const [[project]] = await pool.query(
+      `SELECT p.project_id
+       FROM projects p
+       WHERE p.project_id = ?
+         AND p.deleted_at IS NULL
+         AND (
+           p.owner_id = ?
+           OR EXISTS (
+             SELECT 1
+             FROM project_members pm
+             WHERE pm.project_id = p.project_id
+               AND pm.user_id = ?
+           )
+         )`,
+      [projectId, req.user.id, req.user.id],
+    );
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
 
     let deadlineDate = null;
     if (deadline) {
@@ -213,7 +238,14 @@ exports.updateTask = async (req, res) => {
                 deadline = ?,
                 time = ?,
                 priority = ?
-            WHERE task_id = ? AND project_id = ?
+            WHERE task_id = ?
+              AND project_id = ?
+              AND deleted_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM projects p
+                WHERE p.project_id = ?
+                  AND p.deleted_at IS NULL
+              )
             `,
       [
         title.trim(),
@@ -222,6 +254,7 @@ exports.updateTask = async (req, res) => {
         time || null,
         priority || "medium",
         taskId,
+        projectId,
         projectId,
       ],
     );
@@ -323,8 +356,13 @@ exports.completeTask = async (req, res) => {
       WHERE task_id = ?
         AND project_id = ?
         AND deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM projects p
+          WHERE p.project_id = ?
+            AND p.deleted_at IS NULL
+        )
       `,
-      [taskId, projectId],
+      [taskId, projectId, projectId],
     );
 
     if (result.affectedRows === 0) {
@@ -341,6 +379,7 @@ exports.completeTask = async (req, res) => {
       LEFT JOIN projects ON projects.project_id = tasks.project_id
       WHERE tasks.task_id = ?
         AND tasks.project_id = ?
+        AND projects.deleted_at IS NULL
       `,
       [taskId, projectId],
     );
@@ -388,6 +427,7 @@ exports.getCompletedTasks = async (req, res) => {
               AND pm.user_id = ?
           )
         )
+        AND p.deleted_at IS NULL
         AND t.deleted_at IS NULL
         AND t.completed_at IS NOT NULL
       ORDER BY t.completed_at DESC
@@ -408,8 +448,16 @@ exports.deleteTask = async (req, res) => {
     const { projectId, taskId } = req.params;
     await ensureTaskCompletionColumn();
     await pool.query(
-      "UPDATE tasks SET deleted_at = NOW() WHERE task_id = ? AND project_id = ?",
-      [taskId, projectId],
+      `UPDATE tasks
+       SET deleted_at = NOW()
+       WHERE task_id = ?
+         AND project_id = ?
+         AND EXISTS (
+           SELECT 1 FROM projects p
+           WHERE p.project_id = ?
+             AND p.deleted_at IS NULL
+         )`,
+      [taskId, projectId, projectId],
     );
     res.json({ success: true, message: "Đã xóa task" });
   } catch (err) {
@@ -452,6 +500,7 @@ exports.getTasksToday = async (req, res) => {
                AND pm.user_id = ?
            )
          ) 
+         AND p.deleted_at IS NULL
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL
          AND DATE(t.deadline) = CURDATE() 
@@ -499,6 +548,7 @@ exports.getAllTasks = async (req, res) => {
                AND pm.user_id = ?
            )
          ) 
+         AND p.deleted_at IS NULL
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL 
        ORDER BY t.created_at ASC`,
@@ -523,6 +573,7 @@ exports.getTaskCounts = async (req, res) => {
        JOIN projects p ON t.project_id = p.project_id
        LEFT JOIN project_members pm ON p.project_id = pm.project_id
        WHERE (p.owner_id = ? OR pm.user_id = ?) 
+         AND p.deleted_at IS NULL
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL 
          AND DATE(t.deadline) = CURDATE()`,
@@ -536,6 +587,7 @@ exports.getTaskCounts = async (req, res) => {
        JOIN projects p ON t.project_id = p.project_id
        LEFT JOIN project_members pm ON p.project_id = pm.project_id
        WHERE (p.owner_id = ? OR pm.user_id = ?) 
+         AND p.deleted_at IS NULL
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL`,
       [userId, userId],
@@ -562,6 +614,7 @@ exports.getTaskCountsByProject = async (req, res) => {
        JOIN projects p ON t.project_id = p.project_id
        LEFT JOIN project_members pm ON p.project_id = pm.project_id
        WHERE (p.owner_id = ? OR pm.user_id = ?) 
+         AND p.deleted_at IS NULL
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL 
        GROUP BY t.project_id`,

@@ -200,16 +200,14 @@ export default function TodayPage() {
     if (!window.confirm(t("deleteProjectConfirm"))) return;
     try {
       await api.delete(`/projects/${projectId}`);
-      setProjects((prev) => prev.filter((p) => p.project_id !== projectId));
+      const nextProjects = projects.filter((p) => p.project_id !== projectId);
+      setProjects(nextProjects);
+      setTasks((prev) => prev.filter((task) => task.project_id !== projectId));
       if (activeProject?.project_id === projectId) {
-        setActiveProject(
-          projects.length > 1
-            ? projects.find((p) => p.project_id !== projectId)
-            : null,
-        );
+        setActiveProject(nextProjects[0] || null);
       }
     } catch (err) {
-      alert(t("cannotDeleteProject"));
+      alert(err.response?.data?.message || t("cannotDeleteProject"));
     }
   };
 

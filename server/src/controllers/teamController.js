@@ -55,7 +55,7 @@ const sendInvitation = async (req, res) => {
 
     // Kiểm tra project tồn tại và thuộc về sender
     const [projects] = await pool.query(
-      "SELECT * FROM projects WHERE project_id = ? AND owner_id = ?",
+      "SELECT * FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL",
       [project_id, sender_id],
     );
 
@@ -142,6 +142,7 @@ const getMyInvitations = async (req, res) => {
              JOIN projects p ON ti.project_id = p.project_id
              JOIN users u ON ti.sender_id = u.user_id
              WHERE ti.receiver_id = ? AND ti.status = 'pending'
+               AND p.deleted_at IS NULL
              ORDER BY ti.created_at DESC`,
       [req.user.id],
     );
@@ -168,7 +169,13 @@ const respondInvitation = async (req, res) => {
 
     // Kiểm tra lời mời thuộc về user hiện tại
     const [invitations] = await pool.query(
-      'SELECT * FROM team_invitations WHERE invitation_id = ? AND receiver_id = ? AND status = "pending"',
+      `SELECT ti.*
+       FROM team_invitations ti
+       JOIN projects p ON p.project_id = ti.project_id
+       WHERE ti.invitation_id = ?
+         AND ti.receiver_id = ?
+         AND ti.status = "pending"
+         AND p.deleted_at IS NULL`,
       [id, req.user.id],
     );
 
@@ -241,7 +248,8 @@ const getProjectMembers = async (req, res) => {
       `SELECT u.user_id, u.username, u.email, u.user_photo, 'owner' AS role
              FROM projects p
              JOIN users u ON p.owner_id = u.user_id
-             WHERE p.project_id = ?`,
+             WHERE p.project_id = ?
+               AND p.deleted_at IS NULL`,
       [id],
     );
 
