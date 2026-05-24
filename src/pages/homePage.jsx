@@ -10,6 +10,8 @@ import AddTaskForm from "../components/task/AddTaskForm";
 import TaskList from "../components/task/TaskList";
 import Icon from "../components/common/Icon";
 import { useFilters } from "../context/FiltersContext";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import EditProjectModal from "../components/modals/EditProjectModal";
@@ -18,6 +20,8 @@ import EditTaskModal from "../components/modals/EditTaskModal";
 
 export default function HomePage() {
   const { user, logout, updateUser } = useAuth();
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const { language, setLanguage } = useLanguage();
   const [selectedTask, setSelectedTask] = useState(null);
   const navigate = useNavigate();
@@ -129,18 +133,18 @@ export default function HomePage() {
         .get("/auth/me")
         .then((res) => updateUser(res.data.user))
         .catch((err) => console.error("Cannot refresh user:", err));
-      alert("Email verified successfully.");
+      showToast("Email verified successfully.", "success");
     } else {
-      alert("Email verification link is invalid or expired.");
+      showToast("Email verification link is invalid or expired.", "error");
     }
 
     params.delete("emailVerified");
     const query = params.toString();
     navigate(query ? `/?${query}` : "/", { replace: true });
-  }, [location.search, navigate, updateUser]);
+  }, [location.search, navigate, showToast, updateUser]);
 
-  const handleLogout = () => {
-    if (window.confirm(t("confirmLogout"))) {
+  const handleLogout = async () => {
+    if (await confirm(t("confirmLogout"), { confirmLabel: "Logout", danger: true })) {
       logout();
       navigate("/auth", { replace: true });
     }
@@ -160,7 +164,7 @@ export default function HomePage() {
       }));
     } catch (err) {
       console.error(err);
-      alert("Cannot delete task");
+      showToast("Cannot delete task", "error");
     }
   };
   const handleUpdateTask = async (taskId, updatedData) => {
@@ -188,7 +192,7 @@ export default function HomePage() {
       }));
     } catch (err) {
       console.error(err);
-      alert("Cannot update task");
+      showToast("Cannot update task", "error");
     }
   };
 
@@ -229,7 +233,7 @@ export default function HomePage() {
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Error adding task");
+      showToast(err.response?.data?.message || "Error adding task", "error");
     }
   };
   const handleCompleteTask = async (task) => {
@@ -260,7 +264,7 @@ export default function HomePage() {
       });
     } catch (err) {
       console.error(err);
-      alert("Cannot complete task");
+      showToast("Cannot complete task", "error");
     }
   };
   const handleAddProject = async () => {
@@ -276,7 +280,7 @@ export default function HomePage() {
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
-      alert(t("cannotCreateProject"));
+      showToast(t("cannotCreateProject"), "error");
     } finally {
       setSavingProject(false);
     }
@@ -284,7 +288,11 @@ export default function HomePage() {
 
   const handleDeleteProject = async (e, projectId) => {
     e.stopPropagation(); // prevent triggering project selection
-    if (!window.confirm(t("deleteProjectConfirm"))) return;
+    const confirmed = await confirm(t("deleteProjectConfirm"), {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       await api.delete(`/projects/${projectId}`);
       const nextProjects = projects.filter((p) => p.project_id !== projectId);
@@ -298,7 +306,7 @@ export default function HomePage() {
         setActiveProject(nextProjects[0] || null);
       }
     } catch (err) {
-      alert(err.response?.data?.message || t("cannotDeleteProject"));
+      showToast(err.response?.data?.message || t("cannotDeleteProject"), "error");
     }
   };
 
@@ -327,7 +335,7 @@ export default function HomePage() {
       setProjectToEdit(null);
     } catch (err) {
       console.error(err);
-      alert(t("cannotEditProject"));
+      showToast(t("cannotEditProject"), "error");
     } finally {
       setEditingProjectSaving(false);
     }

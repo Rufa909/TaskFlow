@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import Icon from "../common/Icon";
 import DatePickerPopover from "../task/DatePickerPopover";
+import { useToast } from "../../context/ToastContext";
 
 const API_ORIGIN = "http://localhost:5000";
 
@@ -10,6 +11,7 @@ export default function EditTaskModal({
   setSelectedTask,
   handleUpdateTask,
 }) {
+  const { showToast } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -90,7 +92,7 @@ export default function EditTaskModal({
     if (file && file.size > 5 * 1024 * 1024) {
       event.target.value = "";
       setAttachment(null);
-      alert("File vuot qua dung luong toi da 5MB");
+      showToast("File vượt quá dung lượng tối đa 5MB", "error");
       return;
     }
 

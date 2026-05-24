@@ -3,6 +3,7 @@ import Icon from "../common/Icon";
 import DatePicker from "react-datepicker";
 import { format, addDays, nextMonday } from "date-fns";
 import DatePickerPopover from "./DatePickerPopover";
+import { useToast } from "../../context/ToastContext";
 
 export default function AddTaskForm({
   newTaskTitle,
@@ -38,6 +39,7 @@ export default function AddTaskForm({
 
   setIsAddingTask,
 }) {
+  const { showToast } = useToast();
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
   const priorities = [
     { value: "urgent", label: "Urgent", color: "#dc2626" },
@@ -55,7 +57,7 @@ const selectedPriority =
     if (file && file.size > 5 * 1024 * 1024) {
       e.target.value = "";
       setTaskAttachment(null);
-      alert("File vượt quá dung lượng tối đa 5MB");
+      showToast("File vượt quá dung lượng tối đa 5MB", "error");
       return;
     }
 

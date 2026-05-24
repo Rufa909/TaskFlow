@@ -1,6 +1,7 @@
 import Icon from "../common/Icon";
 import api from "../../api/axiosInstance";
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "../../context/ToastContext";
 
 const API_URL = "http://localhost:5000";
 
@@ -27,6 +28,7 @@ export default function SettingsModal({
   language,
   setLanguage,
 }) {
+  const { showToast } = useToast();
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [imageError, setImageError] = useState(false);
@@ -67,11 +69,11 @@ export default function SettingsModal({
 
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      alert("Please choose an image file.");
+      showToast("Please choose an image file.", "error");
       return;
     }
     if (file.size > 4 * 1024 * 1024) {
-      alert("Photo must be smaller than 4MB.");
+      showToast("Photo must be smaller than 4MB.", "error");
       return;
     }
 
@@ -93,7 +95,7 @@ export default function SettingsModal({
       setPreviewAvatar("");
       setImageError(false);
     } catch (err) {
-      alert(err.response?.data?.message || "Cannot upload avatar.");
+      showToast(err.response?.data?.message || "Cannot upload avatar.", "error");
     } finally {
       setUploading(false);
     }
@@ -106,7 +108,7 @@ export default function SettingsModal({
     setNameSavedMessage("");
 
     if (!nextUsername) {
-      alert("Name cannot be empty.");
+      showToast("Name cannot be empty.", "error");
       return;
     }
 
@@ -128,7 +130,7 @@ export default function SettingsModal({
         return;
       }
 
-      alert(err.response?.data?.message || "Cannot update name.");
+      showToast(err.response?.data?.message || "Cannot update name.", "error");
     } finally {
       setSavingName(false);
     }
@@ -136,16 +138,16 @@ export default function SettingsModal({
 
   const handleSavePassword = async () => {
     if (!currentPassword || !newPassword) {
-      alert("Please fill all password fields.");
+      showToast("Please fill all password fields.", "error");
       return;
     }
 
     if (newPassword.length < 6) {
-      alert("New password must be at least 6 characters.");
+      showToast("New password must be at least 6 characters.", "error");
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      alert("Confirm password does not match.");
+      showToast("Confirm password does not match.", "error");
       return;
     }
     try {
@@ -156,14 +158,14 @@ export default function SettingsModal({
         newPassword,
       });
 
-      alert(res.data.message);
+      showToast(res.data.message, "success");
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
       setShowPasswordForm(false);
     } catch (err) {
-      alert(err.response?.data?.message || "Cannot update password.");
+      showToast(err.response?.data?.message || "Cannot update password.", "error");
     } finally {
       setSavingPassword(false);
     }

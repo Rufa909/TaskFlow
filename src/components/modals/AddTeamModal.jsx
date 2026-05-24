@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useTeams } from "../../context/TeamsContext";
+import { useToast } from "../../context/ToastContext";
 import api from "../../api/axiosInstance";
 import Icon from "../common/Icon";
 import "./AddTeamModal.css";
@@ -15,6 +16,7 @@ function avatarUrl(photo) {
 
 export default function AddTeamModal() {
   const { isOpen, closeTeamModal, activeProject } = useTeams();
+  const { showToast } = useToast();
 
   // Search states
   const [searchEmail, setSearchEmail] = useState("");
@@ -110,7 +112,7 @@ export default function AddTeamModal() {
         type: "success",
         text: `Invitation sent to ${searchResult.username}!`,
       });
-      alert(`Đã gửi lời mời thành công đến ${searchResult.username}!`);
+      showToast(`Đã gửi lời mời thành công đến ${searchResult.username}!`, "success");
       setSearchResult(null);
       setSearchEmail("");
       setHasSearched(false);

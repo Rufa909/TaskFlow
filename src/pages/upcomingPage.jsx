@@ -4,6 +4,8 @@ import api from "../api/axiosInstance";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import { getTranslation } from "../i18n/translations";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import "./upcomingPage.css";
 
 import AddTaskForm from "../components/task/AddTaskForm";
@@ -44,6 +46,8 @@ function formatGroupDate(dateValue) {
 
 export default function UpcomingPage() {
   const { user, logout, updateUser } = useAuth();
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const { language, setLanguage } = useLanguage();
   const navigate = useNavigate();
   const t = (key) => getTranslation(language, key);
@@ -125,8 +129,8 @@ export default function UpcomingPage() {
     }, {});
   }, [tasks]);
 
-  const handleLogout = () => {
-    if (window.confirm(t("confirmLogout"))) {
+  const handleLogout = async () => {
+    if (await confirm(t("confirmLogout"), { confirmLabel: "Logout", danger: true })) {
       logout();
       navigate("/auth", { replace: true });
     }
@@ -141,7 +145,7 @@ export default function UpcomingPage() {
       setTasks((prev) => prev.filter((item) => item.task_id !== taskId));
     } catch (err) {
       console.error(err);
-      alert("Cannot delete task");
+      showToast("Cannot delete task", "error");
     }
   };
 
@@ -167,7 +171,7 @@ export default function UpcomingPage() {
       );
     } catch (err) {
       console.error(err);
-      alert("Cannot update task");
+      showToast("Cannot update task", "error");
     }
   };
 
@@ -181,7 +185,7 @@ export default function UpcomingPage() {
       setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
-      alert("Cannot complete task");
+      showToast("Cannot complete task", "error");
     }
   };
 
@@ -229,7 +233,7 @@ export default function UpcomingPage() {
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Error adding task");
+      showToast(err.response?.data?.message || "Error adding task", "error");
     }
   };
 
@@ -246,7 +250,7 @@ export default function UpcomingPage() {
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
-      alert(t("cannotCreateProject"));
+      showToast(t("cannotCreateProject"), "error");
     } finally {
       setSavingProject(false);
     }
@@ -254,7 +258,11 @@ export default function UpcomingPage() {
 
   const handleDeleteProject = async (e, projectId) => {
     e.stopPropagation();
-    if (!window.confirm(t("deleteProjectConfirm"))) return;
+    const confirmed = await confirm(t("deleteProjectConfirm"), {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
 
     try {
       await api.delete(`/projects/${projectId}`);
@@ -265,7 +273,7 @@ export default function UpcomingPage() {
         setActiveProject(nextProjects[0] || null);
       }
     } catch (err) {
-      alert(err.response?.data?.message || t("cannotDeleteProject"));
+      showToast(err.response?.data?.message || t("cannotDeleteProject"), "error");
     }
   };
 

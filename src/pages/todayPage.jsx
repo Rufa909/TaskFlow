@@ -4,6 +4,8 @@ import { useLanguage } from "../context/LanguageContext";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axiosInstance";
 import { getTranslation } from "../i18n/translations";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import "./todayPage.css";
 
 import AddTaskForm from "../components/task/AddTaskForm";
@@ -16,6 +18,8 @@ import EditTaskModal from "../components/modals/EditTaskModal";
 
 export default function TodayPage() {
   const { user, logout, updateUser } = useAuth();
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const { language, setLanguage } = useLanguage();
   const [selectedTask, setSelectedTask] = useState(null);
   const navigate = useNavigate();
@@ -82,8 +86,8 @@ export default function TodayPage() {
     fetchTodayTasks();
   }, []);
 
-  const handleLogout = () => {
-    if (window.confirm(t("confirmLogout"))) {
+  const handleLogout = async () => {
+    if (await confirm(t("confirmLogout"), { confirmLabel: "Logout", danger: true })) {
       logout();
       navigate("/auth", { replace: true });
     }
@@ -98,7 +102,7 @@ export default function TodayPage() {
       setTasks((prev) => prev.filter((t) => t.task_id !== taskId));
     } catch (err) {
       console.error(err);
-      alert("Cannot delete task");
+      showToast("Cannot delete task", "error");
     }
   };
 
@@ -119,7 +123,7 @@ export default function TodayPage() {
       );
     } catch (err) {
       console.error(err);
-      alert("Cannot update task");
+      showToast("Cannot update task", "error");
     }
   };
 
@@ -133,7 +137,7 @@ export default function TodayPage() {
       setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
-      alert("Cannot complete task");
+      showToast("Cannot complete task", "error");
     }
   };
 
@@ -173,7 +177,7 @@ export default function TodayPage() {
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Error adding task");
+      showToast(err.response?.data?.message || "Error adding task", "error");
     }
   };
 
@@ -189,7 +193,7 @@ export default function TodayPage() {
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
-      alert(t("cannotCreateProject"));
+      showToast(t("cannotCreateProject"), "error");
     } finally {
       setSavingProject(false);
     }
@@ -197,7 +201,11 @@ export default function TodayPage() {
 
   const handleDeleteProject = async (e, projectId) => {
     e.stopPropagation();
-    if (!window.confirm(t("deleteProjectConfirm"))) return;
+    const confirmed = await confirm(t("deleteProjectConfirm"), {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       await api.delete(`/projects/${projectId}`);
       const nextProjects = projects.filter((p) => p.project_id !== projectId);
@@ -207,7 +215,7 @@ export default function TodayPage() {
         setActiveProject(nextProjects[0] || null);
       }
     } catch (err) {
-      alert(err.response?.data?.message || t("cannotDeleteProject"));
+      showToast(err.response?.data?.message || t("cannotDeleteProject"), "error");
     }
   };
 

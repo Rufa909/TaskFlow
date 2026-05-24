@@ -11,6 +11,8 @@ import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
 import { useFilters } from "../context/FiltersContext";
 import { useTeams } from "../context/TeamsContext";
+import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import "./InboxPage.css";
 
 const API_URL = "http://localhost:5000";
@@ -39,6 +41,8 @@ function timeAgo(dateStr) {
 
 export default function InboxPage() {
   const { user, logout, updateUser } = useAuth();
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const { language, setLanguage } = useLanguage();
 
   const t = (key) => getTranslation(language, key);
@@ -136,7 +140,7 @@ export default function InboxPage() {
       setTasks((prev) => prev.filter((t) => t.task_id !== taskId));
     } catch (err) {
       console.error(err);
-      alert("Cannot delete task");
+      showToast("Cannot delete task", "error");
     }
   };
 
@@ -158,7 +162,7 @@ export default function InboxPage() {
       setSelectedTask(null);
     } catch (err) {
       console.error(err);
-      alert("Cannot update task");
+      showToast("Cannot update task", "error");
     }
   };
 
@@ -171,7 +175,7 @@ export default function InboxPage() {
       setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
-      alert("Cannot complete task");
+      showToast("Cannot complete task", "error");
     }
   };
 
@@ -186,7 +190,7 @@ export default function InboxPage() {
       }
 
       if (!projId) {
-        alert("Please select a project first");
+        showToast("Please select a project first", "error");
         return;
       }
 
@@ -221,7 +225,7 @@ export default function InboxPage() {
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Cannot add task");
+      showToast(err.response?.data?.message || "Cannot add task", "error");
     }
   };
 
@@ -268,8 +272,8 @@ export default function InboxPage() {
     return true;
   });
 
-  const handleLogout = () => {
-    if (window.confirm(t("confirmLogout"))) {
+  const handleLogout = async () => {
+    if (await confirm(t("confirmLogout"), { confirmLabel: "Logout", danger: true })) {
       logout();
     }
   };
