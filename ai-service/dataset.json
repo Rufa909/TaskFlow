@@ -1,0 +1,16 @@
+[
+  {
+    "text": "Tôi bị trễ deadline",
+    "intent": "deadline_help"
+  },
+
+  {
+    "text": "Làm sao chia task",
+    "intent": "task_breakdown"
+  },
+
+  {
+    "text": "Tôi có quá nhiều việc",
+    "intent": "productivity_help"
+  }
+]

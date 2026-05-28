@@ -3,6 +3,9 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
+
+const aiRoutes = require("./routes/aiRoutes");
+
 const app = express();
 const uploadsPath = path.resolve(__dirname, '../uploads');
 // ─── Middleware toàn cục
@@ -35,7 +38,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/projects', require('./routes/projectRoutes'));
 app.use('/api', require('./routes/taskRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
-
+app.use("/api/ai", aiRoutes);
 // ─── Global Error Handler
 // Bắt lỗi từ tất cả route, phải có 4 tham số (err, req, res, next)
 app.use((err, req, res, next) => {
