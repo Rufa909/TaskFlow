@@ -1,6 +1,7 @@
 const pool = require("../config/db");
 let completionColumnReady;
 let attachmentTableReady;
+let labelsColumnReady;
 
 async function ensureTaskCompletionColumn() {
   if (!completionColumnReady) {
@@ -49,11 +50,53 @@ async function ensureTaskAttachmentTable() {
   return attachmentTableReady;
 }
 
+async function ensureTaskLabelsColumn() {
+  if (!labelsColumnReady) {
+    labelsColumnReady = (async () => {
+      const [columns] = await pool.query(
+        `
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'tasks'
+          AND COLUMN_NAME = 'labels'
+        `,
+      );
+
+      if (columns.length === 0) {
+        await pool.query("ALTER TABLE tasks ADD COLUMN labels TEXT NULL");
+      }
+    })();
+  }
+
+  return labelsColumnReady;
+}
+
+function parseTaskLabels(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeTaskRows(rows) {
+  return rows.map((task) => ({
+    ...task,
+    labels: parseTaskLabels(task.labels),
+  }));
+}
+
 // GET /api/projects/:projectId/tasks
 exports.getTasks = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
     const { projectId } = req.params;
     const [rows] = await pool.query(
       `
@@ -92,7 +135,7 @@ exports.getTasks = async (req, res) => {
       `,
       [projectId, req.user.id, req.user.id],
     );
-    res.json({ success: true, tasks: rows });
+    res.json({ success: true, tasks: normalizeTaskRows(rows) });
   } catch (err) {
     console.error("Loi getTasks:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -103,9 +146,10 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time, priority } = req.body;
+    const { title, description, deadline, time, priority, labels } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
 
     const [[project]] = await pool.query(
       `SELECT p.project_id
@@ -145,8 +189,8 @@ exports.createTask = async (req, res) => {
     const [result] = await pool.query(
       `
     INSERT INTO tasks 
-    (title, description, deadline, time, priority, project_id, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (title, description, deadline, time, priority, labels, project_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         title,
@@ -154,6 +198,7 @@ exports.createTask = async (req, res) => {
         deadlineDate,
         time || null,
         priority || "medium",
+        JSON.stringify(parseTaskLabels(labels)),
         projectId,
         req.user.id,
       ],
@@ -195,7 +240,7 @@ exports.createTask = async (req, res) => {
       `,
       [taskId],
     );
-    res.status(201).json({ success: true, task: rows[0] });
+    res.status(201).json({ success: true, task: normalizeTaskRows(rows)[0] });
   } catch (err) {
     console.error("Loi createTask:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -205,9 +250,10 @@ exports.createTask = async (req, res) => {
 exports.updateTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
-    const { title, description, deadline, time, priority } = req.body;
+    const { title, description, deadline, time, priority, labels } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -237,7 +283,8 @@ exports.updateTask = async (req, res) => {
                 description = ?,
                 deadline = ?,
                 time = ?,
-                priority = ?
+                priority = ?,
+                labels = ?
             WHERE task_id = ?
               AND project_id = ?
               AND deleted_at IS NULL
@@ -253,6 +300,7 @@ exports.updateTask = async (req, res) => {
         deadlineDate,
         time || null,
         priority || "medium",
+        JSON.stringify(parseTaskLabels(labels)),
         taskId,
         projectId,
         projectId,
@@ -332,7 +380,7 @@ exports.updateTask = async (req, res) => {
 
     res.json({
       success: true,
-      task: rows[0],
+      task: normalizeTaskRows(rows)[0],
     });
   } catch (err) {
     console.error("Loi updateTask:", err);
@@ -347,6 +395,7 @@ exports.updateTask = async (req, res) => {
 exports.completeTask = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
+    await ensureTaskLabelsColumn();
     const { projectId, taskId } = req.params;
 
     const [result] = await pool.query(
@@ -384,7 +433,7 @@ exports.completeTask = async (req, res) => {
       [taskId, projectId],
     );
 
-    res.json({ success: true, task: rows[0] });
+    res.json({ success: true, task: normalizeTaskRows(rows)[0] });
   } catch (err) {
     console.error("Loi completeTask:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -396,6 +445,7 @@ exports.getCompletedTasks = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
 
     const [rows] = await pool.query(
       `
@@ -435,7 +485,7 @@ exports.getCompletedTasks = async (req, res) => {
       [req.user.id, req.user.id],
     );
 
-    res.json({ success: true, tasks: rows });
+    res.json({ success: true, tasks: normalizeTaskRows(rows) });
   } catch (err) {
     console.error("Loi getCompletedTasks:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -471,6 +521,7 @@ exports.getTasksToday = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
     const [rows] = await pool.query(
       `SELECT
          t.*,
@@ -507,7 +558,7 @@ exports.getTasksToday = async (req, res) => {
        ORDER BY t.created_at ASC`,
       [req.user.id, req.user.id],
     );
-    res.json({ success: true, tasks: rows });
+    res.json({ success: true, tasks: normalizeTaskRows(rows) });
   } catch (err) {
     console.error("Loi getTasksToday:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -519,6 +570,7 @@ exports.getAllTasks = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
     const [rows] = await pool.query(
       `SELECT
          t.*,
@@ -554,7 +606,7 @@ exports.getAllTasks = async (req, res) => {
        ORDER BY t.created_at ASC`,
       [req.user.id, req.user.id],
     );
-    res.json({ success: true, tasks: rows });
+    res.json({ success: true, tasks: normalizeTaskRows(rows) });
   } catch (err) {
     console.error("Loi getAllTasks:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });

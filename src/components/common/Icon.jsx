@@ -157,6 +157,21 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
         <line x1="16" y1="3" x2="14" y2="21"></line>
       </svg>
     ),
+    tag: (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+        <line x1="7" y1="7" x2="7.01" y2="7"></line>
+      </svg>
+    ),
     help: (
       <svg
         width={size}
@@ -201,6 +216,20 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
         strokeLinejoin="round"
       >
         <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    ),
+    chevronRight: (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="9 18 15 12 9 6"></polyline>
       </svg>
     ),
     flag: (

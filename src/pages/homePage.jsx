@@ -18,6 +18,87 @@ import EditProjectModal from "../components/modals/EditProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
 
+const LABELS_STORAGE_KEY = "taskflow.labels";
+const DEFAULT_LABEL_COLOR = "#ef4444";
+const LABEL_COLOR_OPTIONS = [
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#22c55e",
+  "#14b8a6",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+];
+
+function normalizeLabelItem(label) {
+  if (typeof label === "string") {
+    return { name: label.trim(), color: DEFAULT_LABEL_COLOR };
+  }
+
+  return {
+    name: String(label?.name || "").trim(),
+    color: label?.color || DEFAULT_LABEL_COLOR,
+  };
+}
+
+function getInitialView(search) {
+  const view = new URLSearchParams(search).get("view");
+  if (
+    view === "reporting" ||
+    view === "filtersLabels" ||
+    view === "filterResults" ||
+    view === "labelResults"
+  )
+    return view;
+  return "project";
+}
+
+function getSavedLabels() {
+  try {
+    return JSON.parse(localStorage.getItem(LABELS_STORAGE_KEY) || "[]")
+      .map(normalizeLabelItem)
+      .filter((label) => label.name);
+  } catch {
+    return [];
+  }
+}
+
+function getDateOnly(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSameDay(first, second) {
+  return first.getTime() === second.getTime();
+}
+
+function isDeadlineMatch(deadline, activeDeadlines) {
+  if (activeDeadlines.length === 0) return true;
+
+  const taskDate = getDateOnly(deadline);
+  
+  if (!taskDate) {
+    return activeDeadlines.includes("no_deadline");
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const endOfWeek = new Date(today);
+  endOfWeek.setDate(today.getDate() + (7 - today.getDay()));
+
+  return activeDeadlines.some((item) => {
+    if (item === "today") return isSameDay(taskDate, today);
+    if (item === "tomorrow") return isSameDay(taskDate, tomorrow);
+    if (item === "week") return taskDate >= today && taskDate <= endOfWeek;
+    return false;
+  });
+}
+
 export default function HomePage() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -32,10 +113,8 @@ export default function HomePage() {
   const [projects, setProjects] = useState([]);
   const [activeProject, setActiveProject] = useState(null);
   const [loadingProjects, setLoadingProjects] = useState(true);
-  const [activeView, setActiveView] = useState(
-    new URLSearchParams(location.search).get("view") === "reporting"
-      ? "reporting"
-      : "project",
+  const [activeView, setActiveView] = useState(() =>
+    getInitialView(location.search),
   );
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
@@ -54,16 +133,27 @@ export default function HomePage() {
   const [taskDeadline, setTaskDeadline] = useState(null);
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
+  const [newTaskLabels, setNewTaskLabels] = useState([]);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
+  const [allTasks, setAllTasks] = useState([]);
+  const [loadingAllTasks, setLoadingAllTasks] = useState(false);
   const [reportingTasks, setReportingTasks] = useState([]);
   const [loadingReporting, setLoadingReporting] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState("account");
+  const [savedLabels, setSavedLabels] = useState(getSavedLabels);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [labelColor, setLabelColor] = useState(DEFAULT_LABEL_COLOR);
+  const [isLabelModalOpen, setIsLabelModalOpen] = useState(false);
+  const [labelModalMode, setLabelModalMode] = useState("add");
+  const [editingLabel, setEditingLabel] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => localStorage.getItem("taskflow.sidebarCollapsed") === "true",
   );
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
+  const [isLabelsExpanded, setIsLabelsExpanded] = useState(true);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -117,9 +207,31 @@ export default function HomePage() {
     }
   }, [activeView]);
 
+  const fetchAllTasks = async () => {
+    setLoadingAllTasks(true);
+    try {
+      const res = await api.get("/tasks");
+      setAllTasks(res.data.tasks || []);
+    } catch (err) {
+      console.error("Cannot load all tasks:", err);
+      showToast("Cannot load tasks", "error");
+    } finally {
+      setLoadingAllTasks(false);
+    }
+  };
+
   useEffect(() => {
-    const view = new URLSearchParams(location.search).get("view");
-    setActiveView(view === "reporting" ? "reporting" : "project");
+    if (
+      activeView === "filtersLabels" ||
+      activeView === "filterResults" ||
+      activeView === "labelResults"
+    ) {
+      fetchAllTasks();
+    }
+  }, [activeView]);
+
+  useEffect(() => {
+    setActiveView(getInitialView(location.search));
   }, [location.search]);
 
   useEffect(() => {
@@ -210,6 +322,7 @@ export default function HomePage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
+      formData.append("labels", JSON.stringify(newTaskLabels));
 
       if (taskAttachment) {
         formData.append("attachment", taskAttachment);
@@ -229,6 +342,7 @@ export default function HomePage() {
       setTaskDeadline(null);
       setTaskTime("");
       setTaskPriority("medium");
+      setNewTaskLabels([]);
       setTaskAttachment(null);
       setIsAddingTask(false);
     } catch (err) {
@@ -345,17 +459,294 @@ export default function HomePage() {
     ? tasksByProject[activeProject.project_id] || []
     : [];
 
-  const { filters } = useFilters();
+  const {
+    filters,
+    setFilters,
+    setAvailableLabels,
+    savedFilters,
+    activeSavedFilterId,
+    openFilterModal,
+    applySavedFilter,
+    deleteSavedFilter,
+    renameLabelInSavedFilters,
+    removeLabelFromSavedFilters,
+  } = useFilters();
 
-  const filteredTasks = currentTasks.filter((task) => {
+  const taskSourceForFilters = allTasks.length > 0 ? allTasks : currentTasks;
+  const taskLabels = taskSourceForFilters.flatMap((task) =>
+    Array.isArray(task.labels) ? task.labels : [],
+  );
+  const labelMap = new Map();
+  savedLabels.forEach((label) => {
+    labelMap.set(label.name.toLowerCase(), label);
+  });
+  [...filters.labels, ...taskLabels].forEach((label) => {
+    const name = String(label).trim();
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (!labelMap.has(key)) {
+      labelMap.set(key, { name, color: DEFAULT_LABEL_COLOR });
+    }
+  });
+  const allLabels = Array.from(labelMap.values());
+  const allLabelNames = allLabels.map((label) => label.name);
+  const deadlineFilterLabels = {
+    today: "Deadline Today",
+    tomorrow: "Deadline Tomorrow",
+    week: "Deadline This week",
+    no_deadline: "No Deadline",
+  };
+  const myFilterItems = savedFilters;
+  const selectedFilterId =
+    activeSavedFilterId || new URLSearchParams(location.search).get("filterId");
+  const activeSavedFilter =
+    savedFilters.find((filter) => filter.id === selectedFilterId) || null;
+  const allLabelsSignature = JSON.stringify(allLabels);
+
+  useEffect(() => {
+    setAvailableLabels(allLabels);
+  }, [setAvailableLabels, allLabelsSignature]);
+
+  const selectedLabelName = new URLSearchParams(location.search).get("label");
+  const selectedLabel = selectedLabelName
+    ? labelMap.get(selectedLabelName.toLowerCase()) || {
+        name: selectedLabelName,
+        color: DEFAULT_LABEL_COLOR,
+      }
+    : null;
+
+  const filterTasksByCriteria = (criteria) => taskSourceForFilters.filter((task) => {
     if (
-      filters.priorities.length > 0 &&
-      (!task.priority || !filters.priorities.includes(task.priority))
-    )
+      criteria.priorities.length > 0 &&
+      (!task.priority || !criteria.priorities.includes(task.priority))
+    ) {
       return false;
-    // labels not implemented on tasks
+    }
+
+    if (
+      criteria.labels.length > 0 &&
+      (!Array.isArray(task.labels) ||
+        !criteria.labels.some((label) => task.labels.includes(label)))
+    ) {
+      return false;
+    }
+
+    if (!isDeadlineMatch(task.deadline, criteria.deadlines)) {
+      return false;
+    }
+
+    if (criteria.dateRange?.start && criteria.dateRange?.end) {
+      if (!task.deadline) return false;
+      const taskDate = getDateOnly(task.deadline);
+      if (!taskDate) return false;
+      
+      const start = getDateOnly(criteria.dateRange.start);
+      const end = getDateOnly(criteria.dateRange.end);
+      
+      if (taskDate < start || taskDate > end) {
+        return false;
+      }
+    }
+
     return true;
   });
+
+  const filteredTasks = filterTasksByCriteria(filters);
+  const filterResultTasks = activeSavedFilter
+    ? filterTasksByCriteria(activeSavedFilter.criteria)
+    : [];
+  const labelResultTasks = selectedLabel
+    ? taskSourceForFilters.filter(
+        (task) =>
+          Array.isArray(task.labels) && task.labels.includes(selectedLabel.name),
+      )
+    : [];
+  const getSavedFilterCount = (filter) =>
+    filterTasksByCriteria(filter.criteria).length;
+
+  const getLabelCount = (label) =>
+    taskSourceForFilters.filter(
+      (task) => Array.isArray(task.labels) && task.labels.includes(label),
+    ).length;
+
+  const persistSavedLabels = (labels) => {
+    setSavedLabels(labels);
+    localStorage.setItem(LABELS_STORAGE_KEY, JSON.stringify(labels));
+  };
+
+  const isSavedLabel = (label) =>
+    savedLabels.some((item) => item.name.toLowerCase() === label.toLowerCase());
+
+  const getLabelColor = (label) =>
+    labelMap.get(label.toLowerCase())?.color || DEFAULT_LABEL_COLOR;
+
+  const closeLabelModal = () => {
+    setIsLabelModalOpen(false);
+    setLabelModalMode("add");
+    setEditingLabel(null);
+    setNewLabelName("");
+    setLabelColor(DEFAULT_LABEL_COLOR);
+  };
+
+  const openAddLabelModal = () => {
+    setLabelModalMode("add");
+    setEditingLabel(null);
+    setNewLabelName("");
+    setLabelColor(DEFAULT_LABEL_COLOR);
+    setIsLabelModalOpen(true);
+  };
+
+  const startEditingLabel = (label) => {
+    setEditingLabel(label);
+    setLabelModalMode("edit");
+    setNewLabelName(label);
+    setLabelColor(getLabelColor(label));
+    setIsLabelModalOpen(true);
+  };
+
+  const handleAddLabel = (event) => {
+    event.preventDefault();
+    const label = newLabelName.trim();
+    const editingKey = editingLabel?.toLowerCase();
+
+    if (!label) {
+      return;
+    }
+
+    if (
+      label.toLowerCase() !== editingKey &&
+      allLabelNames.some((item) => item.toLowerCase() === label.toLowerCase())
+    ) {
+      return;
+    }
+
+    const nextLabel = { name: label, color: labelColor };
+    const nextLabels =
+      labelModalMode === "edit"
+        ? savedLabels.map((item) =>
+            item.name.toLowerCase() === editingKey ? nextLabel : item,
+          )
+        : [...savedLabels, nextLabel];
+
+    persistSavedLabels(nextLabels);
+    if (labelModalMode === "edit") {
+      setFilters((prev) => ({
+        ...prev,
+        labels: prev.labels.map((item) =>
+          item.toLowerCase() === editingKey ? label : item,
+        ),
+      }));
+      renameLabelInSavedFilters(editingLabel, label);
+    }
+    closeLabelModal();
+  };
+
+  const handleDeleteLabel = async (label) => {
+    if (
+      !(await confirm(`Delete label "${label}"?`, {
+        confirmLabel: "Delete",
+        danger: true,
+      }))
+    ) {
+      return;
+    }
+
+    const nextLabels = savedLabels.filter(
+      (item) => item.name.toLowerCase() !== label.toLowerCase(),
+    );
+    persistSavedLabels(nextLabels);
+    setFilters((prev) => ({
+      ...prev,
+      labels: prev.labels.filter(
+        (item) => item.toLowerCase() !== label.toLowerCase(),
+      ),
+    }));
+    removeLabelFromSavedFilters(label);
+    if (editingLabel?.toLowerCase() === label.toLowerCase()) {
+      closeLabelModal();
+    }
+  };
+
+  const handleDeleteFilter = async (filterId, filterName) => {
+    if (
+      !(await confirm(`Delete filter "${filterName}"?`, {
+        confirmLabel: "Delete",
+        danger: true,
+      }))
+    ) {
+      return;
+    }
+    deleteSavedFilter(filterId);
+  };
+
+  const getSavedFilterSummary = (filter) => {
+    const parts = [
+      ...filter.criteria.deadlines.map((deadline) => deadlineFilterLabels[deadline] || deadline),
+      ...filter.criteria.labels,
+      ...filter.criteria.priorities.map(
+        (priority) => `Priority ${priority.charAt(0).toUpperCase()}${priority.slice(1)}`,
+      ),
+    ];
+
+    if (filter.criteria.dateRange?.start && filter.criteria.dateRange?.end) {
+      parts.push(`Date Range: ${new Date(filter.criteria.dateRange.start).toLocaleDateString()} - ${new Date(filter.criteria.dateRange.end).toLocaleDateString()}`);
+    }
+
+    return parts.join(", ");
+  };
+
+  const getSavedFilterParts = (filter) => {
+    const parts = [
+    ...filter.criteria.deadlines.map((deadline) => ({
+      key: `deadline-${deadline}`,
+      label: deadlineFilterLabels[deadline] || deadline,
+      color: "#14b8a6",
+    })),
+    ...filter.criteria.labels.map((label) => ({
+      key: `label-${label}`,
+      label,
+      color: getLabelColor(label),
+    })),
+    ...filter.criteria.priorities.map((priority) => ({
+      key: `priority-${priority}`,
+      label: `Priority ${priority.charAt(0).toUpperCase()}${priority.slice(1)}`,
+      color:
+        priority === "urgent"
+          ? "#dc2626"
+          : priority === "high"
+            ? "#f97316"
+            : priority === "medium"
+              ? "#d97706"
+              : "#6b7280",
+    })),
+  ];
+
+  if (filter.criteria.dateRange?.start && filter.criteria.dateRange?.end) {
+    parts.push({
+      key: `daterange`,
+      label: `${new Date(filter.criteria.dateRange.start).toLocaleDateString()} - ${new Date(filter.criteria.dateRange.end).toLocaleDateString()}`,
+      color: "#14b8a6",
+    });
+  }
+  
+  return parts;
+};
+
+  const openSavedFilterResults = (filter) => {
+    applySavedFilter(filter);
+    setActiveView("filterResults");
+    navigate(`/?view=filterResults&filterId=${encodeURIComponent(filter.id)}`);
+  };
+
+  const returnToFiltersLabels = () => {
+    setActiveView("filtersLabels");
+    navigate("/?view=filtersLabels");
+  };
+
+  const openLabelResults = (label) => {
+    setActiveView("labelResults");
+    navigate(`/?view=labelResults&label=${encodeURIComponent(label)}`);
+  };
 
   return (
     <div className="layout">
@@ -391,6 +782,72 @@ export default function HomePage() {
         onSave={handleEditProjectSave}
         saving={editingProjectSaving}
       />
+
+      {isLabelModalOpen && (
+        <div className="modal-overlay" onClick={closeLabelModal}>
+          <form
+            className="label-modal"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={handleAddLabel}
+          >
+            <div className="label-modal-header">
+              <h2>{labelModalMode === "edit" ? "Edit label" : "Add label"}</h2>
+              <button
+                className="label-modal-close"
+                type="button"
+                onClick={closeLabelModal}
+                aria-label="Close label modal"
+              >
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+
+            <div className="label-modal-body">
+              <label className="label-modal-field">
+                <span>Name</span>
+                <input
+                  className="filters-labels-input"
+                  value={newLabelName}
+                  onChange={(event) => setNewLabelName(event.target.value)}
+                  placeholder="Label name"
+                  autoFocus
+                />
+              </label>
+
+              <div className="label-modal-field">
+                <span>Color</span>
+                <div className="label-color-grid">
+                  {LABEL_COLOR_OPTIONS.map((color) => (
+                    <button
+                      className={`label-color-option ${labelColor === color ? "active" : ""}`}
+                      key={color}
+                      type="button"
+                      onClick={() => setLabelColor(color)}
+                      style={{ backgroundColor: color }}
+                      aria-label={`Choose color ${color}`}
+                    >
+                      {labelColor === color && <Icon name="check" size={16} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="label-modal-footer">
+              <button
+                className="label-modal-secondary"
+                type="button"
+                onClick={closeLabelModal}
+              >
+                Cancel
+              </button>
+              <button className="filters-labels-save" type="submit">
+                {labelModalMode === "edit" ? "Save" : "Add"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="main-content">
@@ -439,6 +896,333 @@ export default function HomePage() {
                 )}
               </div>
             </>
+          ) : activeView === "labelResults" ? (
+            <div className="filters-labels-page filter-results-page">
+              <button
+                className="filter-results-back"
+                type="button"
+                onClick={returnToFiltersLabels}
+              >
+                <Icon name="chevronDown" size={16} />
+                Filters & Labels
+              </button>
+
+              {selectedLabel ? (
+                <>
+                  <div className="filter-results-header standalone">
+                    <div className="filter-results-title-wrap">
+                      <div>
+                        <h1 className="page-title filter-results-page-title">
+                          {selectedLabel.name}
+                        </h1>
+                        <div className="filter-results-meta">
+                          {loadingAllTasks
+                            ? "Loading tasks..."
+                            : `${labelResultTasks.length} task${labelResultTasks.length !== 1 ? "s" : ""} matched`}
+                        </div>
+                      </div>
+                    </div>
+                    {isSavedLabel(selectedLabel.name) && (
+                      <button
+                        className="filters-labels-icon-btn"
+                        type="button"
+                        onClick={() => startEditingLabel(selectedLabel.name)}
+                        title="Edit label"
+                        aria-label={`Edit ${selectedLabel.name}`}
+                      >
+                        <Icon name="edit" size={15} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="filter-results-chips standalone">
+                    <span
+                      className="filter-results-chip"
+                      style={{
+                        borderColor: selectedLabel.color,
+                        color: selectedLabel.color,
+                      }}
+                    >
+                      Label
+                    </span>
+                  </div>
+
+                  <div className="filter-results-list standalone">
+                    {loadingAllTasks ? (
+                      <div className="filters-labels-empty">Loading...</div>
+                    ) : labelResultTasks.length > 0 ? (
+                      <TaskList
+                        tasks={labelResultTasks}
+                        handleDeleteTask={handleDeleteTask}
+                        handleUpdateTask={handleUpdateTask}
+                        handleCompleteTask={handleCompleteTask}
+                        setSelectedTask={setSelectedTask}
+                      />
+                    ) : (
+                      <div className="filters-labels-empty">
+                        No tasks use this label.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="filters-labels-empty">
+                  Select a label to view tasks.
+                </div>
+              )}
+            </div>
+          ) : activeView === "filterResults" ? (
+            <div className="filters-labels-page filter-results-page">
+              <button
+                className="filter-results-back"
+                type="button"
+                onClick={returnToFiltersLabels}
+              >
+                <Icon name="chevronDown" size={16} />
+                Filters & Labels
+              </button>
+
+              {activeSavedFilter ? (
+                <>
+                  <div className="filter-results-header standalone">
+                    <div className="filter-results-title-wrap">
+                      <div>
+                        <h1 className="page-title filter-results-page-title">
+                          {activeSavedFilter.name}
+                        </h1>
+                        <div className="filter-results-meta">
+                          {filterResultTasks.length} task{filterResultTasks.length !== 1 ? "s" : ""} matched
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      className="filters-labels-icon-btn"
+                      type="button"
+                      onClick={() => openFilterModal(activeSavedFilter)}
+                      title="Edit filter"
+                      aria-label={`Edit ${activeSavedFilter.name}`}
+                    >
+                      <Icon name="edit" size={15} />
+                    </button>
+                  </div>
+
+                  <div className="filter-results-chips standalone">
+                    {getSavedFilterParts(activeSavedFilter).map((part) => (
+                      <span
+                        className="filter-results-chip"
+                        key={part.key}
+                        style={{ borderColor: part.color, color: part.color }}
+                      >
+                        {part.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="filter-results-list standalone">
+                    {filterResultTasks.length > 0 ? (
+                      <TaskList
+                        tasks={filterResultTasks}
+                        handleDeleteTask={handleDeleteTask}
+                        handleUpdateTask={handleUpdateTask}
+                        handleCompleteTask={handleCompleteTask}
+                        setSelectedTask={setSelectedTask}
+                      />
+                    ) : (
+                      <div className="filters-labels-empty">
+                        No tasks match this filter.
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="filters-labels-empty">
+                  Select a filter from My Filters to view results.
+                </div>
+              )}
+            </div>
+          ) : activeView === "filtersLabels" ? (
+            <div className="filters-labels-page">
+              <h1 className="page-title">Filters & Labels</h1>
+
+              <section className="filters-labels-group">
+                <div className="filters-labels-page-header">
+                  <div className="filters-labels-heading">
+                    <span 
+                      className="filters-labels-toggle"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setIsFiltersExpanded(!isFiltersExpanded);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Icon name={isFiltersExpanded ? "chevronDown" : "chevronRight"} size={16} />
+                    </span>
+                    <span className="filters-labels-heading-text">My Filters</span>
+                  </div>
+                  <button
+                    className="filters-labels-icon-btn filters-labels-filter-add"
+                    type="button"
+                    onClick={() => openFilterModal()}
+                    title="Add filter"
+                    aria-label="Add filter"
+                  >
+                    <Icon name="plus" size={18} />
+                  </button>
+                </div>
+
+                {isFiltersExpanded && myFilterItems.length > 0 ? (
+                  myFilterItems.map((item) => (
+                    <div
+                      className={`filters-labels-list-row ${selectedFilterId === item.id ? "active" : ""}`}
+                      key={item.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openSavedFilterResults(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openSavedFilterResults(item);
+                        }
+                      }}
+                      title={getSavedFilterSummary(item)}
+                    >
+                      <span
+                        className="filters-labels-drop"
+                        style={{ borderColor: item.color }}
+                      />
+                      <span className="filters-labels-item-name">{item.name}</span>
+                      <span className="filters-labels-item-count">{getSavedFilterCount(item)}</span>
+                      <span className="filters-labels-row-actions">
+                        <button
+                          className="filters-labels-row-action"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openFilterModal(item);
+                          }}
+                          title="Edit filter"
+                          aria-label={`Edit ${item.name}`}
+                        >
+                          <Icon name="edit" size={14} />
+                        </button>
+                        <button
+                          className="filters-labels-row-action danger"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteFilter(item.id, item.name);
+                          }}
+                          title="Delete filter"
+                          aria-label={`Delete ${item.name}`}
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      </span>
+                    </div>
+                  ))
+                ) : isFiltersExpanded ? (
+                  <div className="filters-labels-empty">No filters yet.</div>
+                ) : null}
+              </section>
+
+              <section className="filters-labels-group labels-group">
+                <div className="filters-labels-page-header">
+                  <div className="filters-labels-heading">
+                    <span 
+                      className="filters-labels-toggle"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setIsLabelsExpanded(!isLabelsExpanded)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setIsLabelsExpanded(!isLabelsExpanded);
+                        }
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <Icon name={isLabelsExpanded ? "chevronDown" : "chevronRight"} size={16} />
+                    </span>
+                    <span className="filters-labels-heading-text">Labels</span>
+                  </div>
+                  <button
+                    className="filters-labels-icon-btn"
+                    type="button"
+                    onClick={openAddLabelModal}
+                    title="Add label"
+                    aria-label="Add label"
+                  >
+                    <Icon name="plus" size={18} />
+                  </button>
+                </div>
+
+                {isLabelsExpanded && allLabels.length > 0 ? (
+                  allLabels.map((labelItem) => {
+                    const label = labelItem.name;
+
+                    return (
+                      <div
+                        className="filters-labels-list-row"
+                        key={label}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openLabelResults(label)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openLabelResults(label);
+                          }
+                        }}
+                      >
+                        <span
+                          className="filters-labels-tag"
+                          style={{ color: labelItem.color }}
+                        >
+                          <Icon name="tag" size={18} />
+                        </span>
+                        <span className="filters-labels-item-name">{label}</span>
+                        <span className="filters-labels-item-count">{getLabelCount(label)}</span>
+                        {isSavedLabel(label) && (
+                          <span className="filters-labels-row-actions">
+                            <button
+                              className="filters-labels-row-action"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                startEditingLabel(label);
+                              }}
+                              title="Edit label"
+                              aria-label={`Edit ${label}`}
+                            >
+                              <Icon name="edit" size={14} />
+                            </button>
+                            <button
+                              className="filters-labels-row-action danger"
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleDeleteLabel(label);
+                              }}
+                              title="Delete label"
+                              aria-label={`Delete ${label}`}
+                            >
+                              <Icon name="trash" size={14} />
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : isLabelsExpanded ? (
+                  <div className="filters-labels-empty">No labels yet.</div>
+                ) : null}
+              </section>
+            </div>
           ) : (
             <>
               <h1 className="page-title">
@@ -470,6 +1254,9 @@ export default function HomePage() {
                     setTaskAttachment={setTaskAttachment}
                     taskPriority={taskPriority}
                     setTaskPriority={setTaskPriority}
+                    taskLabels={newTaskLabels}
+                    setTaskLabels={setNewTaskLabels}
+                    availableLabels={allLabels}
                     isDatePickerOpen={isDatePickerOpen}
                     setIsDatePickerOpen={setIsDatePickerOpen}
                     activeProject={activeProject}
@@ -522,6 +1309,7 @@ export default function HomePage() {
         selectedTask={selectedTask}
         setSelectedTask={setSelectedTask}
         handleUpdateTask={handleUpdateTask}
+        availableLabels={allLabels}
       />
     </div>
   );
