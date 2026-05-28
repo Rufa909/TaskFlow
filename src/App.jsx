@@ -10,6 +10,7 @@ import { FiltersProvider } from './context/FiltersContext';
 import { TeamsProvider } from './context/TeamsContext';
 import { ToastProvider } from './context/ToastContext';
 import { ConfirmProvider } from './context/ConfirmContext';
+import { RoleProvider } from './context/RoleContext';
 import FiltersModal from './components/modals/FiltersModal';
 import AddTeamModal from './components/modals/AddTeamModal';
 
@@ -20,7 +21,8 @@ export default function App() {
         <ToastProvider>
           <ConfirmProvider>
             <TeamsProvider>
-              <BrowserRouter>
+              <RoleProvider>
+                <BrowserRouter>
                 <Routes>
                   <Route path="/auth" element={<AuthPage />} />
                   <Route
@@ -60,7 +62,8 @@ export default function App() {
 
                 <FiltersModal />
                 <AddTeamModal />
-              </BrowserRouter>
+                </BrowserRouter>
+              </RoleProvider>
             </TeamsProvider>
           </ConfirmProvider>
         </ToastProvider>

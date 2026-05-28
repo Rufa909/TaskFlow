@@ -35,6 +35,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/projects', require('./routes/projectRoutes'));
 app.use('/api', require('./routes/taskRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
+app.use('/api/roles', require('./routes/roleRoutes'));
 
 // ─── Global Error Handler
 // Bắt lỗi từ tất cả route, phải có 4 tham số (err, req, res, next)

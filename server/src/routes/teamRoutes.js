@@ -6,7 +6,9 @@ const {
     sendInvitation,
     getMyInvitations,
     respondInvitation,
-    getProjectMembers
+    getProjectMembers,
+    updateMemberRole,
+    removeMember,
 } = require('../controllers/teamController');
 
 // Tất cả route đều cần đăng nhập
@@ -15,5 +17,7 @@ router.post('/invite', auth, sendInvitation);
 router.get('/invitations', auth, getMyInvitations);
 router.put('/invitations/:id', auth, respondInvitation);
 router.get('/projects/:id/members', auth, getProjectMembers);
+router.put('/projects/:id/members/:userId/role', auth, updateMemberRole);
+router.delete('/projects/:id/members/:userId', auth, removeMember);
 
 module.exports = router;

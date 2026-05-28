@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useTeams } from "../../context/TeamsContext";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import { useRole } from "../../context/RoleContext";
 import api from "../../api/axiosInstance";
 import Icon from "../common/Icon";
 import "./AddTeamModal.css";
@@ -14,9 +16,17 @@ function avatarUrl(photo) {
     : `${API_URL}${photo}`;
 }
 
+const ROLE_LABELS = {
+  owner:  { label: "Owner",  cls: "role-owner"  },
+  leader: { label: "Leader", cls: "role-leader" },
+  member: { label: "Member", cls: "role-member" },
+};
+
 export default function AddTeamModal() {
   const { isOpen, closeTeamModal, activeProject } = useTeams();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const { invalidateRole } = useRole();
 
   // Search states
   const [searchEmail, setSearchEmail] = useState("");
@@ -26,11 +36,20 @@ export default function AddTeamModal() {
 
   // Invite states
   const [inviteSending, setInviteSending] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(null); // { type, text }
+  const [statusMessage, setStatusMessage] = useState(null);
 
   // Members
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // Role management
+  const [changingRoleFor, setChangingRoleFor] = useState(null); // user_id
+  const [removingFor, setRemovingFor] = useState(null);         // user_id
+
+  // Is current user the owner?
+  console.log("AddTeamModal diagnostic:", { activeProject, user, isOwner: Number(activeProject?.owner_id) === Number(user?.id) });
+  const isOwner = Number(activeProject?.owner_id) === Number(user?.id) ||
+                  members.find(m => Number(m.user_id) === Number(user?.id))?.role === 'owner';
 
   // Load members when modal opens
   const loadMembers = useCallback(async () => {
@@ -51,7 +70,6 @@ export default function AddTeamModal() {
   useEffect(() => {
     if (isOpen && activeProject) {
       loadMembers();
-      // Reset states on open
       setSearchEmail("");
       setSearchResult(null);
       setHasSearched(false);
@@ -59,16 +77,14 @@ export default function AddTeamModal() {
     }
   }, [isOpen, activeProject, loadMembers]);
 
-  // Search handler
+  // ── Search ──────────────────────────────────────────────────────────────────
   const handleSearch = async () => {
     const email = searchEmail.trim();
     if (!email) return;
-
     setSearching(true);
     setSearchResult(null);
     setHasSearched(true);
     setStatusMessage(null);
-
     try {
       const res = await api.get(
         `/teams/search?email=${encodeURIComponent(email)}`,
@@ -76,10 +92,7 @@ export default function AddTeamModal() {
       if (res.data.user) {
         setSearchResult(res.data.user);
       } else {
-        setStatusMessage({
-          type: "error",
-          text: "No user found with that email address.",
-        });
+        setStatusMessage({ type: "error", text: "No user found with that email address." });
       }
     } catch (err) {
       const msg = err.response?.data?.message || "User not found.";
@@ -90,33 +103,24 @@ export default function AddTeamModal() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleSearch();
-    }
+    if (e.key === "Enter") { e.preventDefault(); handleSearch(); }
   };
 
-  // Invite handler
+  // ── Invite ──────────────────────────────────────────────────────────────────
   const handleInvite = async () => {
     if (!searchResult || !activeProject) return;
-
     setInviteSending(true);
     setStatusMessage(null);
-
     try {
       await api.post("/teams/invite", {
         project_id: activeProject.project_id,
         receiver_id: searchResult.user_id,
       });
-      setStatusMessage({
-        type: "success",
-        text: `Invitation sent to ${searchResult.username}!`,
-      });
+      setStatusMessage({ type: "success", text: `Invitation sent to ${searchResult.username}!` });
       showToast(`Đã gửi lời mời thành công đến ${searchResult.username}!`, "success");
       setSearchResult(null);
       setSearchEmail("");
       setHasSearched(false);
-      // Refresh members
       loadMembers();
     } catch (err) {
       const msg = err.response?.data?.message || "Failed to send invitation.";
@@ -126,14 +130,50 @@ export default function AddTeamModal() {
     }
   };
 
+  // ── Change Role ─────────────────────────────────────────────────────────────
+  const handleChangeRole = async (memberId, newRole) => {
+    setChangingRoleFor(memberId);
+    try {
+      await api.put(
+        `/teams/projects/${activeProject.project_id}/members/${memberId}/role`,
+        { role: newRole }
+      );
+      showToast(`Đã đổi role thành ${newRole}`, "success");
+      // Invalidate cached role for that user (but we can't easily do per-user,
+      // so invalidate project role cache for current user in case needed)
+      invalidateRole(activeProject.project_id);
+      loadMembers();
+    } catch (err) {
+      showToast(err.response?.data?.message || "Không thể đổi role", "error");
+    } finally {
+      setChangingRoleFor(null);
+    }
+  };
+
+  // ── Remove Member ───────────────────────────────────────────────────────────
+  const handleRemoveMember = async (memberId, memberName) => {
+    if (!window.confirm(`Bạn có chắc muốn xóa ${memberName} khỏi project?`)) return;
+    setRemovingFor(memberId);
+    try {
+      await api.delete(
+        `/teams/projects/${activeProject.project_id}/members/${memberId}`
+      );
+      showToast(`Đã xóa ${memberName} khỏi project`, "success");
+      invalidateRole(activeProject.project_id);
+      loadMembers();
+    } catch (err) {
+      showToast(err.response?.data?.message || "Không thể xóa thành viên", "error");
+    } finally {
+      setRemovingFor(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   const statusIcon =
-    statusMessage?.type === "success"
-      ? "✓"
-      : statusMessage?.type === "error"
-        ? "✕"
-        : "ℹ";
+    statusMessage?.type === "success" ? "✓"
+    : statusMessage?.type === "error"   ? "✕"
+    : "ℹ";
 
   return (
     <div className="modal-overlay" onClick={() => closeTeamModal()}>
@@ -162,103 +202,97 @@ export default function AddTeamModal() {
 
         {/* Body */}
         <div className="modal-body">
-          {/* Search area */}
-          <div className="atm-search-wrapper">
-            <div className="atm-search-input-group">
-              <input
-                type="email"
-                placeholder="Search by email address..."
-                value={searchEmail}
-                onChange={(e) => setSearchEmail(e.target.value)}
-                onKeyDown={handleKeyDown}
-                autoFocus
-              />
-              <span className="search-icon">
-                <Icon name="search" size={16} />
-              </span>
-            </div>
-            <button
-              className="atm-search-btn"
-              onClick={handleSearch}
-              disabled={searching || !searchEmail.trim()}
-              title="Search"
-            >
-              {searching ? (
-                <div className="atm-spinner white" />
-              ) : (
-                <Icon name="search" size={18} />
-              )}
-            </button>
-          </div>
-
-          {/* Status message */}
-          {statusMessage && (
-            <div className={`atm-status ${statusMessage.type}`}>
-              <span className="atm-status-icon">{statusIcon}</span>
-              <span>{statusMessage.text}</span>
-            </div>
-          )}
-
-          {/* Search result card */}
-          {searchResult && (
-            <div className="atm-result-card">
-              <div className="atm-result-avatar">
-                {searchResult.user_photo ? (
-                  <img
-                    src={avatarUrl(searchResult.user_photo)}
-                    alt=""
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                    }}
+          {/* Search area – only owner can invite */}
+          {isOwner && (
+            <>
+              <div className="atm-search-wrapper">
+                <div className="atm-search-input-group">
+                  <input
+                    type="email"
+                    placeholder="Search by email address..."
+                    value={searchEmail}
+                    onChange={(e) => setSearchEmail(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
                   />
-                ) : (
-                  (searchResult.username || "U").charAt(0).toUpperCase()
-                )}
+                  <span className="search-icon">
+                    <Icon name="search" size={16} />
+                  </span>
+                </div>
+                <button
+                  className="atm-search-btn"
+                  onClick={handleSearch}
+                  disabled={searching || !searchEmail.trim()}
+                  title="Search"
+                >
+                  {searching ? (
+                    <div className="atm-spinner white" />
+                  ) : (
+                    <Icon name="search" size={18} />
+                  )}
+                </button>
               </div>
-              <div className="atm-result-info">
-                <div className="atm-result-name">{searchResult.username}</div>
-                <div className="atm-result-email">{searchResult.email}</div>
-                {!searchResult.email_verified && (
-                  <div className="atm-result-email">
-                    Người này chưa xác thực email.
+
+              {/* Status message */}
+              {statusMessage && (
+                <div className={`atm-status ${statusMessage.type}`}>
+                  <span className="atm-status-icon">{statusIcon}</span>
+                  <span>{statusMessage.text}</span>
+                </div>
+              )}
+
+              {/* Search result card */}
+              {searchResult && (
+                <div className="atm-result-card">
+                  <div className="atm-result-avatar">
+                    {searchResult.user_photo ? (
+                      <img
+                        src={avatarUrl(searchResult.user_photo)}
+                        alt=""
+                        onError={(e) => { e.target.style.display = "none"; }}
+                      />
+                    ) : (
+                      (searchResult.username || "U").charAt(0).toUpperCase()
+                    )}
                   </div>
-                )}
-              </div>
-              <button
-                className="atm-invite-btn"
-                onClick={handleInvite}
-                disabled={inviteSending || !searchResult.email_verified}
-              >
-                {inviteSending ? (
-                  <>
-                    <div
-                      className="atm-spinner white"
-                      style={{ width: 14, height: 14 }}
-                    />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Icon name="mail" size={14} />
-                    Invite
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+                  <div className="atm-result-info">
+                    <div className="atm-result-name">{searchResult.username}</div>
+                    <div className="atm-result-email">{searchResult.email}</div>
+                    {!searchResult.email_verified && (
+                      <div className="atm-result-email">Người này chưa xác thực email.</div>
+                    )}
+                  </div>
+                  <button
+                    className="atm-invite-btn"
+                    onClick={handleInvite}
+                    disabled={inviteSending || !searchResult.email_verified}
+                  >
+                    {inviteSending ? (
+                      <>
+                        <div className="atm-spinner white" style={{ width: 14, height: 14 }} />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="mail" size={14} />
+                        Invite
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
 
-          {/* Empty search state */}
-          {hasSearched && !searchResult && !searching && !statusMessage && (
-            <div className="atm-empty">
-              <div className="atm-empty-icon">🔍</div>
-              <div className="atm-empty-text">
-                No user found. Check the email and try again.
-              </div>
-            </div>
-          )}
+              {/* Empty search state */}
+              {hasSearched && !searchResult && !searching && !statusMessage && (
+                <div className="atm-empty">
+                  <div className="atm-empty-icon">🔍</div>
+                  <div className="atm-empty-text">No user found. Check the email and try again.</div>
+                </div>
+              )}
 
-          {/* Divider */}
-          <div className="atm-divider" />
+              <div className="atm-divider" />
+            </>
+          )}
 
           {/* Members section */}
           <div className="atm-section-header">
@@ -276,33 +310,74 @@ export default function AddTeamModal() {
           ) : members.length === 0 ? (
             <div className="atm-empty">
               <div className="atm-empty-icon">👥</div>
-              <div className="atm-empty-text">
-                No members yet. Invite someone to get started!
-              </div>
+              <div className="atm-empty-text">No members yet. Invite someone to get started!</div>
             </div>
           ) : (
             <div className="atm-members-list">
-              {members.map((member) => (
-                <div className="atm-member-chip" key={member.user_id}>
-                  <div className="atm-member-avatar">
-                    {member.user_photo ? (
-                      <img
-                        src={avatarUrl(member.user_photo)}
-                        alt=""
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                        }}
-                      />
+              {members.map((member) => {
+                const roleInfo = ROLE_LABELS[member.role] || ROLE_LABELS.member;
+                const isSelf = Number(member.user_id) === Number(user?.id);
+                const isThisOwner = member.role === 'owner';
+
+                return (
+                  <div className="atm-member-chip atm-member-chip-full" key={member.user_id}>
+                    {/* Avatar */}
+                    <div className="atm-member-avatar">
+                      {member.user_photo ? (
+                        <img
+                          src={avatarUrl(member.user_photo)}
+                          alt=""
+                          onError={(e) => { e.target.style.display = "none"; }}
+                        />
+                      ) : (
+                        (member.username || "U").charAt(0).toUpperCase()
+                      )}
+                    </div>
+
+                    {/* Name + email */}
+                    <div className="atm-member-info">
+                      <span className="atm-member-name">
+                        {member.username}
+                        {isSelf && <span className="atm-member-you"> (Bạn)</span>}
+                      </span>
+                      <span className="atm-member-email">{member.email}</span>
+                    </div>
+
+                    {/* Role badge / selector */}
+                    {isOwner && !isThisOwner && !isSelf ? (
+                      <select
+                        className={`atm-role-select ${roleInfo.cls}`}
+                        value={member.role}
+                        onChange={(e) => handleChangeRole(member.user_id, e.target.value)}
+                        disabled={changingRoleFor === member.user_id}
+                      >
+                        <option value="member">Member</option>
+                        <option value="leader">Leader</option>
+                      </select>
                     ) : (
-                      (member.username || "U").charAt(0).toUpperCase()
+                      <span className={`atm-member-role ${roleInfo.cls}`}>
+                        {roleInfo.label}
+                      </span>
+                    )}
+
+                    {/* Remove button – owner only, not self, not other owners */}
+                    {isOwner && !isThisOwner && !isSelf && (
+                      <button
+                        className="atm-remove-btn"
+                        title="Xóa thành viên"
+                        onClick={() => handleRemoveMember(member.user_id, member.username)}
+                        disabled={removingFor === member.user_id}
+                      >
+                        {removingFor === member.user_id ? (
+                          <div className="atm-spinner-sm" />
+                        ) : (
+                          <Icon name="trash" size={13} />
+                        )}
+                      </button>
                     )}
                   </div>
-                  <span className="atm-member-name">{member.username}</span>
-                  {member.role && (
-                    <span className="atm-member-role">{member.role}</span>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

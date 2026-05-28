@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "../common/Icon";
 import DatePicker from "react-datepicker";
 import { format, addDays, nextMonday } from "date-fns";
 import DatePickerPopover from "./DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
+import api from "../../api/axiosInstance";
 
 export default function AddTaskForm({
   newTaskTitle,
@@ -38,9 +39,26 @@ export default function AddTaskForm({
   setIsTaskProjectMenuOpen,
 
   setIsAddingTask,
+  taskAssignedTo,
+  setTaskAssignedTo,
+  userRole,
 }) {
   const { showToast } = useToast();
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    if (activeProject?.project_id) {
+      api.get(`/teams/projects/${activeProject.project_id}/members`)
+        .then((res) => {
+          setMembers(res.data.members || []);
+        })
+        .catch((err) => console.error("Error loading project members in AddTaskForm:", err));
+    } else {
+      setMembers([]);
+    }
+  }, [activeProject?.project_id]);
+
   const priorities = [
     { value: "urgent", label: "Urgent", color: "#dc2626" },
     { value: "high", label: "High", color: "#f97316" },
@@ -146,6 +164,33 @@ const selectedPriority =
             </div>
           )}
         </div>
+
+        {(userRole === 'owner' || userRole === 'leader') && (
+          <div className="assignee-picker" style={{ display: "inline-block" }}>
+            <select
+              value={taskAssignedTo}
+              onChange={(e) => setTaskAssignedTo(e.target.value)}
+              className="assignee-select"
+              style={{
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "#fff",
+                padding: "6px 10px",
+                borderRadius: "5px",
+                outline: "none",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              <option value="">Giao cho...</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={m.user_id} style={{ background: "#222" }}>
+                  {m.username} ({m.role})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <button>
           <Icon name="clock" size={14} /> Reminders

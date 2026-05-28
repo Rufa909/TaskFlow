@@ -17,12 +17,15 @@ import AddProjectModal from "../components/modals/AddProjectModal";
 import EditProjectModal from "../components/modals/EditProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
+import ApprovalModal from "../components/modals/ApprovalModal";
+import { useRole } from "../context/RoleContext";
 
 export default function HomePage() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
   const { language, setLanguage } = useLanguage();
+  const { fetchMyRole, fetchPendingCount, pendingCounts, projectRoles } = useRole();
   const [selectedTask, setSelectedTask] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,6 +57,7 @@ export default function HomePage() {
   const [taskDeadline, setTaskDeadline] = useState(null);
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskAssignedTo, setTaskAssignedTo] = useState("");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
   const [reportingTasks, setReportingTasks] = useState([]);
@@ -64,6 +68,10 @@ export default function HomePage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => localStorage.getItem("taskflow.sidebarCollapsed") === "true",
   );
+  // Role & Approval
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+  const userRole = activeProject ? projectRoles[activeProject.project_id] : null;
+  const pendingCount = activeProject ? (pendingCounts[activeProject.project_id]?.count || 0) : 0;
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -80,6 +88,14 @@ export default function HomePage() {
     };
     fetchProjects();
   }, []);
+
+  // Fetch role & pending count when active project changes
+  useEffect(() => {
+    if (activeProject?.project_id) {
+      fetchMyRole(activeProject.project_id);
+      fetchPendingCount(activeProject.project_id);
+    }
+  }, [activeProject?.project_id, fetchMyRole, fetchPendingCount]);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -210,6 +226,9 @@ export default function HomePage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
+      if (taskAssignedTo) {
+        formData.append("assigned_to", taskAssignedTo);
+      }
 
       if (taskAttachment) {
         formData.append("attachment", taskAttachment);
@@ -229,6 +248,7 @@ export default function HomePage() {
       setTaskDeadline(null);
       setTaskTime("");
       setTaskPriority("medium");
+      setTaskAssignedTo("");
       setTaskAttachment(null);
       setIsAddingTask(false);
     } catch (err) {
@@ -341,6 +361,16 @@ export default function HomePage() {
     }
   };
 
+  // Submit task (member nộp task - chờ owner duyệt)
+  const handleSubmitTask = async (taskId) => {
+    try {
+      const res = await api.post(`/roles/submit-task/${taskId}`);
+      showToast(res.data.message || "Đã nộp task, chờ Owner duyệt!", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Không thể nộp task", "error");
+    }
+  };
+
   const currentTasks = activeProject
     ? tasksByProject[activeProject.project_id] || []
     : [];
@@ -397,6 +427,20 @@ export default function HomePage() {
         <header className="main-header">
           <div className="breadcrumb">My Projects / </div>
           <div className="main-actions">
+            {/* Approval Center button – only for owner */}
+            {userRole === 'owner' && (
+              <button
+                className="action-btn approval-btn"
+                onClick={() => setIsApprovalModalOpen(true)}
+                title="Approval Center"
+                style={{ position: 'relative' }}
+              >
+                <Icon name="check" size={14} />
+                {pendingCount > 0 && (
+                  <span className="approval-badge">{pendingCount}</span>
+                )}
+              </button>
+            )}
             <button className="action-btn">
               <Icon name="more" size={14} />
             </button>
@@ -452,7 +496,10 @@ export default function HomePage() {
                   handleDeleteTask={handleDeleteTask}
                   handleUpdateTask={handleUpdateTask}
                   handleCompleteTask={handleCompleteTask}
+                  handleSubmitTask={handleSubmitTask}
                   setSelectedTask={setSelectedTask}
+                  userRole={userRole}
+                  currentUserId={user?.id}
                 />
 
                 {isAddingTask ? (
@@ -478,6 +525,9 @@ export default function HomePage() {
                     isTaskProjectMenuOpen={isTaskProjectMenuOpen}
                     setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
                     setIsAddingTask={setIsAddingTask}
+                    taskAssignedTo={taskAssignedTo}
+                    setTaskAssignedTo={setTaskAssignedTo}
+                    userRole={userRole}
                   />
                 ) : (
                   <button
@@ -522,6 +572,17 @@ export default function HomePage() {
         selectedTask={selectedTask}
         setSelectedTask={setSelectedTask}
         handleUpdateTask={handleUpdateTask}
+        userRole={userRole}
+      />
+
+      <ApprovalModal
+        isOpen={isApprovalModalOpen}
+        onClose={() => {
+          setIsApprovalModalOpen(false);
+          // refresh pending count after closing
+          if (activeProject) fetchPendingCount(activeProject.project_id);
+        }}
+        activeProject={activeProject}
       />
     </div>
   );

@@ -56,6 +56,11 @@ export default function InboxPage() {
   const [respondingId, setRespondingId] = useState(null);
   const [fadingIds, setFadingIds] = useState(new Set());
 
+  // Approval states (Owner)
+  const [assignmentRequests, setAssignmentRequests] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [loadingApprovals, setLoadingApprovals] = useState(true);
+
   // Sidebar states
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -131,6 +136,43 @@ export default function InboxPage() {
     };
     fetchInvitations();
   }, []);
+
+  // Fetch approvals
+  useEffect(() => {
+    const fetchApprovals = async () => {
+      setLoadingApprovals(true);
+      try {
+        const res = await api.get("/roles/inbox-approvals");
+        setAssignmentRequests(res.data.assignmentRequests || []);
+        setSubmissions(res.data.submissions || []);
+      } catch (err) {
+        console.error("Cannot load approvals", err);
+      } finally {
+        setLoadingApprovals(false);
+      }
+    };
+    fetchApprovals();
+  }, []);
+
+  const handleReviewAssignment = async (requestId, action) => {
+    try {
+      await api.put(`/roles/assignment-requests/${requestId}`, { action });
+      showToast(action === "approve" ? "Đã duyệt giao task thành công!" : "Đã từ chối giao task!", "success");
+      setAssignmentRequests((prev) => prev.filter((r) => r.request_id !== requestId));
+    } catch (err) {
+      showToast(err.response?.data?.message || "Không thể xử lý yêu cầu", "error");
+    }
+  };
+
+  const handleReviewSubmission = async (submissionId, action) => {
+    try {
+      await api.put(`/roles/submissions/${submissionId}`, { action });
+      showToast(action === "approve" ? "Đã duyệt nộp task thành công! Task đã hoàn thành." : "Đã từ chối nộp task!", "success");
+      setSubmissions((prev) => prev.filter((s) => s.submission_id !== submissionId));
+    } catch (err) {
+      showToast(err.response?.data?.message || "Không thể xử lý yêu cầu", "error");
+    }
+  };
 
   const handleDeleteTask = async (taskId) => {
     const task = tasks.find((t) => t.task_id === taskId);
@@ -415,72 +457,170 @@ export default function InboxPage() {
             <div className="inbox-section-divider" />
           </div>
 
-          {/* ---- Tasks Section ---- */}
-          {loading ? (
-            <div className="empty-state">Loading...</div>
-          ) : tasks.length === 0 ? (
-            <>
-              <div className="inbox-no-tasks-state">
-                <div className="inbox-empty-icon">✨</div>
-                <h3>Inbox Zero!</h3>
-                <p>Great job! You've completed all your inbox tasks.</p>
-                <button
-                  className="add-task-btn"
-                  onClick={() => setIsAddingTask(true)}
-                  style={{ marginTop: "16px" }}
-                >
-                  <span className="icon">
-                    <Icon name="plus" size={18} />
-                  </span>
-                  Add a task
-                </button>
+          {/* ---- Task Assignment Approvals Section (Owner Only) ---- */}
+          {assignmentRequests.length > 0 && (
+            <div className="inbox-invitations-section" style={{ marginTop: "24px" }}>
+              <div className="inbox-invitations-title">
+                <span className="title-icon" style={{ color: "#f59e0b" }}>
+                  <Icon name="user" size={16} />
+                </span>
+                Task Assignment Approvals
+                <span className="invitation-count-badge" style={{ backgroundColor: "#f59e0b" }}>
+                  {assignmentRequests.length}
+                </span>
               </div>
-            </>
-          ) : (
-            <>
-              {isAddingTask ? (
-                <AddTaskForm
-                  newTaskTitle={newTaskTitle}
-                  setNewTaskTitle={setNewTaskTitle}
-                  newTaskDesc={newTaskDesc}
-                  setNewTaskDesc={setNewTaskDesc}
-                  handleAddTask={handleAddTask}
-                  taskDeadline={taskDeadline}
-                  setTaskDeadline={setTaskDeadline}
-                  taskTime={taskTime}
-                  setTaskTime={setTaskTime}
-                  taskAttachment={taskAttachment}
-                  setTaskAttachment={setTaskAttachment}
-                  taskPriority={taskPriority}
-                  setTaskPriority={setTaskPriority}
-                  isDatePickerOpen={isDatePickerOpen}
-                  setIsDatePickerOpen={setIsDatePickerOpen}
-                  activeProject={activeProject}
-                  projects={projects}
-                  setActiveProject={setActiveProject}
-                  isTaskProjectMenuOpen={isTaskProjectMenuOpen}
-                  setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
-                  setIsAddingTask={setIsAddingTask}
-                />
-              ) : (
-                <button
-                  className="add-task-btn"
-                  onClick={() => setIsAddingTask(true)}
-                  style={{ marginBottom: "20px" }}
-                >
-                  <span className="icon">
-                    <Icon name="plus" size={18} />
-                  </span>
-                  Add task
-                </button>
-              )}
-              <TaskList
-                tasks={filtered}
-                handleDeleteTask={(id) => handleDeleteTask(id)}
-                setSelectedTask={setSelectedTask}
-                handleCompleteTask={handleCompleteTask}
-              />
-            </>
+
+              {assignmentRequests.map((req) => (
+                <div key={req.request_id} className="inbox-invitation-card">
+                  {/* Sender (Leader) avatar */}
+                  <div className="inv-sender-avatar">
+                    {req.requester_photo ? (
+                      <img src={avatarUrl(req.requester_photo)} alt="" onError={(e) => { e.target.style.display = "none"; }} />
+                    ) : (
+                      (req.requester_name || "L").charAt(0).toUpperCase()
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="inv-info">
+                    <div className="inv-sender-row">
+                      <span className="inv-sender-name" style={{ color: "var(--text-primary, #fff)", fontWeight: 600 }}>
+                        {req.requester_name} (Leader)
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--text-secondary, #aaa)", marginLeft: "4px" }}>
+                        giao task cho <strong>{req.assignee_name}</strong>
+                      </span>
+                    </div>
+                    <div className="inv-sender-row" style={{ marginTop: "4px", fontSize: "13px", color: "var(--text-primary, #fff)" }}>
+                      Task: <strong>{req.task_title}</strong>
+                    </div>
+                    {req.note && (
+                      <div style={{ marginTop: "4px", fontSize: "12px", color: "#eab308", fontStyle: "italic" }}>
+                        Note: "{req.note}"
+                      </div>
+                    )}
+                    <div className="inv-details-row" style={{ marginTop: "6px" }}>
+                      <span className="inv-project-badge">
+                        <Icon name="hash" size={11} />
+                        {req.project_name}
+                      </span>
+                      {req.created_at && (
+                        <span className="inv-timestamp">
+                          {timeAgo(req.created_at)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="inv-actions">
+                    <button
+                      className="inv-accept-btn"
+                      onClick={() => handleReviewAssignment(req.request_id, "approve")}
+                    >
+                      <Icon name="check" size={14} />
+                      Approve
+                    </button>
+                    <button
+                      className="inv-decline-btn"
+                      onClick={() => handleReviewAssignment(req.request_id, "reject")}
+                    >
+                      <Icon name="x" size={14} />
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="inbox-section-divider" style={{ marginTop: "20px" }} />
+            </div>
+          )}
+
+          {/* ---- Task Submission Approvals Section (Owner Only) ---- */}
+          {submissions.length > 0 && (
+            <div className="inbox-invitations-section" style={{ marginTop: "24px" }}>
+              <div className="inbox-invitations-title">
+                <span className="title-icon" style={{ color: "#10b981" }}>
+                  <Icon name="check" size={16} />
+                </span>
+                Task Submission Approvals
+                <span className="invitation-count-badge" style={{ backgroundColor: "#10b981" }}>
+                  {submissions.length}
+                </span>
+              </div>
+
+              {submissions.map((sub) => (
+                <div key={sub.submission_id} className="inbox-invitation-card">
+                  {/* Sender (Member) avatar */}
+                  <div className="inv-sender-avatar">
+                    {sub.submitter_photo ? (
+                      <img src={avatarUrl(sub.submitter_photo)} alt="" onError={(e) => { e.target.style.display = "none"; }} />
+                    ) : (
+                      (sub.submitter_name || "M").charAt(0).toUpperCase()
+                    )}
+                  </div>
+
+                  {/* Info */}
+                  <div className="inv-info">
+                    <div className="inv-sender-row">
+                      <span className="inv-sender-name" style={{ color: "var(--text-primary, #fff)", fontWeight: 600 }}>
+                        {sub.submitter_name} (Member)
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--text-secondary, #aaa)", marginLeft: "4px" }}>
+                        nộp hoàn thành task
+                      </span>
+                    </div>
+                    <div className="inv-sender-row" style={{ marginTop: "4px", fontSize: "13px", color: "var(--text-primary, #fff)" }}>
+                      Task: <strong>{sub.task_title}</strong>
+                    </div>
+                    {sub.note && (
+                      <div style={{ marginTop: "4px", fontSize: "12px", color: "#10b981", fontStyle: "italic" }}>
+                        Note: "{sub.note}"
+                      </div>
+                    )}
+                    <div className="inv-details-row" style={{ marginTop: "6px" }}>
+                      <span className="inv-project-badge">
+                        <Icon name="hash" size={11} />
+                        {sub.project_name}
+                      </span>
+                      {sub.created_at && (
+                        <span className="inv-timestamp">
+                          {timeAgo(sub.created_at)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="inv-actions">
+                    <button
+                      className="inv-accept-btn"
+                      style={{ backgroundColor: "#10b981" }}
+                      onClick={() => handleReviewSubmission(sub.submission_id, "approve")}
+                    >
+                      <Icon name="check" size={14} />
+                      Approve
+                    </button>
+                    <button
+                      className="inv-decline-btn"
+                      onClick={() => handleReviewSubmission(sub.submission_id, "reject")}
+                    >
+                      <Icon name="x" size={14} />
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="inbox-section-divider" style={{ marginTop: "20px" }} />
+            </div>
+          )}
+
+          {invitations.length === 0 && assignmentRequests.length === 0 && submissions.length === 0 && !loadingInvitations && !loadingApprovals && (
+            <div className="inv-empty-state" style={{ marginTop: "60px" }}>
+              <div className="inv-empty-icon" style={{ fontSize: "48px" }}>📭</div>
+              <div className="inv-empty-text" style={{ fontSize: "16px", color: "var(--text-secondary, #aaa)", marginTop: "12px" }}>
+                Hộp thư đến trống. Bạn không có lời mời hay yêu cầu chờ duyệt nào!
+              </div>
+            </div>
           )}
         </div>
       </main>

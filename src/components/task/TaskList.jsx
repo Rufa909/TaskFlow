@@ -8,7 +8,10 @@ export default function TaskList({
   handleDeleteTask,
   handleUpdateTask,
   handleCompleteTask = () => {},
+  handleSubmitTask = () => {},
   setSelectedTask,
+  userRole = null,
+  currentUserId = null,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null);
 
@@ -38,10 +41,16 @@ export default function TaskList({
             className="checkbox"
             type="button"
             aria-label="Complete task"
-            title="Complete task"
+            title={userRole === 'member' ? 'Nộp task để chờ duyệt' : 'Complete task'}
             onClick={(e) => {
               e.stopPropagation();
-              handleCompleteTask(task);
+              if (userRole === 'member' && task.assigned_to === currentUserId) {
+                // member: submit for approval
+                handleSubmitTask(task.task_id);
+              } else if (userRole !== 'member') {
+                // owner / leader: complete directly
+                handleCompleteTask(task);
+              }
             }}
           ></button>
           <button
@@ -110,7 +119,16 @@ export default function TaskList({
             </div>
           )}
           <div className="task-content">
-            <div className="task-title">{task.title}</div>
+            <div className="task-title">
+              {task.title}
+              {/* Assignment status badge */}
+              {task.assignment_status === 'pending' && (
+                <span className="task-assignment-badge pending">⏳ Chờ duyệt</span>
+              )}
+              {task.assignment_status === 'approved' && task.assigned_to && (
+                <span className="task-assignment-badge assigned">✓ Được giao</span>
+              )}
+            </div>
 
             {task.description && (
               <div className="task-meta">{task.description}</div>
