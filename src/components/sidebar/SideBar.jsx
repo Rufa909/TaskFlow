@@ -226,8 +226,12 @@ export default function Sidebar({
           <span style={{ flex: 1, textAlign: "left" }}>{t("upcoming")}</span>
         </Link>
         <button
-          className="nav-item filters-btn"
-          onClick={() => setIsFiltersOpen(true)}
+          className={`nav-item filters-btn ${activeView === "filtersLabels" ? "active" : ""}`}
+          onClick={() => {
+            setActiveView("filtersLabels");
+            setIsAddingTask(false);
+            navigate("/?view=filtersLabels");
+          }}
           title={t("filtersLabels")}
         >
           <span className="icon">

@@ -26,6 +26,10 @@ export default function AddTaskForm({
   taskPriority,
   setTaskPriority,
 
+  taskLabels,
+  setTaskLabels,
+  availableLabels = [],
+
   isDatePickerOpen,
   setIsDatePickerOpen,
 
@@ -41,6 +45,7 @@ export default function AddTaskForm({
 }) {
   const { showToast } = useToast();
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
+  const [isLabelsDropdownOpen, setIsLabelsDropdownOpen] = useState(false);
   const priorities = [
     { value: "urgent", label: "Urgent", color: "#dc2626" },
     { value: "high", label: "High", color: "#f97316" },
@@ -62,6 +67,14 @@ const selectedPriority =
     }
 
     setTaskAttachment(file);
+  };
+
+  const toggleTaskLabel = (label) => {
+    setTaskLabels((prev) =>
+      prev.includes(label)
+        ? prev.filter((item) => item !== label)
+        : [...prev, label],
+    );
   };
 
   return (
@@ -147,6 +160,42 @@ const selectedPriority =
           )}
         </div>
 
+        {availableLabels.length > 0 && (
+          <div className="task-label-dropdown" style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setIsLabelsDropdownOpen(!isLabelsDropdownOpen)}
+              className="task-add-label-btn"
+            >
+              <Icon name="tag" size={14} />
+              Add label
+              <Icon name={isLabelsDropdownOpen ? "chevronUp" : "chevronDown"} size={12} />
+            </button>
+            {isLabelsDropdownOpen && (
+              <div className="task-label-dropdown-menu">
+                {availableLabels.map((label) => (
+                  <button
+                    key={label.name}
+                    type="button"
+                    className={`task-label-option ${taskLabels.includes(label.name) ? "active" : ""}`}
+                    onClick={() => {
+                      toggleTaskLabel(label.name);
+                    }}
+                    style={{
+                      color: label.color,
+                      borderColor: label.color,
+                    }}
+                  >
+                    <Icon name="tag" size={12} />
+                    <span className="task-label-text">{label.name}</span>
+                    {taskLabels.includes(label.name) && <Icon name="check" size={14} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <button>
           <Icon name="clock" size={14} /> Reminders
         </button>
@@ -166,36 +215,64 @@ const selectedPriority =
         )}
       </div>
       <div className="form-footer">
-        <div className="project-selector" style={{ position: "relative" }}>
-          <button
-            onClick={() => setIsTaskProjectMenuOpen(!isTaskProjectMenuOpen)}
-          >
-            <Icon name="hash" size={14} />
-            {activeProject?.name || "Project"}
-            <Icon name="chevronDown" size={14} />
-          </button>
-          {isTaskProjectMenuOpen && (
-            <div
-              className="project-dropdown-menu"
-              style={{
-                bottom: "100%",
-                top: "auto",
-                marginBottom: "4px",
-                left: 0,
-              }}
+        <div className="form-footer-left">
+          <div className="project-selector" style={{ position: "relative" }}>
+            <button
+              onClick={() => setIsTaskProjectMenuOpen(!isTaskProjectMenuOpen)}
             >
-              {projects.map((proj) => (
-                <div
-                  key={proj.project_id}
-                  className="project-dropdown-item"
-                  onClick={() => {
-                    setActiveProject(proj);
-                    setIsTaskProjectMenuOpen(false);
-                  }}
-                >
-                  <Icon name="hash" size={14} /> {proj.name}
-                </div>
-              ))}
+              <Icon name="hash" size={14} />
+              {activeProject?.name || "Project"}
+              <Icon name="chevronDown" size={14} />
+            </button>
+            {isTaskProjectMenuOpen && (
+              <div
+                className="project-dropdown-menu"
+                style={{
+                  bottom: "100%",
+                  top: "auto",
+                  marginBottom: "4px",
+                  left: 0,
+                }}
+              >
+                {projects.map((proj) => (
+                  <div
+                    key={proj.project_id}
+                    className="project-dropdown-item"
+                    onClick={() => {
+                      setActiveProject(proj);
+                      setIsTaskProjectMenuOpen(false);
+                    }}
+                  >
+                    <Icon name="hash" size={14} /> {proj.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {taskLabels.length > 0 && (
+            <div className="form-footer-labels">
+              {taskLabels.map((label) => {
+                const labelObj = availableLabels.find((l) => l.name === label);
+                return (
+                  <span
+                    key={label}
+                    className="form-footer-label"
+                    style={{
+                      backgroundColor: labelObj?.color || "#e5e7eb",
+                      borderColor: labelObj?.color || "#d1d5db",
+                    }}
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      onClick={() => toggleTaskLabel(label)}
+                      className="form-footer-label-remove"
+                    >
+                      <Icon name="x" size={10} />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
@@ -210,6 +287,7 @@ const selectedPriority =
               setTaskTime("");
               setTaskAttachment(null);
               setTaskPriority("medium");
+              setTaskLabels([]);
             }}
           >
             Cancel

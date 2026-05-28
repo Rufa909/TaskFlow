@@ -10,6 +10,7 @@ export default function EditTaskModal({
   selectedTask,
   setSelectedTask,
   handleUpdateTask,
+  availableLabels = [],
 }) {
   const { showToast } = useToast();
   const [title, setTitle] = useState("");
@@ -17,6 +18,7 @@ export default function EditTaskModal({
   const [deadline, setDeadline] = useState("");
   const [time, setTime] = useState("");
   const [priority, setPriority] = useState("medium");
+  const [labels, setLabels] = useState([]);
   const [saving, setSaving] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
@@ -39,6 +41,7 @@ export default function EditTaskModal({
       setDeadline(selectedTask.deadline ? new Date(selectedTask.deadline) : null);
       setTime(selectedTask.time ? selectedTask.time.slice(0, 5) : "");
       setPriority(selectedTask.priority || "medium");
+      setLabels(Array.isArray(selectedTask.labels) ? selectedTask.labels : []);
       setSaving(false);
       setIsDatePickerOpen(false);
       setIsPriorityOpen(false);
@@ -72,6 +75,7 @@ export default function EditTaskModal({
       formData.append("deadline", deadline ? deadline.toISOString() : "");
       formData.append("time", time || "");
       formData.append("priority", priority);
+      formData.append("labels", JSON.stringify(labels));
       formData.append("project_id", selectedTask.project_id || "");
 
       if (attachment) {
@@ -97,6 +101,14 @@ export default function EditTaskModal({
     }
 
     setAttachment(file);
+  };
+
+  const toggleTaskLabel = (label) => {
+    setLabels((prev) =>
+      prev.includes(label)
+        ? prev.filter((item) => item !== label)
+        : [...prev, label],
+    );
   };
 
   return (
@@ -225,6 +237,27 @@ export default function EditTaskModal({
               />
             )}
           </div>
+
+          {availableLabels.length > 0 && (
+            <div className="task-label-picker">
+              {availableLabels.map((label) => (
+                <button
+                  key={label.name}
+                  type="button"
+                  className={`task-label-option ${labels.includes(label.name) ? "active" : ""}`}
+                  onClick={() => toggleTaskLabel(label.name)}
+                  style={
+                    labels.includes(label.name)
+                      ? { backgroundColor: label.color, borderColor: label.color }
+                      : { color: label.color, borderColor: label.color }
+                  }
+                >
+                  <Icon name="tag" size={12} />
+                  {label.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           {(attachment || selectedTask.attachment_url) && (
             <div className="edit-task-attachment-row">

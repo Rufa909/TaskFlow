@@ -131,6 +131,18 @@
   color: #c62828;
 }
 
+.filters-priority-btn.priority-urgent.active {
+  border-color: #dc2626;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.filters-priority-btn.deadline-filter.active {
+  border-color: #14b8a6;
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
 /* Label Input */
 .filters-label-input-group {
   display: flex;
@@ -271,6 +283,18 @@
   border-color: #1e88e5;
   background: #1e88e5;
   color: #fff;
+}
+
+.filters-label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filters-empty-text {
+  margin: 0;
+  color: #808080;
+  font-size: 13px;
 }
 
 /* Summary */
