@@ -267,89 +267,10 @@ const getProjectMembers = async (req, res) => {
   }
 };
 
-// Đổi role của member (chỉ owner)
-const updateMemberRole = async (req, res) => {
-  try {
-    const { id, userId } = req.params;  // id = project_id
-    const { role } = req.body;          // 'member' | 'leader'
-    const requesterId = req.user.id;
-
-    if (!['member', 'leader'].includes(role)) {
-      return res.status(400).json({ success: false, message: 'Role không hợp lệ. Chỉ có thể đặt member hoặc leader' });
-    }
-
-    // Kiểm tra requester là owner
-    const [ownerCheck] = await pool.query(
-      'SELECT owner_id FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL',
-      [id, requesterId]
-    );
-    if (ownerCheck.length === 0) {
-      return res.status(403).json({ success: false, message: 'Chỉ Owner mới có thể đổi role' });
-    }
-
-    // Không được đổi role của chính mình (owner không thể hạ cấp mình)
-    if (parseInt(userId) === requesterId) {
-      return res.status(400).json({ success: false, message: 'Không thể đổi role của chính mình' });
-    }
-
-    const [result] = await pool.query(
-      'UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?',
-      [role, id, userId]
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Thành viên không tồn tại trong project' });
-    }
-
-    res.json({ success: true, message: `Đã đổi role thành ${role}` });
-  } catch (error) {
-    console.error('Lỗi updateMemberRole:', error);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
-  }
-};
-
-// Xóa member khỏi project (chỉ owner)
-const removeMember = async (req, res) => {
-  try {
-    const { id, userId } = req.params;  // id = project_id
-    const requesterId = req.user.id;
-
-    // Kiểm tra requester là owner
-    const [ownerCheck] = await pool.query(
-      'SELECT owner_id FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL',
-      [id, requesterId]
-    );
-    if (ownerCheck.length === 0) {
-      return res.status(403).json({ success: false, message: 'Chỉ Owner mới có thể xóa thành viên' });
-    }
-
-    // Không được xóa chính mình
-    if (parseInt(userId) === requesterId) {
-      return res.status(400).json({ success: false, message: 'Không thể xóa chính mình khỏi project' });
-    }
-
-    const [result] = await pool.query(
-      'DELETE FROM project_members WHERE project_id = ? AND user_id = ?',
-      [id, userId]
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Thành viên không tồn tại trong project' });
-    }
-
-    res.json({ success: true, message: 'Đã xóa thành viên khỏi project' });
-  } catch (error) {
-    console.error('Lỗi removeMember:', error);
-    res.status(500).json({ success: false, message: 'Lỗi server' });
-  }
-};
-
 module.exports = {
   searchUserByEmail,
   sendInvitation,
   getMyInvitations,
   respondInvitation,
   getProjectMembers,
-  updateMemberRole,
-  removeMember,
 };

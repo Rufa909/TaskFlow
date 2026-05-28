@@ -28,46 +28,22 @@ async function ensureTaskCompletionColumn() {
 
 async function ensureTaskAttachmentTable() {
   if (!attachmentTableReady) {
-    attachmentTableReady = (async () => {
-      // 1. Create table if not exists
-      await pool.query(
-        `
-        CREATE TABLE IF NOT EXISTS attachments (
-          attachment_id INT AUTO_INCREMENT PRIMARY KEY,
-          task_id INT NOT NULL,
-          originalName VARCHAR(255) NULL,
-          file_url VARCHAR(500) NOT NULL,
-          fileName VARCHAR(255) NULL,
-          mimeType VARCHAR(100) NULL,
-          size INT NULL,
-          upload_by INT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_attachments_task_id (task_id)
-        )
-        `
-      );
-
-      // 2. Dynamically add missing columns if the table already existed with older schema
-      const [cols] = await pool.query(`
-        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'attachments'
-      `);
-      const colNames = cols.map(c => c.COLUMN_NAME);
-
-      if (!colNames.includes('originalName')) {
-        await pool.query("ALTER TABLE attachments ADD COLUMN originalName VARCHAR(255) NULL");
-      }
-      if (!colNames.includes('fileName')) {
-        await pool.query("ALTER TABLE attachments ADD COLUMN fileName VARCHAR(255) NULL");
-      }
-      if (!colNames.includes('mimeType')) {
-        await pool.query("ALTER TABLE attachments ADD COLUMN mimeType VARCHAR(100) NULL");
-      }
-      if (!colNames.includes('size')) {
-        await pool.query("ALTER TABLE attachments ADD COLUMN size INT NULL");
-      }
-    })();
+    attachmentTableReady = pool.query(
+      `
+      CREATE TABLE IF NOT EXISTS attachments (
+        attachment_id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        originalName VARCHAR(255) NOT NULL,
+        file_url VARCHAR(500) NOT NULL,
+        fileName VARCHAR(255) NOT NULL,
+        mimeType VARCHAR(100),
+        size INT,
+        upload_by INT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_attachments_task_id (task_id)
+      )
+      `,
+    );
   }
 
   return attachmentTableReady;
@@ -103,36 +79,18 @@ exports.getTasks = async (req, res) => {
         AND p.deleted_at IS NULL
         AND (
           p.owner_id = ?
-          OR (
-            EXISTS (
-              SELECT 1
-              FROM project_members pm
-              WHERE pm.project_id = p.project_id
-                AND pm.user_id = ?
-            )
-            AND (
-              t.assignment_status IN ('none', 'approved', 'rejected') OR t.assignment_status IS NULL
-              OR (
-                t.assignment_status = 'pending'
-                AND (
-                  t.created_by = ?
-                  OR EXISTS (
-                    SELECT 1
-                    FROM task_assignment_requests tar
-                    WHERE tar.task_id = t.task_id
-                      AND tar.requested_by = ?
-                      AND tar.status = 'pending'
-                  )
-                )
-              )
-            )
+          OR EXISTS (
+            SELECT 1
+            FROM project_members pm
+            WHERE pm.project_id = p.project_id
+              AND pm.user_id = ?
           )
         )
         AND t.deleted_at IS NULL
         AND t.completed_at IS NULL
       ORDER BY t.created_at ASC
       `,
-      [projectId, req.user.id, req.user.id, req.user.id, req.user.id],
+      [projectId, req.user.id, req.user.id],
     );
     res.json({ success: true, tasks: rows });
   } catch (err) {
@@ -145,12 +103,12 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time, priority, assigned_to } = req.body;
+    const { title, description, deadline, time, priority } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
 
     const [[project]] = await pool.query(
-      `SELECT p.project_id, p.owner_id
+      `SELECT p.project_id
        FROM projects p
        WHERE p.project_id = ?
          AND p.deleted_at IS NULL
@@ -184,36 +142,11 @@ exports.createTask = async (req, res) => {
       });
     }
 
-    // Determine the user's role
-    let creatorRole = null;
-    if (project.owner_id === req.user.id) {
-      creatorRole = 'owner';
-    } else {
-      const [[member]] = await pool.query(
-        "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?",
-        [projectId, req.user.id]
-      );
-      creatorRole = member ? member.role : null;
-    }
-
-    let insertAssignedTo = null;
-    let insertAssignmentStatus = 'none';
-
-    if (assigned_to && assigned_to !== 'none' && assigned_to !== 'null' && assigned_to !== '') {
-      if (creatorRole === 'owner') {
-        insertAssignedTo = assigned_to;
-        insertAssignmentStatus = 'approved';
-      } else if (creatorRole === 'leader') {
-        insertAssignedTo = null;
-        insertAssignmentStatus = 'pending';
-      }
-    }
-
     const [result] = await pool.query(
       `
     INSERT INTO tasks 
-    (title, description, deadline, time, priority, project_id, created_by, assigned_to, assignment_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (title, description, deadline, time, priority, project_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
       [
         title,
@@ -223,19 +156,10 @@ exports.createTask = async (req, res) => {
         priority || "medium",
         projectId,
         req.user.id,
-        insertAssignedTo,
-        insertAssignmentStatus,
       ],
     );
 
     const taskId = result.insertId;
-
-    if (insertAssignmentStatus === 'pending' && assigned_to) {
-      await pool.query(
-        "INSERT INTO task_assignment_requests (task_id, project_id, assigned_to, requested_by, status) VALUES (?, ?, ?, ?, 'pending')",
-        [taskId, projectId, assigned_to, req.user.id]
-      );
-    }
 
     if (req.file) {
       await pool.query(
@@ -281,36 +205,9 @@ exports.createTask = async (req, res) => {
 exports.updateTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
-    const { title, description, deadline, time, priority, assigned_to } = req.body;
+    const { title, description, deadline, time, priority } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
-
-    const [[project]] = await pool.query(
-      "SELECT owner_id FROM projects WHERE project_id = ? AND deleted_at IS NULL",
-      [projectId]
-    );
-    if (!project) {
-      return res.status(404).json({ success: false, message: "Project not found" });
-    }
-
-    let userRole = null;
-    if (project.owner_id === req.user.id) {
-      userRole = 'owner';
-    } else {
-      const [[member]] = await pool.query(
-        "SELECT role FROM project_members WHERE project_id = ? AND user_id = ?",
-        [projectId, req.user.id]
-      );
-      userRole = member ? member.role : null;
-    }
-
-    const [[task]] = await pool.query(
-      "SELECT assigned_to, assignment_status FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL",
-      [taskId, projectId]
-    );
-    if (!task) {
-      return res.status(404).json({ success: false, message: "Task not found" });
-    }
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -332,33 +229,6 @@ exports.updateTask = async (req, res) => {
       }
     }
 
-    let updateAssignedTo = task.assigned_to;
-    let updateAssignmentStatus = task.assignment_status;
-
-    if (assigned_to !== undefined) {
-      let targetAssignee = (assigned_to && assigned_to !== 'none' && assigned_to !== 'null' && assigned_to !== '') ? parseInt(assigned_to) : null;
-      if (userRole === 'owner') {
-        updateAssignedTo = targetAssignee;
-        updateAssignmentStatus = targetAssignee ? 'approved' : 'none';
-      } else if (userRole === 'leader') {
-        if (targetAssignee !== task.assigned_to) {
-          if (targetAssignee) {
-            updateAssignedTo = null; // stays null until owner approval
-            updateAssignmentStatus = 'pending';
-            await pool.query("DELETE FROM task_assignment_requests WHERE task_id = ? AND status = 'pending'", [taskId]);
-            await pool.query(
-              "INSERT INTO task_assignment_requests (task_id, project_id, assigned_to, requested_by, status) VALUES (?, ?, ?, ?, 'pending')",
-              [taskId, projectId, targetAssignee, req.user.id]
-            );
-          } else {
-            updateAssignedTo = null;
-            updateAssignmentStatus = 'none';
-            await pool.query("DELETE FROM task_assignment_requests WHERE task_id = ? AND status = 'pending'", [taskId]);
-          }
-        }
-      }
-    }
-
     const [result] = await pool.query(
       `
             UPDATE tasks
@@ -367,12 +237,15 @@ exports.updateTask = async (req, res) => {
                 description = ?,
                 deadline = ?,
                 time = ?,
-                priority = ?,
-                assigned_to = ?,
-                assignment_status = ?
+                priority = ?
             WHERE task_id = ?
               AND project_id = ?
               AND deleted_at IS NULL
+              AND EXISTS (
+                SELECT 1 FROM projects p
+                WHERE p.project_id = ?
+                  AND p.deleted_at IS NULL
+              )
             `,
       [
         title.trim(),
@@ -380,9 +253,8 @@ exports.updateTask = async (req, res) => {
         deadlineDate,
         time || null,
         priority || "medium",
-        updateAssignedTo,
-        updateAssignmentStatus,
         taskId,
+        projectId,
         projectId,
       ],
     );

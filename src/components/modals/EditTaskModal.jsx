@@ -3,7 +3,6 @@ import { format } from "date-fns";
 import Icon from "../common/Icon";
 import DatePickerPopover from "../task/DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
-import api from "../../api/axiosInstance";
 
 const API_ORIGIN = "http://localhost:5000";
 
@@ -11,7 +10,6 @@ export default function EditTaskModal({
   selectedTask,
   setSelectedTask,
   handleUpdateTask,
-  userRole,
 }) {
   const { showToast } = useToast();
   const [title, setTitle] = useState("");
@@ -19,8 +17,6 @@ export default function EditTaskModal({
   const [deadline, setDeadline] = useState("");
   const [time, setTime] = useState("");
   const [priority, setPriority] = useState("medium");
-  const [assignedTo, setAssignedTo] = useState("");
-  const [members, setMembers] = useState([]);
   const [saving, setSaving] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
@@ -43,25 +39,12 @@ export default function EditTaskModal({
       setDeadline(selectedTask.deadline ? new Date(selectedTask.deadline) : null);
       setTime(selectedTask.time ? selectedTask.time.slice(0, 5) : "");
       setPriority(selectedTask.priority || "medium");
-      setAssignedTo(selectedTask.assigned_to || "");
       setSaving(false);
       setIsDatePickerOpen(false);
       setIsPriorityOpen(false);
       setAttachment(null);
     }
   }, [selectedTask]);
-
-  useEffect(() => {
-    if (selectedTask?.project_id) {
-      api.get(`/teams/projects/${selectedTask.project_id}/members`)
-        .then((res) => {
-          setMembers(res.data.members || []);
-        })
-        .catch((err) => console.error("Error loading project members in EditTaskModal:", err));
-    } else {
-      setMembers([]);
-    }
-  }, [selectedTask?.project_id]);
 
   useEffect(() => {
     if (!selectedTask) return;
@@ -90,7 +73,6 @@ export default function EditTaskModal({
       formData.append("time", time || "");
       formData.append("priority", priority);
       formData.append("project_id", selectedTask.project_id || "");
-      formData.append("assigned_to", assignedTo || "");
 
       if (attachment) {
         formData.append("attachment", attachment);
@@ -202,34 +184,6 @@ export default function EditTaskModal({
                 onChange={handleAttachmentChange}
               />
             </label>
-
-            {(userRole === 'owner' || userRole === 'leader') && (
-              <div className="assignee-picker" style={{ display: "inline-block" }}>
-                <select
-                  value={assignedTo}
-                  onChange={(e) => setAssignedTo(e.target.value)}
-                  className="edit-task-chip assignee-select"
-                  style={{
-                    background: "var(--bg-secondary, rgba(255, 255, 255, 0.05))",
-                    border: "1px solid var(--border-color, rgba(255, 255, 255, 0.1))",
-                    color: "var(--text-primary, #fff)",
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                    outline: "none",
-                    cursor: "pointer",
-                    height: "28px",
-                    fontSize: "13px",
-                  }}
-                >
-                  <option value="">Giao cho...</option>
-                  {members.map((m) => (
-                    <option key={m.user_id} value={m.user_id} style={{ background: "#222" }}>
-                      {m.username} ({m.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="priority-picker">
               <button
