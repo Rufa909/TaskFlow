@@ -12,6 +12,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import FiltersModal from './components/modals/FiltersModal';
 import AddTeamModal from './components/modals/AddTeamModal';
+import AIChatBox from './components/AI/AIChatBox';
 
 export default function App() {
   return (
@@ -60,6 +61,7 @@ export default function App() {
 
                 <FiltersModal />
                 <AddTeamModal />
+                <AIChatBox />
               </BrowserRouter>
             </TeamsProvider>
           </ConfirmProvider>
