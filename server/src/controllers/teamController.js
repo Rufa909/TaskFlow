@@ -267,10 +267,61 @@ const getProjectMembers = async (req, res) => {
   }
 };
 
+const updateProjectMemberRole = async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const { role } = req.body;
+
+    if (!["leader", "member"].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Role phai la leader hoac member",
+      });
+    }
+
+    const [projects] = await pool.query(
+      "SELECT project_id FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL",
+      [id, req.user.id],
+    );
+
+    if (projects.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Chi owner moi duoc cap nhat role",
+      });
+    }
+
+    if (Number(userId) === Number(req.user.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Khong the doi role cua owner",
+      });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?",
+      [role, id, userId],
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Member khong ton tai trong project",
+      });
+    }
+
+    res.json({ success: true, message: "Cap nhat role thanh cong" });
+  } catch (error) {
+    console.error("Loi cap nhat role:", error);
+    res.status(500).json({ success: false, message: "Loi server" });
+  }
+};
+
 module.exports = {
   searchUserByEmail,
   sendInvitation,
   getMyInvitations,
   respondInvitation,
   getProjectMembers,
+  updateProjectMemberRole,
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useTeams } from "../../context/TeamsContext";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
 import api from "../../api/axiosInstance";
 import Icon from "../common/Icon";
 import "./AddTeamModal.css";
@@ -17,6 +18,7 @@ function avatarUrl(photo) {
 export default function AddTeamModal() {
   const { isOpen, closeTeamModal, activeProject } = useTeams();
   const { showToast } = useToast();
+  const { user } = useAuth();
 
   // Search states
   const [searchEmail, setSearchEmail] = useState("");
@@ -31,6 +33,7 @@ export default function AddTeamModal() {
   // Members
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [changingRoleUserId, setChangingRoleUserId] = useState(null);
 
   // Load members when modal opens
   const loadMembers = useCallback(async () => {
@@ -126,7 +129,35 @@ export default function AddTeamModal() {
     }
   };
 
+  const handleRoleChange = async (member, nextRole) => {
+    if (!activeProject?.project_id || member.role === nextRole) return;
+
+    setChangingRoleUserId(member.user_id);
+    setStatusMessage(null);
+
+    try {
+      await api.put(
+        `/teams/projects/${activeProject.project_id}/members/${member.user_id}/role`,
+        { role: nextRole },
+      );
+
+      setMembers((prev) =>
+        prev.map((item) =>
+          item.user_id === member.user_id ? { ...item, role: nextRole } : item,
+        ),
+      );
+      showToast("Cap nhat role thanh cong", "success");
+    } catch (err) {
+      const msg = err.response?.data?.message || "Cannot update member role.";
+      setStatusMessage({ type: "error", text: msg });
+    } finally {
+      setChangingRoleUserId(null);
+    }
+  };
+
   if (!isOpen) return null;
+
+  const isOwner = Number(activeProject?.owner_id) === Number(user?.id);
 
   const statusIcon =
     statusMessage?.type === "success"
@@ -298,9 +329,20 @@ export default function AddTeamModal() {
                     )}
                   </div>
                   <span className="atm-member-name">{member.username}</span>
-                  {member.role && (
+                  {isOwner && member.role !== "owner" ? (
+                    <select
+                      className="atm-member-role-select"
+                      value={member.role || "member"}
+                      disabled={changingRoleUserId === member.user_id}
+                      onChange={(e) => handleRoleChange(member, e.target.value)}
+                      title="Change role"
+                    >
+                      <option value="member">Member</option>
+                      <option value="leader">Leader</option>
+                    </select>
+                  ) : member.role ? (
                     <span className="atm-member-role">{member.role}</span>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>

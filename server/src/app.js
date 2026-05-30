@@ -5,6 +5,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 
 const aiRoutes = require("./routes/aiRoutes");
+const { checkOverdueTasks } = require("./controllers/taskController");
 
 const app = express();
 const uploadsPath = path.resolve(__dirname, '../uploads');
@@ -60,3 +61,10 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
+
+const overdueIntervalMs = Number(process.env.OVERDUE_TASK_CHECK_INTERVAL_MS || 15 * 60 * 1000);
+setInterval(() => {
+    checkOverdueTasks().catch((err) => {
+        console.error('Loi kiem tra task qua han:', err.message);
+    });
+}, overdueIntervalMs);
