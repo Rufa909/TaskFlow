@@ -143,6 +143,29 @@ TASK_CONTEXT_WORK_KEYWORDS = [
     "uu tien",
 ]
 
+TASK_STRATEGY_KEYWORDS = [
+    "hướng đi",
+    "huong di",
+    "tối ưu",
+    "toi uu",
+    "tốt nhất",
+    "tot nhat",
+    "làm gì",
+    "lam gi",
+    "làm đi",
+    "lam di",
+    "cách làm",
+    "cach lam",
+    "kế hoạch",
+    "ke hoach",
+    "plan",
+    "next step",
+    "triển khai",
+    "trien khai",
+    "xử lý",
+    "xu ly",
+]
+
 ALLOWED_KEYWORDS = TASK_CONTEXT_KEYWORDS + [
     "project",
     "dự án",
@@ -233,6 +256,17 @@ def should_use_task_context(message):
     return has_strong_context or (has_time_context and has_work_context)
 
 
+def should_use_selected_task_context(message, tasks):
+    if not tasks:
+        return False
+
+    text = message.lower()
+    has_strategy_context = any(keyword in text for keyword in TASK_STRATEGY_KEYWORDS)
+    has_task_context = any(keyword in text for keyword in TASK_CONTEXT_WORK_KEYWORDS)
+
+    return has_strategy_context or has_task_context or should_use_task_context(message)
+
+
 def is_in_allowed_scope(message):
     text = message.lower()
     return any(keyword in text for keyword in ALLOWED_KEYWORDS)
@@ -257,10 +291,29 @@ def build_task_recommendation(tasks):
             f"{index}. {title} - priority: {priority}, deadline: {deadline}, project: {project_name}"
         )
 
+    if len(tasks) == 1:
+        task = sorted_tasks[0]
+        title = task.get("title") or "task này"
+        description = task.get("description")
+        priority = task.get("priority") or "chưa đặt"
+        project_name = task.get("projectName") or "không rõ project"
+        deadline = format_deadline(task.get("deadline"))
+        detail = f"\nMô tả hiện có: {description}" if description else ""
+
+        return (
+            f"Hướng đi tối ưu cho task \"{title}\":\n"
+            f"1. Xác định kết quả cần bàn giao.\n"
+            f"2. Chia task thành 3 bước nhỏ: chuẩn bị, thực hiện, kiểm tra.\n"
+            f"3. Làm phần quan trọng nhất trước vì priority hiện tại là {priority}.\n"
+            f"4. Canh deadline {deadline}; nếu deadline gần, hãy hoàn thành bản tối thiểu trước.\n"
+            f"5. Cập nhật trạng thái task và ghi chú kết quả sau khi xong.\n\n"
+            f"Thông tin task: project {project_name}, deadline {deadline}, priority {priority}.{detail}"
+        )
+
     return (
-        "Dựa trên task hiện tại, bạn nên ưu tiên theo thứ tự này:\n"
+        "Dựa trên các task bạn chọn, hướng đi tối ưu là:\n"
         + "\n".join(lines)
-        + "\n\nLý do: tôi ưu tiên task quá hạn hoặc gần deadline trước, sau đó xét độ ưu tiên."
+        + "\n\nCách làm: xử lý task có deadline gần hoặc priority cao trước, chia mỗi task thành bước nhỏ, hoàn thành bản tối thiểu trước rồi mới tối ưu thêm."
     )
 
 
@@ -281,6 +334,7 @@ def ai_chat():
     data = request.json or {}
     message = str(data.get("message", "")).strip()
     tasks = data.get("tasks") or []
+    selected_task_ids = data.get("selectedTaskIds") or []
 
     if not message:
         return jsonify({
@@ -298,6 +352,12 @@ def ai_chat():
         return jsonify({
             "intent": "unknown",
             "reply": "Câu hỏi quá ngắn, bạn có thể diễn đạt rõ hơn được không?",
+        })
+
+    if selected_task_ids and should_use_selected_task_context(message, tasks):
+        return jsonify({
+            "intent": "task_context",
+            "reply": build_task_recommendation(tasks),
         })
 
     if should_use_task_context(message):
