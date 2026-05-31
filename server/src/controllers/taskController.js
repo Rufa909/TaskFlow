@@ -246,6 +246,38 @@ function normalizeTaskRows(rows) {
   }));
 }
 
+function getUploadedTaskFiles(req) {
+  if (req.file) return [req.file];
+  if (!req.files) return [];
+  if (Array.isArray(req.files)) return req.files;
+
+  return [
+    ...(req.files.attachment || []),
+    ...(req.files.attachments || []),
+  ];
+}
+
+async function insertTaskAttachments(taskId, files, userId) {
+  for (const file of files) {
+    await pool.query(
+      `
+      INSERT INTO attachments
+      (task_id, originalName, file_url, fileName, mimeType, size, upload_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        taskId,
+        file.originalname,
+        `/uploads/files/${file.filename}`,
+        file.filename,
+        file.mimetype,
+        file.size,
+        userId,
+      ],
+    );
+  }
+}
+
 // GET /api/projects/:projectId/tasks
 exports.getTasks = async (req, res) => {
   try {
@@ -401,26 +433,22 @@ exports.createTask = async (req, res) => {
         `,
         [taskId, projectId, assignedTo, req.user.id, note || null],
       );
-    }
-
-    if (req.file) {
       await pool.query(
-        `
-        INSERT INTO attachments
-        (task_id, originalName, file_url, fileName, mimeType, size, upload_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-        [
-          taskId,
-          req.file.originalname,
-          `/uploads/files/${req.file.filename}`,
-          req.file.filename,
-          req.file.mimetype,
-          req.file.size,
-          req.user.id,
-        ],
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_request', ?)",
+        [project.owner_id, taskId],
+      );
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_pending', ?)",
+        [assignedTo, taskId],
+      );
+    } else if (assignedTo && assignmentStatus === "approved") {
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
+        [assignedTo, taskId],
       );
     }
+
+    await insertTaskAttachments(taskId, getUploadedTaskFiles(req), req.user.id);
 
     const [rows] = await pool.query(
       `
@@ -511,53 +539,7 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    if (req.file) {
-      const [attachments] = await pool.query(
-        "SELECT attachment_id FROM attachments WHERE task_id = ? ORDER BY attachment_id ASC LIMIT 1",
-        [taskId],
-      );
-
-      if (attachments.length > 0) {
-        await pool.query(
-          `
-          UPDATE attachments
-          SET originalName = ?,
-              file_url = ?,
-              fileName = ?,
-              mimeType = ?,
-              size = ?,
-              upload_by = ?
-          WHERE attachment_id = ?
-          `,
-          [
-            req.file.originalname,
-            `/uploads/files/${req.file.filename}`,
-            req.file.filename,
-            req.file.mimetype,
-            req.file.size,
-            req.user.id,
-            attachments[0].attachment_id,
-          ],
-        );
-      } else {
-        await pool.query(
-          `
-          INSERT INTO attachments
-          (task_id, originalName, file_url, fileName, mimeType, size, upload_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          `,
-          [
-            taskId,
-            req.file.originalname,
-            `/uploads/files/${req.file.filename}`,
-            req.file.filename,
-            req.file.mimetype,
-            req.file.size,
-            req.user.id,
-          ],
-        );
-      }
-    }
+    await insertTaskAttachments(taskId, getUploadedTaskFiles(req), req.user.id);
 
     const [rows] = await pool.query(
       `
@@ -1002,6 +984,10 @@ exports.requestTaskAssignment = async (req, res) => {
         `,
         [assigned_to, taskId, projectId],
       );
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
+        [assigned_to, taskId],
+      );
 
       return res.json({ success: true, message: "Task assigned" });
     }
@@ -1040,6 +1026,21 @@ exports.requestTaskAssignment = async (req, res) => {
       VALUES (?, ?, ?, ?, ?)
       `,
       [taskId, projectId, assigned_to, req.user.id, note || null],
+    );
+
+    const [[project]] = await pool.query(
+      "SELECT owner_id FROM projects WHERE project_id = ?",
+      [projectId],
+    );
+    if (project?.owner_id) {
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_request', ?)",
+        [project.owner_id, taskId],
+      );
+    }
+    await pool.query(
+      "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_pending', ?)",
+      [assigned_to, taskId],
     );
 
     res.status(201).json({
@@ -1152,6 +1153,18 @@ exports.reviewTaskAssignmentRequest = async (req, res) => {
         projectId,
       ],
     );
+
+    if (action === "approve") {
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
+        [request.assigned_to, request.task_id],
+      );
+    } else {
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_rejected', ?)",
+        [request.requested_by, request.task_id],
+      );
+    }
 
     res.json({
       success: true,
@@ -1291,7 +1304,9 @@ exports.checkOverdueTasks = async () => {
   const [tasks] = await pool.query(
     `
     SELECT t.task_id, t.title, t.deadline, p.name AS project_name,
+           assigned.user_id AS assigned_user_id,
            assigned.email AS assigned_email,
+           leader.user_id AS leader_user_id,
            leader.email AS leader_email
     FROM tasks t
     JOIN projects p ON p.project_id = t.project_id
@@ -1315,6 +1330,15 @@ exports.checkOverdueTasks = async () => {
       const wasSent = await sendDeadlineMail(task);
       if (wasSent) {
         sent += 1;
+        const recipients = [task.assigned_user_id, task.leader_user_id]
+          .filter(Boolean)
+          .filter((id, index, ids) => ids.indexOf(id) === index);
+        for (const userId of recipients) {
+          await pool.query(
+            "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'deadline_overdue', ?)",
+            [userId, task.task_id],
+          );
+        }
         await pool.query(
           "UPDATE tasks SET deadline_notified_at = NOW() WHERE task_id = ?",
           [task.task_id],

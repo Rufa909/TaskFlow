@@ -44,9 +44,10 @@ export default function TodayPage() {
   const [taskDeadline, setTaskDeadline] = useState(new Date()); // Default to today
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskAssignee, setTaskAssignee] = useState("");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
-  const [taskAttachment, setTaskAttachment] = useState(null);
+  const [taskAttachment, setTaskAttachment] = useState([]);
 
   // To allow selecting project in AddTaskForm if needed
   const [activeProject, setActiveProject] = useState(null);
@@ -155,10 +156,11 @@ export default function TodayPage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
-
-      if (taskAttachment) {
-        formData.append("attachment", taskAttachment);
+      if (taskAssignee) {
+        formData.append("assigned_to", taskAssignee);
       }
+
+      taskAttachment.forEach((file) => formData.append("attachments", file));
 
       const res = await api.post(`/projects/${projId}/tasks`, formData);
       const newTask = {
@@ -173,7 +175,8 @@ export default function TodayPage() {
       setTaskDeadline(new Date());
       setTaskTime("");
       setTaskPriority("medium");
-      setTaskAttachment(null);
+      setTaskAssignee("");
+      setTaskAttachment([]);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
@@ -287,6 +290,8 @@ export default function TodayPage() {
                 setTaskAttachment={setTaskAttachment}
                 taskPriority={taskPriority}
                 setTaskPriority={setTaskPriority}
+                taskAssignee={taskAssignee}
+                setTaskAssignee={setTaskAssignee}
                 isDatePickerOpen={isDatePickerOpen}
                 setIsDatePickerOpen={setIsDatePickerOpen}
                 activeProject={activeProject}

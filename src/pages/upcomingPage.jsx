@@ -59,7 +59,7 @@ export default function UpcomingPage() {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [selectedTask, setSelectedTask] = useState(null);
 
-  const [taskAttachment, setTaskAttachment] = useState(null);
+  const [taskAttachment, setTaskAttachment] = useState([]);
 
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
@@ -72,6 +72,7 @@ export default function UpcomingPage() {
   const [taskDeadline, setTaskDeadline] = useState(tomorrow());
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskAssignee, setTaskAssignee] = useState("");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
 
@@ -202,10 +203,11 @@ export default function UpcomingPage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
-
-      if (taskAttachment) {
-        formData.append("attachment", taskAttachment);
+      if (taskAssignee) {
+        formData.append("assigned_to", taskAssignee);
       }
+
+      taskAttachment.forEach((file) => formData.append("attachments", file));
 
       const res = await api.post(
         `/projects/${activeProject.project_id}/tasks`,
@@ -229,7 +231,8 @@ export default function UpcomingPage() {
       setTaskDeadline(tomorrow());
       setTaskTime("");
       setTaskPriority("medium");
-      setTaskAttachment(null);
+      setTaskAssignee("");
+      setTaskAttachment([]);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
@@ -356,6 +359,8 @@ export default function UpcomingPage() {
                 setTaskAttachment={setTaskAttachment}
                 taskPriority={taskPriority}
                 setTaskPriority={setTaskPriority}
+                taskAssignee={taskAssignee}
+                setTaskAssignee={setTaskAssignee}
                 isDatePickerOpen={isDatePickerOpen}
                 setIsDatePickerOpen={setIsDatePickerOpen}
                 activeProject={activeProject}

@@ -146,7 +146,7 @@ export default function AddTeamModal() {
           item.user_id === member.user_id ? { ...item, role: nextRole } : item,
         ),
       );
-      showToast("Cap nhat role thanh cong", "success");
+      showToast("Role updated successfully", "success");
     } catch (err) {
       const msg = err.response?.data?.message || "Cannot update member role.";
       setStatusMessage({ type: "error", text: msg });

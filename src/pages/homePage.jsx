@@ -126,13 +126,14 @@ export default function HomePage() {
   const [editProjectName, setEditProjectName] = useState("");
   const [editingProjectSaving, setEditingProjectSaving] = useState(false);
   const [tasksByProject, setTasksByProject] = useState({});
-  const [taskAttachment, setTaskAttachment] = useState(null);
+  const [taskAttachment, setTaskAttachment] = useState([]);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [taskDeadline, setTaskDeadline] = useState(null);
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskAssignee, setTaskAssignee] = useState("");
   const [newTaskLabels, setNewTaskLabels] = useState([]);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
@@ -323,10 +324,11 @@ export default function HomePage() {
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
       formData.append("labels", JSON.stringify(newTaskLabels));
-
-      if (taskAttachment) {
-        formData.append("attachment", taskAttachment);
+      if (taskAssignee) {
+        formData.append("assigned_to", taskAssignee);
       }
+
+      taskAttachment.forEach((file) => formData.append("attachments", file));
 
       const res = await api.post(`/projects/${projId}/tasks`, formData);
       const newTask = res.data.task;
@@ -342,8 +344,9 @@ export default function HomePage() {
       setTaskDeadline(null);
       setTaskTime("");
       setTaskPriority("medium");
+      setTaskAssignee("");
       setNewTaskLabels([]);
-      setTaskAttachment(null);
+      setTaskAttachment([]);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
@@ -1257,6 +1260,8 @@ export default function HomePage() {
                     taskLabels={newTaskLabels}
                     setTaskLabels={setNewTaskLabels}
                     availableLabels={allLabels}
+                    taskAssignee={taskAssignee}
+                    setTaskAssignee={setTaskAssignee}
                     isDatePickerOpen={isDatePickerOpen}
                     setIsDatePickerOpen={setIsDatePickerOpen}
                     activeProject={activeProject}

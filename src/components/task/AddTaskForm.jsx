@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "../common/Icon";
 import DatePicker from "react-datepicker";
 import { format, addDays, nextMonday } from "date-fns";
 import DatePickerPopover from "./DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import api from "../../api/axiosInstance";
 
 export default function AddTaskForm({
   newTaskTitle,
@@ -26,9 +28,11 @@ export default function AddTaskForm({
   taskPriority,
   setTaskPriority,
 
-  taskLabels,
-  setTaskLabels,
+  taskLabels = [],
+  setTaskLabels = () => {},
   availableLabels = [],
+  taskAssignee = "",
+  setTaskAssignee = () => {},
 
   isDatePickerOpen,
   setIsDatePickerOpen,
@@ -44,8 +48,11 @@ export default function AddTaskForm({
   setIsAddingTask,
 }) {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
   const [isLabelsDropdownOpen, setIsLabelsDropdownOpen] = useState(false);
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const priorities = [
     { value: "urgent", label: "Urgent", color: "#dc2626" },
     { value: "high", label: "High", color: "#f97316" },
@@ -56,18 +63,65 @@ export default function AddTaskForm({
 const selectedPriority =
     priorities.find((item) => item.value === taskPriority) || priorities[2];
 
-  const handleAttachmentChange = (e) => {
-    const file = e.target.files[0] || null;
+  useEffect(() => {
+    let active = true;
 
-    if (file && file.size > 5 * 1024 * 1024) {
+    async function loadMembers() {
+      if (!activeProject?.project_id) {
+        setProjectMembers([]);
+        setTaskAssignee("");
+        return;
+      }
+
+      try {
+        const res = await api.get(
+          `/teams/projects/${activeProject.project_id}/members`,
+        );
+        if (!active) return;
+        setProjectMembers(res.data.members || []);
+        setTaskAssignee("");
+      } catch (err) {
+        if (!active) return;
+        setProjectMembers([]);
+      }
+    }
+
+    loadMembers();
+    return () => {
+      active = false;
+    };
+  }, [activeProject?.project_id, setTaskAssignee]);
+
+  const currentMember = projectMembers.find(
+    (member) => Number(member.user_id) === Number(user?.id),
+  );
+  const canAssignTask = ["owner", "leader"].includes(currentMember?.role);
+  const assignableMembers = projectMembers.filter(
+    (member) => member.role !== "owner",
+  );
+  const selectedAssignee = assignableMembers.find(
+    (member) => Number(member.user_id) === Number(taskAssignee),
+  );
+
+  const handleAttachmentChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    const oversized = files.find((file) => file.size > 5 * 1024 * 1024);
+
+    if (oversized) {
       e.target.value = "";
-      setTaskAttachment(null);
+      setTaskAttachment([]);
       showToast("File vượt quá dung lượng tối đa 5MB", "error");
       return;
     }
 
-    setTaskAttachment(file);
+    setTaskAttachment(files);
   };
+
+  const selectedFiles = Array.isArray(taskAttachment)
+    ? taskAttachment
+    : taskAttachment
+      ? [taskAttachment]
+      : [];
 
   const toggleTaskLabel = (label) => {
     setTaskLabels((prev) =>
@@ -122,10 +176,13 @@ const selectedPriority =
         </button>
         <label className="attachment-btn">
           <Icon name="paperclip" size={14} />
-          {taskAttachment ? taskAttachment.name : "Attachment"}
+          {selectedFiles.length > 1
+            ? `${selectedFiles.length} files`
+            : selectedFiles[0]?.name || "Attachment"}
           <input
             type="file"
             hidden
+            multiple
             accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
             onChange={handleAttachmentChange}
           />
@@ -189,6 +246,48 @@ const selectedPriority =
                     <Icon name="tag" size={12} />
                     <span className="task-label-text">{label.name}</span>
                     {taskLabels.includes(label.name) && <Icon name="check" size={14} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {canAssignTask && assignableMembers.length > 0 && (
+          <div className="assignee-picker">
+            <button
+              type="button"
+              className={taskAssignee ? "has-assignee" : ""}
+              onClick={() => setIsAssigneeOpen((prev) => !prev)}
+            >
+              <Icon name="user" size={14} />
+              {selectedAssignee ? selectedAssignee.username : "Assign"}
+              <Icon name={isAssigneeOpen ? "chevronUp" : "chevronDown"} size={12} />
+            </button>
+            {isAssigneeOpen && (
+              <div className="assignee-menu">
+                <button
+                  type="button"
+                  className="assignee-option"
+                  onClick={() => {
+                    setTaskAssignee("");
+                    setIsAssigneeOpen(false);
+                  }}
+                >
+                  No assignee
+                </button>
+                {assignableMembers.map((member) => (
+                  <button
+                    type="button"
+                    className={`assignee-option ${Number(taskAssignee) === Number(member.user_id) ? "active" : ""}`}
+                    key={member.user_id}
+                    onClick={() => {
+                      setTaskAssignee(String(member.user_id));
+                      setIsAssigneeOpen(false);
+                    }}
+                  >
+                    <span>{member.username}</span>
+                    <span className="assignee-role">{member.role}</span>
                   </button>
                 ))}
               </div>
@@ -285,9 +384,10 @@ const selectedPriority =
               setNewTaskDesc("");
               setTaskDeadline(null);
               setTaskTime("");
-              setTaskAttachment(null);
+              setTaskAttachment([]);
               setTaskPriority("medium");
               setTaskLabels([]);
+              setTaskAssignee("");
             }}
           >
             Cancel

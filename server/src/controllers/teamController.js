@@ -310,6 +310,11 @@ const updateProjectMemberRole = async (req, res) => {
       });
     }
 
+    await pool.query(
+      "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'role_updated', ?)",
+      [userId, id],
+    );
+
     res.json({ success: true, message: "Cap nhat role thanh cong" });
   } catch (error) {
     console.error("Loi cap nhat role:", error);

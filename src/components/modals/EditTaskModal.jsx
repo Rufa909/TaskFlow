@@ -22,7 +22,7 @@ export default function EditTaskModal({
   const [saving, setSaving] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
-  const [attachment, setAttachment] = useState(null);
+  const [attachments, setAttachments] = useState([]);
 
   const priorities = [
     { value: "urgent", label: "Urgent" },
@@ -45,7 +45,7 @@ export default function EditTaskModal({
       setSaving(false);
       setIsDatePickerOpen(false);
       setIsPriorityOpen(false);
-      setAttachment(null);
+      setAttachments([]);
     }
   }, [selectedTask]);
 
@@ -78,9 +78,7 @@ export default function EditTaskModal({
       formData.append("labels", JSON.stringify(labels));
       formData.append("project_id", selectedTask.project_id || "");
 
-      if (attachment) {
-        formData.append("attachment", attachment);
-      }
+      attachments.forEach((file) => formData.append("attachments", file));
 
       await handleUpdateTask(selectedTask.task_id, formData);
 
@@ -91,17 +89,20 @@ export default function EditTaskModal({
   };
 
   const handleAttachmentChange = (event) => {
-    const file = event.target.files[0] || null;
+    const files = Array.from(event.target.files || []);
+    const oversized = files.find((file) => file.size > 5 * 1024 * 1024);
 
-    if (file && file.size > 5 * 1024 * 1024) {
+    if (oversized) {
       event.target.value = "";
-      setAttachment(null);
+      setAttachments([]);
       showToast("File vượt quá dung lượng tối đa 5MB", "error");
       return;
     }
 
-    setAttachment(file);
+    setAttachments(files);
   };
+
+  const selectedAttachmentFiles = Array.isArray(attachments) ? attachments : [];
 
   const toggleTaskLabel = (label) => {
     setLabels((prev) =>
@@ -182,16 +183,21 @@ export default function EditTaskModal({
 
             <label
               className={`edit-task-chip attachment-btn ${
-                attachment || selectedTask.attachment_url ? "has-attachment" : ""
+                selectedAttachmentFiles.length > 0 || selectedTask.attachment_url ? "has-attachment" : ""
               }`}
             >
               <Icon name="paperclip" size={14} />
               <span>
-                {attachment?.name || selectedTask.attachment_name || "Attachment"}
+                {selectedAttachmentFiles.length > 1
+                  ? `${selectedAttachmentFiles.length} files`
+                  : selectedAttachmentFiles[0]?.name ||
+                    selectedTask.attachment_name ||
+                    "Attachment"}
               </span>
               <input
                 type="file"
                 hidden
+                multiple
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
                 onChange={handleAttachmentChange}
               />
@@ -259,10 +265,10 @@ export default function EditTaskModal({
             </div>
           )}
 
-          {(attachment || selectedTask.attachment_url) && (
+          {(selectedAttachmentFiles.length > 0 || selectedTask.attachment_url) && (
             <div className="edit-task-attachment-row">
               <Icon name="paperclip" size={14} />
-              {selectedTask.attachment_url && !attachment ? (
+              {selectedTask.attachment_url && selectedAttachmentFiles.length === 0 ? (
                 <a
                   href={`${API_ORIGIN}${selectedTask.attachment_url}`}
                   target="_blank"
@@ -271,12 +277,16 @@ export default function EditTaskModal({
                   {selectedTask.attachment_name || "Attachment"}
                 </a>
               ) : (
-                <span>{attachment.name}</span>
+                <span>
+                  {selectedAttachmentFiles.length > 1
+                    ? selectedAttachmentFiles.map((file) => file.name).join(", ")
+                    : selectedAttachmentFiles[0]?.name}
+                </span>
               )}
-              {attachment && (
+              {selectedAttachmentFiles.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setAttachment(null)}
+                  onClick={() => setAttachments([])}
                 >
                   Remove
                 </button>

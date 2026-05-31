@@ -1615,6 +1615,53 @@ body {
   color: var(--text-main);
 }
 
+.assignee-picker {
+  position: relative;
+}
+
+.assignee-picker .has-assignee {
+  color: var(--accent-color);
+  border-color: rgba(30, 136, 229, 0.35);
+  background: var(--active-bg);
+}
+
+.assignee-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.assignee-option {
+  width: 100%;
+  justify-content: space-between;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 7px 8px !important;
+  color: var(--text-main) !important;
+  background: transparent !important;
+}
+
+.assignee-option:hover,
+.assignee-option.active {
+  background: var(--active-bg) !important;
+  color: var(--accent-color) !important;
+}
+
+.assignee-role {
+  margin-left: 12px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .form-footer {
   display: flex;
   justify-content: space-between;

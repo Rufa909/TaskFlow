@@ -35,6 +35,93 @@
   margin-bottom: 32px;
 }
 
+.inbox-notifications-section {
+  margin-bottom: 32px;
+}
+
+.inbox-approvals-section {
+  margin-bottom: 32px;
+}
+
+.inbox-notification-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-left: 4px solid var(--accent-color, #1e88e5);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-notification-card.read {
+  opacity: 0.72;
+  border-left-color: #d1d5db;
+}
+
+.notification-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent-color, #1e88e5);
+  flex-shrink: 0;
+}
+
+.inbox-notification-card.read .notification-dot {
+  background: #cbd5e1;
+}
+
+.notification-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notification-title {
+  color: var(--text-main, #202020);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.notification-meta {
+  color: var(--text-secondary, #808080);
+  font-size: 12px;
+}
+
+.inbox-approval-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 18px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-left: 4px solid #f59e0b;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.approval-info {
+  min-width: 0;
+}
+
+.approval-title {
+  color: var(--text-main, #202020);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.approval-meta {
+  color: var(--text-secondary, #808080);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 /* --- Section title ------------------------ */
 .inbox-invitations-title {
   display: flex;
