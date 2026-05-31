@@ -31,9 +31,9 @@ export default function AIChatBox() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5001/ai", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ message: userMessage.text }) });
-  const data = await response.json();
-  const botMessage = { text: data.reply || "Xin lỗi, tôi chưa hiểu ý bạn.", sender: "bot" };
+      const response = await api.post("/ai/chat", { message: userMessage.text });
+      const data = response.data;
+      const botMessage = { text: data.reply || "Xin lỗi, tôi chưa hiểu ý bạn.", sender: "bot" };
       setMessages((prev) => [...prev, botMessage]);
     } catch (err) {
       console.error(err);
