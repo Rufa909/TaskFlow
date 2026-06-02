@@ -18,12 +18,6 @@ const {
   reviewTaskSubmission,
   reviewTaskSubmissionByTask,
   checkOverdueTasksNow,
-  getTaskDetails,
-  createSubtask,
-  updateSubtask,
-  deleteSubtask,
-  createTaskComment,
-  deleteTaskComment,
 } = require("../controllers/taskController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -69,12 +63,6 @@ router.get("/projects/:projectId/task-assignment-requests", authMiddleware, getT
 router.put("/projects/:projectId/task-assignment-requests/:requestId", authMiddleware, reviewTaskAssignmentRequest);
 router.get("/projects/:projectId/task-submissions", authMiddleware, getTaskSubmissions);
 router.put("/projects/:projectId/task-submissions/:submissionId", authMiddleware, reviewTaskSubmission);
-router.get("/projects/:projectId/tasks/:taskId/details", authMiddleware, getTaskDetails);
-router.post("/projects/:projectId/tasks/:taskId/subtasks", authMiddleware, createSubtask);
-router.put("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, updateSubtask);
-router.delete("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, deleteSubtask);
-router.post("/projects/:projectId/tasks/:taskId/comments", authMiddleware, createTaskComment);
-router.delete("/projects/:projectId/tasks/:taskId/comments/:commentId", authMiddleware, deleteTaskComment);
 // These routes need the project ID in the path
 
 router.post("/projects/:projectId/tasks", authMiddleware, uploadAttachment, createTask);

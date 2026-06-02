@@ -727,7 +727,6 @@ export default function InboxPage() {
         selectedTask={selectedTask}
         setSelectedTask={setSelectedTask}
         handleUpdateTask={handleUpdateTask}
-        handleCompleteTask={handleCompleteTask}
       />
     </div>
   );
