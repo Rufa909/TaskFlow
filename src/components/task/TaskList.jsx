@@ -1,61 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "../common/Icon";
-import "./TaskList.css";
 
 const API_ORIGIN = "http://localhost:5000";
-
-const STATUS_LABELS = {
-  DRAFT: "Draft",
-  ASSIGNED: "Assigned",
-  ACCEPTED: "Accepted",
-  IN_PROGRESS: "In progress",
-  SUBMITTED: "Submitted",
-  LEADER_APPROVED: "Leader approved",
-  OWNER_APPROVED: "Owner approved",
-  COMPLETED: "Completed",
-  CHANGES_REQUESTED: "Changes requested",
-  REJECTED: "Rejected",
-};
-
-function getTaskAction(task) {
-  switch (task.status) {
-    case "DRAFT":
-      return { label: "Draft", title: "Assign a member to start", disabled: true };
-    case "ASSIGNED":
-      return { label: "Accept", title: "Accept task", disabled: false };
-    case "ACCEPTED":
-      return { label: "Start", title: "Start task", disabled: false };
-    case "IN_PROGRESS":
-    case "CHANGES_REQUESTED":
-      return { label: "Submit", title: "Submit for review", disabled: false };
-    case "SUBMITTED":
-      return { label: "Waiting", title: "Waiting for leader approval", disabled: true };
-    case "LEADER_APPROVED":
-      return { label: "Owner", title: "Waiting for owner approval", disabled: true };
-    case "COMPLETED":
-    case "OWNER_APPROVED":
-      return { label: "Done", title: "Task completed", disabled: true };
-    case "REJECTED":
-      return { label: "Rejected", title: "Task rejected", disabled: true };
-    default:
-      return { label: "Done", title: "Complete task", disabled: false };
-  }
-}
-
-function canReviewTask(task, userRole) {
-  return (
-    (userRole === "leader" && task.status === "SUBMITTED") ||
-    (userRole === "owner" && task.status === "LEADER_APPROVED")
-  );
-}
 
 export default function TaskList({
   tasks,
   handleDeleteTask,
   handleUpdateTask,
   handleCompleteTask = () => {},
-  handleReviewTaskSubmission = () => {},
-  currentUserRole = "",
   setSelectedTask,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -76,58 +28,22 @@ export default function TaskList({
   }, []);
   return (
     <>
-      {tasks.map((task) => {
-        const action = getTaskAction(task);
-        const statusLabel = STATUS_LABELS[task.status] || task.status;
-        const reviewable = canReviewTask(task, currentUserRole);
-
-        return (
-          <div
-            key={task.task_id || task.id}
-            className="task-item"
-            onClick={() => setSelectedTask(task)}
-          >
-          {reviewable ? (
-            <div className="task-review-actions">
-              <button
-                className="task-review-btn approve"
-                type="button"
-                title="Approve submission"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleReviewTaskSubmission(task, "approve");
-                }}
-              >
-                Approve
-              </button>
-              <button
-                className="task-review-btn changes"
-                type="button"
-                title="Request changes"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleReviewTaskSubmission(task, "reject");
-                }}
-              >
-                Changes
-              </button>
-            </div>
-          ) : (
-            <button
-              className={`checkbox task-status-action ${action.disabled ? "disabled" : ""}`}
-              type="button"
-              aria-label={action.title}
-              title={action.title}
-              disabled={action.disabled}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (action.disabled) return;
-                handleCompleteTask(task);
-              }}
-            >
-              <span>{action.label}</span>
-            </button>
-          )}
+      {tasks.map((task) => (
+        <div
+          key={task.task_id || task.id}
+          className="task-item"
+          onClick={() => setSelectedTask(task)}
+        >
+          <button
+            className="checkbox"
+            type="button"
+            aria-label="Complete task"
+            title="Complete task"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCompleteTask(task);
+            }}
+          ></button>
           <button
             className={`task-more-btn ${openMenuId === task.task_id ? "active" : ""}`}
             type="button"
@@ -194,14 +110,7 @@ export default function TaskList({
             </div>
           )}
           <div className="task-content">
-            <div className="task-title-row">
-              <div className="task-title">{task.title}</div>
-              {statusLabel && (
-                <span className={`task-status-badge status-${task.status?.toLowerCase()}`}>
-                  {statusLabel}
-                </span>
-              )}
-            </div>
+            <div className="task-title">{task.title}</div>
 
             {task.description && (
               <div className="task-meta">{task.description}</div>
@@ -262,8 +171,7 @@ export default function TaskList({
             )}
           </div>
         </div>
-        );
-      })}
+      ))}
     </>
   );
 }

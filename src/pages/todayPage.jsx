@@ -132,18 +132,10 @@ export default function TodayPage() {
     if (!task?.task_id || !task?.project_id) return;
 
     try {
-      const res = await api.post(
+      await api.post(
         `/projects/${task.project_id}/tasks/${task.task_id}/complete`,
       );
-      const updatedTask = { ...task, ...res.data.task };
-      if (updatedTask.status === "COMPLETED" || updatedTask.completed_at) {
-        setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
-        return;
-      }
-
-      setTasks((prev) =>
-        prev.map((item) => (item.task_id === task.task_id ? updatedTask : item)),
-      );
+      setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
       showToast("Cannot complete task", "error");

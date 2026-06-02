@@ -51,6 +51,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(true);
+  const [assignmentRequests, setAssignmentRequests] = useState([]);
   const [taskSubmissions, setTaskSubmissions] = useState([]);
   const [loadingApprovals, setLoadingApprovals] = useState(true);
   const [reviewingKey, setReviewingKey] = useState("");
@@ -89,12 +90,10 @@ export default function InboxPage() {
   const [selectedTask, setSelectedTask] = useState(null);
 
   const { refreshInvitationCount } = useTeams();
-  const reviewableProjects = projects.filter(
-    (project) =>
-      Number(project.owner_id) === Number(user?.id) ||
-      project.user_role === "leader",
+  const ownerProjects = projects.filter(
+    (project) => Number(project.owner_id) === Number(user?.id),
   );
-  const canReviewApprovals = reviewableProjects.length > 0;
+  const canReviewApprovals = ownerProjects.length > 0;
 
   // Fetch projects
   useEffect(() => {
@@ -115,6 +114,7 @@ export default function InboxPage() {
   useEffect(() => {
     if (!canReviewApprovals) {
       setLoadingApprovals(false);
+      setAssignmentRequests([]);
       setTaskSubmissions([]);
       return;
     }
@@ -122,8 +122,22 @@ export default function InboxPage() {
     const fetchApprovals = async () => {
       setLoadingApprovals(true);
       try {
+        const assignmentResults = await Promise.all(
+          ownerProjects.map((project) =>
+            api
+              .get(`/projects/${project.project_id}/task-assignment-requests`)
+              .then((res) =>
+                (res.data.requests || []).map((item) => ({
+                  ...item,
+                  project_name: project.name,
+                })),
+              )
+              .catch(() => []),
+          ),
+        );
+
         const submissionResults = await Promise.all(
-          reviewableProjects.map((project) =>
+          ownerProjects.map((project) =>
             api
               .get(`/projects/${project.project_id}/task-submissions`)
               .then((res) =>
@@ -136,10 +150,11 @@ export default function InboxPage() {
           ),
         );
 
+        setAssignmentRequests(
+          assignmentResults.flat().filter((item) => item.status === "pending"),
+        );
         setTaskSubmissions(
-          submissionResults
-            .flat()
-            .filter((item) => ["pending", "leader_approved"].includes(item.status)),
+          submissionResults.flat().filter((item) => item.status === "pending"),
         );
       } finally {
         setLoadingApprovals(false);
@@ -233,18 +248,10 @@ export default function InboxPage() {
   const handleCompleteTask = async (task) => {
     if (!task?.task_id || !task?.project_id) return;
     try {
-      const res = await api.post(
+      await api.post(
         `/projects/${task.project_id}/tasks/${task.task_id}/complete`,
       );
-      const updatedTask = { ...task, ...res.data.task };
-      if (updatedTask.status === "COMPLETED" || updatedTask.completed_at) {
-        setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
-        return;
-      }
-
-      setTasks((prev) =>
-        prev.map((item) => (item.task_id === task.task_id ? updatedTask : item)),
-      );
+      setTasks((prev) => prev.filter((item) => item.task_id !== task.task_id));
     } catch (err) {
       console.error(err);
       showToast("Cannot complete task", "error");
@@ -345,6 +352,25 @@ export default function InboxPage() {
       );
     } catch (err) {
       console.error("Cannot mark notification read", err);
+    }
+  };
+
+  const handleReviewAssignment = async (request, action) => {
+    const key = `assignment-${request.request_id}`;
+    setReviewingKey(key);
+    try {
+      await api.put(
+        `/projects/${request.project_id}/task-assignment-requests/${request.request_id}`,
+        { action },
+      );
+      setAssignmentRequests((prev) =>
+        prev.filter((item) => item.request_id !== request.request_id),
+      );
+      showToast(action === "approve" ? "Task assigned" : "Request rejected", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot review request", "error");
+    } finally {
+      setReviewingKey("");
     }
   };
 
@@ -485,9 +511,9 @@ export default function InboxPage() {
                 <Icon name="check" size={16} />
               </span>
               Approvals
-              {taskSubmissions.length > 0 && (
+              {assignmentRequests.length + taskSubmissions.length > 0 && (
                 <span className="invitation-count-badge">
-                  {taskSubmissions.length}
+                  {assignmentRequests.length + taskSubmissions.length}
                 </span>
               )}
             </div>
@@ -497,20 +523,47 @@ export default function InboxPage() {
                 <div className="inv-spinner" />
                 <span>Loading approvals...</span>
               </div>
-            ) : taskSubmissions.length === 0 ? (
+            ) : assignmentRequests.length + taskSubmissions.length === 0 ? (
               <div className="inv-empty-state">
                 <div className="inv-empty-icon">✓</div>
                 <div className="inv-empty-text">No pending approvals</div>
               </div>
             ) : (
               <>
+                {assignmentRequests.map((request) => (
+                  <div className="inbox-approval-card" key={`assignment-${request.request_id}`}>
+                    <div className="approval-info">
+                      <div className="approval-title">
+                        Assign "{request.title}" to {request.assigned_username}
+                      </div>
+                      <div className="approval-meta">
+                        {request.project_name} - requested by {request.requested_by_username}
+                      </div>
+                    </div>
+                    <div className="inv-actions">
+                      <button
+                        className="inv-accept-btn"
+                        disabled={reviewingKey === `assignment-${request.request_id}`}
+                        onClick={() => handleReviewAssignment(request, "approve")}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        className="inv-decline-btn"
+                        disabled={reviewingKey === `assignment-${request.request_id}`}
+                        onClick={() => handleReviewAssignment(request, "reject")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
                 {taskSubmissions.map((submission) => (
                   <div className="inbox-approval-card" key={`submission-${submission.submission_id}`}>
                     <div className="approval-info">
                       <div className="approval-title">
-                        {submission.status === "leader_approved"
-                          ? `Owner approval for "${submission.title}"`
-                          : `Review submitted task "${submission.title}"`}
+                        Review submitted task "{submission.title}"
                       </div>
                       <div className="approval-meta">
                         {submission.project_name} - submitted by {submission.submitted_by_username}
