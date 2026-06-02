@@ -360,28 +360,81 @@ export default function HomePage() {
       const res = await api.post(
         `/projects/${activeProject.project_id}/tasks/${task.task_id}/complete`,
       );
-      const completedTask = res.data.task || {
+      const updatedTask = {
         ...task,
-        completed_at: new Date().toISOString(),
+        ...res.data.task,
         project_name: activeProject.name,
       };
 
+      if (updatedTask.status === "COMPLETED" || updatedTask.completed_at) {
+        setTasksByProject((prev) => ({
+          ...prev,
+          [activeProject.project_id]: (
+            prev[activeProject.project_id] || []
+          ).filter((item) => item.task_id !== task.task_id),
+        }));
+
+        setReportingTasks((prev) => {
+          const withoutDuplicate = prev.filter(
+            (item) => item.task_id !== updatedTask.task_id,
+          );
+          return [updatedTask, ...withoutDuplicate];
+        });
+        return;
+      }
+
       setTasksByProject((prev) => ({
         ...prev,
-        [activeProject.project_id]: (
-          prev[activeProject.project_id] || []
-        ).filter((item) => item.task_id !== task.task_id),
+        [activeProject.project_id]: (prev[activeProject.project_id] || []).map(
+          (item) => (item.task_id === task.task_id ? updatedTask : item),
+        ),
       }));
-
-      setReportingTasks((prev) => {
-        const withoutDuplicate = prev.filter(
-          (item) => item.task_id !== completedTask.task_id,
-        );
-        return [completedTask, ...withoutDuplicate];
-      });
     } catch (err) {
       console.error(err);
       showToast("Cannot complete task", "error");
+    }
+  };
+
+  const handleReviewTaskSubmission = async (task, action) => {
+    if (!activeProject || !task?.task_id) return;
+
+    try {
+      const res = await api.post(
+        `/projects/${activeProject.project_id}/tasks/${task.task_id}/review-submission`,
+        { action },
+      );
+      const updatedTask = {
+        ...task,
+        ...res.data.task,
+        project_name: activeProject.name,
+      };
+
+      if (updatedTask.status === "COMPLETED" || updatedTask.completed_at) {
+        setTasksByProject((prev) => ({
+          ...prev,
+          [activeProject.project_id]: (
+            prev[activeProject.project_id] || []
+          ).filter((item) => item.task_id !== task.task_id),
+        }));
+
+        setReportingTasks((prev) => {
+          const withoutDuplicate = prev.filter(
+            (item) => item.task_id !== updatedTask.task_id,
+          );
+          return [updatedTask, ...withoutDuplicate];
+        });
+        return;
+      }
+
+      setTasksByProject((prev) => ({
+        ...prev,
+        [activeProject.project_id]: (prev[activeProject.project_id] || []).map(
+          (item) => (item.task_id === task.task_id ? updatedTask : item),
+        ),
+      }));
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || "Cannot review task", "error");
     }
   };
   const handleAddProject = async () => {
@@ -461,6 +514,9 @@ export default function HomePage() {
   const currentTasks = activeProject
     ? tasksByProject[activeProject.project_id] || []
     : [];
+  const currentProjectRole =
+    activeProject?.user_role ||
+    (Number(activeProject?.owner_id) === Number(user?.id) ? "owner" : "");
 
   const {
     filters,
@@ -959,6 +1015,9 @@ export default function HomePage() {
                         handleDeleteTask={handleDeleteTask}
                         handleUpdateTask={handleUpdateTask}
                         handleCompleteTask={handleCompleteTask}
+                        handleReviewTaskSubmission={handleReviewTaskSubmission}
+                        currentUserRole={currentProjectRole}
+                        currentUserId={user?.id}
                         setSelectedTask={setSelectedTask}
                       />
                     ) : (
@@ -1028,6 +1087,9 @@ export default function HomePage() {
                         handleDeleteTask={handleDeleteTask}
                         handleUpdateTask={handleUpdateTask}
                         handleCompleteTask={handleCompleteTask}
+                        handleReviewTaskSubmission={handleReviewTaskSubmission}
+                        currentUserRole={currentProjectRole}
+                        currentUserId={user?.id}
                         setSelectedTask={setSelectedTask}
                       />
                     ) : (
@@ -1239,6 +1301,9 @@ export default function HomePage() {
                   handleDeleteTask={handleDeleteTask}
                   handleUpdateTask={handleUpdateTask}
                   handleCompleteTask={handleCompleteTask}
+                  handleReviewTaskSubmission={handleReviewTaskSubmission}
+                  currentUserRole={currentProjectRole}
+                  currentUserId={user?.id}
                   setSelectedTask={setSelectedTask}
                 />
 

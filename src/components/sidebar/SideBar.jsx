@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
@@ -19,6 +19,21 @@ function avatarUrl(photo) {
   return photo.startsWith("http") || photo.startsWith("data:")
     ? photo
     : `${API_URL}${photo}`;
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return "";
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
 }
 
 export default function Sidebar({
@@ -58,6 +73,10 @@ export default function Sidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const [counts, setCounts] = useState({ inbox: 0, today: 0 });
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(true);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationsRef = useRef(null);
   const { setActiveProject: setContextActiveProject } = useTeams();
 
   useEffect(() => {
@@ -86,6 +105,17 @@ export default function Sidebar({
   }, [user?.user_photo]);
 
   useEffect(() => {
+    function handleClickOutside(e) {
+      if (notificationsRef.current && !notificationsRef.current.contains(e.target)) {
+        setIsNotificationsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     const fetchCounts = async () => {
       try {
         const res = await api.get("/tasks/counts");
@@ -99,8 +129,46 @@ export default function Sidebar({
     fetchCounts();
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    const fetchNotifications = async () => {
+      try {
+        const res = await api.get("/notifications");
+        if (mounted) setNotifications(res.data.notifications || []);
+      } catch (err) {
+        console.error("Cannot load notifications", err);
+      } finally {
+        if (mounted) setLoadingNotifications(false);
+      }
+    };
+
+    fetchNotifications();
+    const id = setInterval(fetchNotifications, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const { setIsFiltersOpen } = useFilters();
   const { invitationCount } = useTeams();
+  const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
+
+  const handleNotificationClick = async (notification) => {
+    if (notification.is_read) return;
+    try {
+      await api.put(`/notifications/${notification.noti_id}/read`);
+      setNotifications((prev) =>
+        prev.map((item) =>
+          item.noti_id === notification.noti_id
+            ? { ...item, is_read: 1 }
+            : item,
+        ),
+      );
+    } catch (err) {
+      console.error("Cannot mark notification read", err);
+    }
+  };
 
   // fetch per-project counts and poll for realtime-ish updates
   useEffect(() => {
@@ -157,10 +225,69 @@ export default function Sidebar({
             />
           )}
         </div>
-        <div className="sidebar-actions">
-          <button className="icon-btn" title="Notifications">
+        <div className="sidebar-actions" ref={notificationsRef}>
+          <button
+            className={`icon-btn notification-bell ${isNotificationsOpen ? "active" : ""}`}
+            title="Notifications"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsNotificationsOpen((prev) => !prev);
+            }}
+          >
             <Icon name="bell" size={18} />
+            {unreadNotificationCount > 0 && (
+              <span className="notification-bell-badge">
+                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+              </span>
+            )}
           </button>
+          {isNotificationsOpen && (
+            <div className="notification-popover">
+              <div className="notification-popover-header">
+                <span>Notifications</span>
+                {unreadNotificationCount > 0 && (
+                  <span className="notification-popover-count">
+                    {unreadNotificationCount}
+                  </span>
+                )}
+              </div>
+
+              <div className="notification-popover-list">
+                {loadingNotifications ? (
+                  <div className="notification-popover-empty">Loading...</div>
+                ) : notifications.length === 0 ? (
+                  <div className="notification-popover-empty">No new notifications</div>
+                ) : (
+                  notifications.map((notification) => (
+                    <button
+                      key={notification.noti_id}
+                      type="button"
+                      className={`notification-popover-item ${
+                        notification.is_read ? "read" : ""
+                      }`}
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <span className="notification-popover-dot" />
+                      <span className="notification-popover-main">
+                        <span className="notification-popover-title">
+                          {notification.title}
+                        </span>
+                        <span className="notification-popover-meta">
+                          {notification.task_project_name ||
+                            notification.project_name ||
+                            "TaskFlow"}
+                          {notification.deadline &&
+                            ` - Deadline ${new Date(notification.deadline).toLocaleDateString()}`}
+                          {" - "}
+                          {timeAgo(notification.created_at)}
+                        </span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
           <button
             className="icon-btn"
             title="Toggle Sidebar"
