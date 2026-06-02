@@ -315,12 +315,21 @@ export default function InboxPage() {
   };
 
   const handleReviewSubmission = async (submission, action) => {
+    let reason = "";
+    if (action === "reject") {
+      reason = window.prompt("Nhap ly do can sua task nay:") || "";
+      if (!reason.trim()) {
+        showToast("Please enter a reason for changes", "error");
+        return;
+      }
+    }
+
     const key = `submission-${submission.submission_id}`;
     setReviewingKey(key);
     try {
       await api.put(
         `/projects/${submission.project_id}/task-submissions/${submission.submission_id}`,
-        { action },
+        { action, reason: reason.trim() },
       );
       setTaskSubmissions((prev) =>
         prev.filter((item) => item.submission_id !== submission.submission_id),

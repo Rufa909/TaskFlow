@@ -12,9 +12,18 @@ exports.getMyNotifications = async (req, res) => {
         n.created_at,
         p.name AS project_name,
         t.title AS task_title,
+        t.project_id AS task_project_id,
         tp.name AS task_project_name,
         t.deadline,
         t.time,
+        (
+          SELECT ts.note
+          FROM task_submissions ts
+          WHERE ts.task_id = t.task_id
+            AND ts.status = 'rejected'
+          ORDER BY ts.reviewed_at DESC, ts.submission_id DESC
+          LIMIT 1
+        ) AS change_note,
         CASE
           WHEN n.type = 'role_updated' THEN CONCAT('Role updated in ', COALESCE(p.name, 'project'))
           WHEN n.type = 'task_assigned' THEN CONCAT('New task assigned: ', COALESCE(t.title, 'Task'))

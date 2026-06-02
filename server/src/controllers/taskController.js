@@ -1319,12 +1319,19 @@ exports.reviewTaskSubmission = async (req, res) => {
     await ensureTaskWorkflowSchema();
     await ensureTaskCompletionColumn();
     const { projectId, submissionId } = req.params;
-    const { action } = req.body;
+    const { action, reason } = req.body;
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({
         success: false,
         message: "action must be approve or reject",
+      });
+    }
+
+    if (action === "reject" && !String(reason || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reason is required when requesting changes",
       });
     }
 
@@ -1366,10 +1373,15 @@ exports.reviewTaskSubmission = async (req, res) => {
     await pool.query(
       `
       UPDATE task_submissions
-      SET status = ?, reviewed_at = NOW(), reviewed_by = ?
+      SET status = ?, reviewed_at = NOW(), reviewed_by = ?, note = COALESCE(?, note)
       WHERE submission_id = ?
       `,
-      [nextStatus, req.user.id, submissionId],
+      [
+        nextStatus,
+        req.user.id,
+        action === "reject" ? String(reason).trim() : null,
+        submissionId,
+      ],
     );
 
     if (action === "approve" && role === "leader") {
@@ -1434,12 +1446,19 @@ exports.reviewTaskSubmissionByTask = async (req, res) => {
     await ensureTaskWorkflowSchema();
     await ensureTaskCompletionColumn();
     const { projectId, taskId } = req.params;
-    const { action } = req.body;
+    const { action, reason } = req.body;
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({
         success: false,
         message: "action must be approve or reject",
+      });
+    }
+
+    if (action === "reject" && !String(reason || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Reason is required when requesting changes",
       });
     }
 
@@ -1482,10 +1501,15 @@ exports.reviewTaskSubmissionByTask = async (req, res) => {
     await pool.query(
       `
       UPDATE task_submissions
-      SET status = ?, reviewed_at = NOW(), reviewed_by = ?
+      SET status = ?, reviewed_at = NOW(), reviewed_by = ?, note = COALESCE(?, note)
       WHERE submission_id = ?
       `,
-      [nextSubmissionStatus, req.user.id, submission.submission_id],
+      [
+        nextSubmissionStatus,
+        req.user.id,
+        action === "reject" ? String(reason).trim() : null,
+        submission.submission_id,
+      ],
     );
 
     let nextTaskStatus = "CHANGES_REQUESTED";

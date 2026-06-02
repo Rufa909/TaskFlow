@@ -99,6 +99,13 @@ function isDeadlineMatch(deadline, activeDeadlines) {
   });
 }
 
+function isTaskOverdue(task) {
+  if (!task.deadline || task.status === "COMPLETED" || task.completed_at) return false;
+  const deadline = new Date(task.deadline);
+  if (Number.isNaN(deadline.getTime())) return false;
+  return deadline < new Date();
+}
+
 export default function HomePage() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -156,6 +163,14 @@ export default function HomePage() {
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
   const [isLabelsExpanded, setIsLabelsExpanded] = useState(true);
 
+  // Task section UI state
+  const [taskSectionDropdownOpen, setTaskSectionDropdownOpen] = useState(false);
+  const [visibleSections, setVisibleSections] = useState({ overdue: false, completed: false });
+  const TASKS_PER_PAGE = 5;
+  const [activeTaskPage, setActiveTaskPage] = useState(1);
+  const [overdueTaskPage, setOverdueTaskPage] = useState(1);
+  const [completedTaskPage, setCompletedTaskPage] = useState(1);
+
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -189,6 +204,13 @@ export default function HomePage() {
     };
     fetchTasks();
   }, [activeProject]);
+
+  // Also fetch completed tasks when project changes
+  useEffect(() => {
+    if (activeProject) {
+      fetchReportingTasks();
+    }
+  }, [activeProject?.project_id]);
 
   const fetchReportingTasks = async () => {
     setLoadingReporting(true);
@@ -611,6 +633,11 @@ export default function HomePage() {
   });
 
   const filteredTasks = filterTasksByCriteria(filters);
+  const projectOpenTasks = filteredTasks.filter((t) => !isTaskOverdue(t));
+  const projectOverdueTasks = filteredTasks.filter(isTaskOverdue);
+  const projectCompletedTasks = reportingTasks.filter(
+    (t) => Number(t.project_id) === Number(activeProject?.project_id),
+  );
   const filterResultTasks = activeSavedFilter
     ? filterTasksByCriteria(activeSavedFilter.criteria)
     : [];
@@ -1294,19 +1321,9 @@ export default function HomePage() {
                 {activeProject?.name || "Select a project"}
               </h1>
 
-              {/* Task list */}
               <div className="task-section">
-                <TaskList
-                  tasks={filteredTasks}
-                  handleDeleteTask={handleDeleteTask}
-                  handleUpdateTask={handleUpdateTask}
-                  handleCompleteTask={handleCompleteTask}
-                  handleReviewTaskSubmission={handleReviewTaskSubmission}
-                  currentUserRole={currentProjectRole}
-                  currentUserId={user?.id}
-                  setSelectedTask={setSelectedTask}
-                />
 
+                {/* Add Task - on top */}
                 {isAddingTask ? (
                   <AddTaskForm
                     newTaskTitle={newTaskTitle}
@@ -1338,15 +1355,163 @@ export default function HomePage() {
                   />
                 ) : (
                   <button
-                    className="add-task-btn"
+                    className="add-task-btn add-task-btn--top"
                     onClick={() => setIsAddingTask(true)}
                   >
-                    <span className="icon">
-                      <Icon name="plus" size={18} />
-                    </span>{" "}
+                    <span className="icon"><Icon name="plus" size={18} /></span>
                     Add task
                   </button>
                 )}
+
+                {/* Active tasks with dropdown */}
+                <div className="project-task-group">
+                  <div
+                    className="project-task-group-header clickable"
+                    onClick={() => setTaskSectionDropdownOpen(v => !v)}
+                  >
+                    <span className="task-group-header-title">
+                      <span style={{
+                        display: 'inline-flex',
+                        transform: taskSectionDropdownOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                        transition: 'transform 0.2s'
+                      }}>
+                        <Icon name="chevronDown" size={14} />
+                      </span>
+                      Active tasks
+                    </span>
+                    <span className="task-count-badge">{projectOpenTasks.length}</span>
+                  </div>
+
+                  {taskSectionDropdownOpen && (
+                    <div className="task-section-dropdown">
+                      <button
+                        className={`task-section-dropdown-item ${visibleSections.overdue ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVisibleSections(v => ({ ...v, overdue: !v.overdue }));
+                          setOverdueTaskPage(1);
+                          setTaskSectionDropdownOpen(false);
+                        }}
+                      >
+                        <span className="task-section-dot overdue-dot" />
+                        Overdue tasks
+                        <span className="task-section-count">{projectOverdueTasks.length}</span>
+                        {visibleSections.overdue && <Icon name="check" size={14} />}
+                      </button>
+                      <button
+                        className={`task-section-dropdown-item ${visibleSections.completed ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVisibleSections(v => ({ ...v, completed: !v.completed }));
+                          setCompletedTaskPage(1);
+                          setTaskSectionDropdownOpen(false);
+                        }}
+                      >
+                        <span className="task-section-dot completed-dot" />
+                        Completed tasks
+                        <span className="task-section-count">{projectCompletedTasks.length}</span>
+                        {visibleSections.completed && <Icon name="check" size={14} />}
+                      </button>
+                    </div>
+                  )}
+
+                  {projectOpenTasks.length === 0 ? (
+                    <div className="project-task-empty">No active tasks.</div>
+                  ) : (
+                    <>
+                      <TaskList
+                        tasks={projectOpenTasks.slice((activeTaskPage-1)*TASKS_PER_PAGE, activeTaskPage*TASKS_PER_PAGE)}
+                        handleDeleteTask={handleDeleteTask}
+                        handleUpdateTask={handleUpdateTask}
+                        handleCompleteTask={handleCompleteTask}
+                        handleReviewTaskSubmission={handleReviewTaskSubmission}
+                        currentUserRole={currentProjectRole}
+                        currentUserId={user?.id}
+                        setSelectedTask={setSelectedTask}
+                      />
+                      {Math.ceil(projectOpenTasks.length / TASKS_PER_PAGE) > 1 && (
+                        <div className="task-pagination">
+                          {Array.from({ length: Math.ceil(projectOpenTasks.length / TASKS_PER_PAGE) }, (_, i) => i+1).map(p => (
+                            <button key={p} className={`task-page-btn ${activeTaskPage===p?'active':''}`} onClick={() => setActiveTaskPage(p)}>{p}</button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Overdue tasks */}
+                {visibleSections.overdue && (
+                  <div className="project-task-group overdue">
+                    <div className="project-task-group-header">
+                      <span className="task-group-header-title overdue-title">
+                        <span className="task-section-dot overdue-dot" />
+                        Overdue tasks
+                      </span>
+                      <span className="task-count-badge overdue-badge">{projectOverdueTasks.length}</span>
+                    </div>
+                    {projectOverdueTasks.length === 0 ? (
+                      <div className="project-task-empty">No overdue tasks.</div>
+                    ) : (
+                      <>
+                        <TaskList
+                          tasks={projectOverdueTasks.slice((overdueTaskPage-1)*TASKS_PER_PAGE, overdueTaskPage*TASKS_PER_PAGE)}
+                          handleDeleteTask={handleDeleteTask}
+                          handleUpdateTask={handleUpdateTask}
+                          handleCompleteTask={handleCompleteTask}
+                          handleReviewTaskSubmission={handleReviewTaskSubmission}
+                          currentUserRole={currentProjectRole}
+                          currentUserId={user?.id}
+                          setSelectedTask={setSelectedTask}
+                        />
+                        {Math.ceil(projectOverdueTasks.length / TASKS_PER_PAGE) > 1 && (
+                          <div className="task-pagination">
+                            {Array.from({ length: Math.ceil(projectOverdueTasks.length / TASKS_PER_PAGE) }, (_, i) => i+1).map(p => (
+                              <button key={p} className={`task-page-btn ${overdueTaskPage===p?'active':''}`} onClick={() => setOverdueTaskPage(p)}>{p}</button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Completed tasks */}
+                {visibleSections.completed && (
+                  <div className="project-task-group completed">
+                    <div className="project-task-group-header">
+                      <span className="task-group-header-title">
+                        <span className="task-section-dot completed-dot" />
+                        Completed tasks
+                      </span>
+                      <span className="task-count-badge completed-badge">{projectCompletedTasks.length}</span>
+                    </div>
+                    {projectCompletedTasks.length === 0 ? (
+                      <div className="project-task-empty">No completed tasks.</div>
+                    ) : (
+                      <>
+                        <TaskList
+                          tasks={projectCompletedTasks.slice((completedTaskPage-1)*TASKS_PER_PAGE, completedTaskPage*TASKS_PER_PAGE)}
+                          handleDeleteTask={handleDeleteTask}
+                          handleUpdateTask={handleUpdateTask}
+                          handleCompleteTask={handleCompleteTask}
+                          handleReviewTaskSubmission={handleReviewTaskSubmission}
+                          currentUserRole={currentProjectRole}
+                          currentUserId={user?.id}
+                          setSelectedTask={setSelectedTask}
+                        />
+                        {Math.ceil(projectCompletedTasks.length / TASKS_PER_PAGE) > 1 && (
+                          <div className="task-pagination">
+                            {Array.from({ length: Math.ceil(projectCompletedTasks.length / TASKS_PER_PAGE) }, (_, i) => i+1).map(p => (
+                              <button key={p} className={`task-page-btn ${completedTaskPage===p?'active':''}`} onClick={() => setCompletedTaskPage(p)}>{p}</button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
               </div>
             </>
           )}

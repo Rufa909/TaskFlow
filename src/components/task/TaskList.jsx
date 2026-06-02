@@ -68,9 +68,12 @@ export default function TaskList({
   handleReviewTaskSubmission = () => {},
   currentUserRole = "",
   currentUserId = null,
+  highlightedTaskId = null,
   setSelectedTask,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [changesTask, setChangesTask] = useState(null);
+  const [changesReason, setChangesReason] = useState("");
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -101,7 +104,10 @@ export default function TaskList({
         return (
           <div
             key={task.task_id || task.id}
-            className="task-item"
+            data-task-id={task.task_id}
+            className={`task-item ${
+              Number(highlightedTaskId) === Number(task.task_id) ? "highlighted" : ""
+            }`}
             onClick={() => setSelectedTask(task)}
           >
             {reviewable ? (
@@ -123,7 +129,8 @@ export default function TaskList({
                   title="Request changes"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleReviewTaskSubmission(task, "reject");
+                    setChangesTask(task);
+                    setChangesReason("");
                   }}
                 >
                   Changes
@@ -284,6 +291,54 @@ export default function TaskList({
           </div>
         );
       })}
+
+      {changesTask && (
+        <div className="task-changes-overlay" onClick={() => setChangesTask(null)}>
+          <div className="task-changes-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="task-changes-header">
+              <h3>Request changes</h3>
+              <button
+                type="button"
+                className="task-changes-close"
+                aria-label="Close"
+                onClick={() => setChangesTask(null)}
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+            <div className="task-changes-body">
+              <div className="task-changes-task">{changesTask.title}</div>
+              <textarea
+                value={changesReason}
+                onChange={(e) => setChangesReason(e.target.value)}
+                placeholder="Nhap ly do can sua..."
+                autoFocus
+              />
+            </div>
+            <div className="task-changes-footer">
+              <button
+                type="button"
+                className="task-changes-secondary"
+                onClick={() => setChangesTask(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="task-changes-submit"
+                disabled={!changesReason.trim()}
+                onClick={() => {
+                  handleReviewTaskSubmission(changesTask, "reject", changesReason.trim());
+                  setChangesTask(null);
+                  setChangesReason("");
+                }}
+              >
+                Send changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

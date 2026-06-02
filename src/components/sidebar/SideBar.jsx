@@ -155,18 +155,32 @@ export default function Sidebar({
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
 
   const handleNotificationClick = async (notification) => {
-    if (notification.is_read) return;
-    try {
-      await api.put(`/notifications/${notification.noti_id}/read`);
-      setNotifications((prev) =>
-        prev.map((item) =>
-          item.noti_id === notification.noti_id
-            ? { ...item, is_read: 1 }
-            : item,
-        ),
+    if (!notification.is_read) {
+      try {
+        await api.put(`/notifications/${notification.noti_id}/read`);
+        setNotifications((prev) =>
+          prev.map((item) =>
+            item.noti_id === notification.noti_id
+              ? { ...item, is_read: 1 }
+              : item,
+          ),
+        );
+      } catch (err) {
+        console.error("Cannot mark notification read", err);
+      }
+    }
+
+    const projectId = notification.task_project_id || notification.reference_id;
+    if (notification.task_project_id && notification.reference_id) {
+      const targetProject = projects.find(
+        (project) => Number(project.project_id) === Number(projectId),
       );
-    } catch (err) {
-      console.error("Cannot mark notification read", err);
+      if (targetProject) {
+        setActiveProject(targetProject);
+      }
+      setActiveView("project");
+      setIsNotificationsOpen(false);
+      navigate(`/?projectId=${projectId}&taskId=${notification.reference_id}`);
     }
   };
 
@@ -278,6 +292,7 @@ export default function Sidebar({
                             "TaskFlow"}
                           {notification.deadline &&
                             ` - Deadline ${new Date(notification.deadline).toLocaleDateString()}`}
+                          {notification.change_note && ` - ${notification.change_note}`}
                           {" - "}
                           {timeAgo(notification.created_at)}
                         </span>
