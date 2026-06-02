@@ -4,14 +4,17 @@ const pool = require('../config/db');
 exports.getProjects = async (req, res) => {
     try {
         let [rows] = await pool.query(
-            `SELECT p.* 
+            `SELECT DISTINCT p.*,
+                    CASE
+                        WHEN p.owner_id = ? THEN 'owner'
+                        ELSE pm.role
+                    END AS user_role
              FROM projects p
              LEFT JOIN project_members pm ON p.project_id = pm.project_id
              WHERE (p.owner_id = ? OR pm.user_id = ?)
                AND p.deleted_at IS NULL
-             GROUP BY p.project_id
              ORDER BY p.created_at ASC`,
-            [req.user.id, req.user.id]
+            [req.user.id, req.user.id, req.user.id]
         );
         // Nếu user chưa có project nào → tự động tạo "Project1"
         if (rows.length === 0) {
@@ -20,7 +23,7 @@ exports.getProjects = async (req, res) => {
                 [req.user.id, 'Project1']
             );
             [rows] = await pool.query(
-                'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
+                "SELECT p.*, 'owner' AS user_role FROM projects p WHERE p.project_id = ? AND p.deleted_at IS NULL",
                 [result.insertId]
             );
         }

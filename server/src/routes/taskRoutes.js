@@ -16,6 +16,7 @@ const {
   reviewTaskAssignmentRequest,
   getTaskSubmissions,
   reviewTaskSubmission,
+  reviewTaskSubmissionByTask,
   checkOverdueTasksNow,
 } = require("../controllers/taskController");
 
@@ -68,6 +69,7 @@ router.post("/projects/:projectId/tasks", authMiddleware, uploadAttachment, crea
 router.post("/projects/:projectId/tasks/:taskId/complete", authMiddleware, completeTask);
 router.post("/projects/:projectId/tasks/:taskId/submit", authMiddleware, completeTask);
 router.post("/projects/:projectId/tasks/:taskId/assign", authMiddleware, requestTaskAssignment);
+router.post("/projects/:projectId/tasks/:taskId/review-submission", authMiddleware, reviewTaskSubmissionByTask);
 
 router.delete("/projects/:projectId/tasks/:taskId", authMiddleware, deleteTask);
 
