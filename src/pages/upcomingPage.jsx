@@ -419,6 +419,7 @@ export default function UpcomingPage() {
         selectedTask={selectedTask}
         setSelectedTask={setSelectedTask}
         handleUpdateTask={handleUpdateTask}
+        handleCompleteTask={handleCompleteTask}
       />
     </div>
   );
