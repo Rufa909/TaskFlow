@@ -27,6 +27,9 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
+    // Decode originalname to handle Vietnamese characters properly
+    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    
     const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, unique + path.extname(file.originalname));
   },

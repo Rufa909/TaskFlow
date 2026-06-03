@@ -1579,6 +1579,26 @@ body {
   font-size: 12px;
 }
 
+.edit-detail-task-attach-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  margin: 12px 0 0 88px;
+  font-size: 13px;
+  color: #666;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px dashed #ccc;
+  transition: all 0.2s ease;
+}
+
+.edit-detail-task-attach-btn:hover {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  background-color: rgba(30, 136, 229, 0.05);
+}
+
 .edit-detail-comments {
   margin: 18px 0 0 88px;
   display: flex;
@@ -1633,6 +1653,65 @@ body {
   font-size: 14px;
   line-height: 1.4;
   white-space: pre-wrap;
+}
+
+.edit-detail-comment-input-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.edit-detail-comment-attachments {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-detail-attachment-link {
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #2563eb;
+  text-decoration: none;
+  background: #f0f4f8;
+  padding: 4px 10px;
+  border-radius: 6px;
+  width: fit-content;
+  transition: background 0.2s;
+}
+
+.edit-detail-attachment-link:hover {
+  background: #e2e8f0;
+}
+
+.edit-detail-comment-attachments-preview {
+  font-size: 13px;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.edit-detail-comment-attachments-preview button {
+  color: #dc4c3e;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.edit-detail-comment-attachments-preview button:hover {
+  background: #fff1f0;
 }
 
 .edit-detail-sidebar {

@@ -376,10 +376,7 @@ export default function EditTaskModal({
               </div>
             )}
             {!isMember && (
-              <label 
-                className="edit-detail-task-attach-btn" 
-                style={{display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginTop: 8, fontSize: 13, color: '#666', padding: '4px 8px', borderRadius: 4, border: '1px dashed #ccc'}}
-              >
+              <label className="edit-detail-task-attach-btn">
                 <Icon name="paperclip" size={14} /> <span>Thêm file đính kèm cho Task</span>
                 <input
                   type="file"
@@ -463,7 +460,7 @@ export default function EditTaskModal({
 
             <div className="edit-detail-comment-row">
               <div className="edit-detail-avatar">{user?.username ? user.username[0].toUpperCase() : "U"}</div>
-              <div className="edit-detail-comment-input-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="edit-detail-comment-input-wrap">
                 <div className="edit-detail-comment-input" style={{ width: '100%' }}>
                   <input
                     value={commentDraft}
@@ -492,14 +489,10 @@ export default function EditTaskModal({
                   </button>
                 </div>
                 {commentAttachments.length > 0 && (
-                  <div style={{ fontSize: 12, color: "#666", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <Icon name="paperclip" size={12} />
+                  <div className="edit-detail-comment-attachments-preview">
+                    <Icon name="paperclip" size={14} />
                     {commentAttachments.map((f) => f.name).join(", ")}
-                    <button
-                      type="button"
-                      style={{ color: "red", border: "none", background: "none", cursor: "pointer" }}
-                      onClick={() => setCommentAttachments([])}
-                    >
+                    <button type="button" onClick={() => setCommentAttachments([])}>
                       Remove
                     </button>
                   </div>
@@ -524,7 +517,7 @@ export default function EditTaskModal({
                       {comment.body && <div className="edit-detail-comment-text">{comment.body}</div>}
                       
                       {comment.attachments && comment.attachments.length > 0 && (
-                        <div className="edit-detail-comment-attachments" style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div className="edit-detail-comment-attachments">
                           {comment.attachments.map((att) => (
                             <a
                               key={att.attachment_id}
@@ -532,9 +525,8 @@ export default function EditTaskModal({
                               target="_blank"
                               rel="noreferrer"
                               className="edit-detail-attachment-link"
-                              style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}
                             >
-                              <Icon name="paperclip" size={12} />
+                              <Icon name="paperclip" size={14} />
                               {att.originalName}
                             </a>
                           ))}
