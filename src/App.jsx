@@ -1,5 +1,3 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AuthPage from './pages/authPage';
 import HomePage from './pages/homePage';
@@ -13,6 +11,17 @@ import { ConfirmProvider } from './context/ConfirmContext';
 import FiltersModal from './components/modals/FiltersModal';
 import AddTeamModal from './components/modals/AddTeamModal';
 import AIChatBox from './components/AI/AIChatBox';
+
+function AuthenticatedAIChatBox() {
+  const { user } = useAuth();
+  const location = useLocation();
+
+  if (!user || location.pathname === '/auth') {
+    return null;
+  }
+
+  return <AIChatBox />;
+}
 
 export default function App() {
   return (
@@ -61,7 +70,7 @@ export default function App() {
 
                 <FiltersModal />
                 <AddTeamModal />
-                <AIChatBox />
+                <AuthenticatedAIChatBox />
               </BrowserRouter>
             </TeamsProvider>
           </ConfirmProvider>
