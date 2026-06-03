@@ -306,13 +306,6 @@ export default function EditTaskModal({
         <div className="edit-detail-body">
           <main className="edit-detail-main">
             <div className="edit-detail-task-head">
-              <button
-                type="button"
-                className={`edit-detail-check priority-${selectedPriority.value}`}
-                onClick={completeCurrentTask}
-                aria-label="Complete task"
-                title="Complete task"
-              />
               <div className="edit-detail-title-wrap">
                 <textarea
                   className="edit-detail-title"
@@ -329,6 +322,31 @@ export default function EditTaskModal({
                 />
               </div>
             </div>
+            {(selectedAttachmentFiles.length > 0 || selectedTask.attachment_url) && (
+              <div className="edit-detail-attachment-row">
+                <Icon name="paperclip" size={14} />
+                {selectedTask.attachment_url && selectedAttachmentFiles.length === 0 ? (
+                  <a
+                    href={`${API_ORIGIN}${selectedTask.attachment_url}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {selectedTask.attachment_name || "Attachment"}
+                  </a>
+                ) : (
+                  <span>
+                    {selectedAttachmentFiles.length > 1
+                      ? selectedAttachmentFiles.map((file) => file.name).join(", ")
+                      : selectedAttachmentFiles[0]?.name}
+                  </span>
+                )}
+                {selectedAttachmentFiles.length > 0 && (
+                  <button type="button" onClick={() => setAttachments([])}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            )}
 
             <div className="edit-detail-subtasks">
               {isLoadingDetails && (
@@ -461,32 +479,6 @@ export default function EditTaskModal({
                 ))}
               </div>
             )}
-
-            {(selectedAttachmentFiles.length > 0 || selectedTask.attachment_url) && (
-              <div className="edit-detail-attachment-row">
-                <Icon name="paperclip" size={14} />
-                {selectedTask.attachment_url && selectedAttachmentFiles.length === 0 ? (
-                  <a
-                    href={`${API_ORIGIN}${selectedTask.attachment_url}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {selectedTask.attachment_name || "Attachment"}
-                  </a>
-                ) : (
-                  <span>
-                    {selectedAttachmentFiles.length > 1
-                      ? selectedAttachmentFiles.map((file) => file.name).join(", ")
-                      : selectedAttachmentFiles[0]?.name}
-                  </span>
-                )}
-                {selectedAttachmentFiles.length > 0 && (
-                  <button type="button" onClick={() => setAttachments([])}>
-                    Remove
-                  </button>
-                )}
-              </div>
-            )}
           </main>
 
           <aside className="edit-detail-sidebar">
@@ -494,7 +486,7 @@ export default function EditTaskModal({
               <div className="edit-detail-property-label">Project</div>
               <div className="edit-detail-property-value">
                 
-                <span>{selectedTask.project_name || "Loading..."}</span>
+                <span>{selectedTask.project_name}</span>
               </div>
             </section>
 
