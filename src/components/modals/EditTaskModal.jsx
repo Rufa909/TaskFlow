@@ -5,6 +5,7 @@ import DatePickerPopover from "../task/DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api/axiosInstance";
+import "./EditTaskModal.css";
 
 const API_ORIGIN = "http://localhost:5000";
 const TASK_BLUE = "#1e88e5";
@@ -193,12 +194,11 @@ export default function EditTaskModal({
 
     if (oversized) {
       event.target.value = "";
-      setCommentAttachments([]);
       showToast("File vượt quá dung lượng tối đa 5MB", "error");
       return;
     }
 
-    setCommentAttachments(files);
+    setCommentAttachments((prev) => [...prev, ...files]);
   };
 
   const selectedAttachmentFiles = Array.isArray(attachments) ? attachments : [];
@@ -461,8 +461,9 @@ export default function EditTaskModal({
             <div className="edit-detail-comment-row">
               <div className="edit-detail-avatar">{user?.username ? user.username[0].toUpperCase() : "U"}</div>
               <div className="edit-detail-comment-input-wrap">
-                <div className="edit-detail-comment-input" style={{ width: '100%' }}>
+                <div className="edit-detail-comment-box">
                   <input
+                    className="edit-detail-comment-field"
                     value={commentDraft}
                     onChange={(e) => setCommentDraft(e.target.value)}
                     placeholder="Comment"
@@ -484,6 +485,7 @@ export default function EditTaskModal({
                     type="button"
                     className="edit-detail-comment-send"
                     onClick={createComment}
+                    disabled={!commentDraft.trim() && commentAttachments.length === 0}
                   >
                     Send
                   </button>
