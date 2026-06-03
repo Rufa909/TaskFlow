@@ -95,7 +95,10 @@ const selectedPriority =
   const currentMember = projectMembers.find(
     (member) => Number(member.user_id) === Number(user?.id),
   );
-  const canAssignTask = ["owner", "leader"].includes(currentMember?.role);
+  const isOwner = Number(activeProject?.owner_id) === Number(user?.id);
+  const userRole = isOwner ? "owner" : (currentMember?.role || "member");
+  const canAssignTask = ["owner", "leader"].includes(userRole);
+  const isMember = userRole === "member";
   const assignableMembers = projectMembers.filter(
     (member) => member.role !== "owner",
   );
@@ -395,7 +398,8 @@ const selectedPriority =
           <button
             className="submit-btn"
             onClick={handleAddTask}
-            disabled={!newTaskTitle.trim()}
+            disabled={!newTaskTitle.trim() || isMember}
+            title={isMember ? "Members cannot create tasks in this project" : ""}
           >
             Add task
           </button>

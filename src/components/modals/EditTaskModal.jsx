@@ -57,6 +57,9 @@ export default function EditTaskModal({
   const [commentDraft, setCommentDraft] = useState("");
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [userRole, setUserRole] = useState(null);
+  const isMember = userRole === "member";
+  const [commentAttachments, setCommentAttachments] = useState([]);
 
   const selectedPriority =
     priorities.find((item) => item.value === priority) || priorities[2];
@@ -100,6 +103,7 @@ export default function EditTaskModal({
         if (!active) return;
         setSubtasks(res.data.subtasks || []);
         setComments(res.data.comments || []);
+        setUserRole(res.data.role || "member");
       } catch (err) {
         if (!active) return;
         showToast("Không thể tải chi tiết task", "error");
@@ -183,6 +187,20 @@ export default function EditTaskModal({
     setAttachments(files);
   };
 
+  const handleCommentAttachmentChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    const oversized = files.find((file) => file.size > 5 * 1024 * 1024);
+
+    if (oversized) {
+      event.target.value = "";
+      setCommentAttachments([]);
+      showToast("File vượt quá dung lượng tối đa 5MB", "error");
+      return;
+    }
+
+    setCommentAttachments(files);
+  };
+
   const selectedAttachmentFiles = Array.isArray(attachments) ? attachments : [];
 
   const toggleTaskLabel = (label) => {
@@ -240,15 +258,23 @@ export default function EditTaskModal({
 
   const createComment = async () => {
     const body = commentDraft.trim();
-    if (!body) return;
+    if (!body && commentAttachments.length === 0) return;
 
     try {
+      const formData = new FormData();
+      if (body) formData.append("body", body);
+      commentAttachments.forEach((file) => formData.append("attachments", file));
+
       const res = await api.post(
         `/projects/${selectedTask.project_id}/tasks/${selectedTask.task_id}/comments`,
-        { body },
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
       );
       setComments((prev) => [...prev, res.data.comment]);
       setCommentDraft("");
+      setCommentAttachments([]);
     } catch (err) {
       showToast("Không thể gửi comment", "error");
     }
@@ -313,12 +339,14 @@ export default function EditTaskModal({
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Task name"
                   autoFocus
+                  disabled={isMember}
                 />
                 <textarea
                   className="edit-detail-description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Description"
+                  disabled={isMember}
                 />
               </div>
             </div>
@@ -340,12 +368,27 @@ export default function EditTaskModal({
                       : selectedAttachmentFiles[0]?.name}
                   </span>
                 )}
-                {selectedAttachmentFiles.length > 0 && (
+                {selectedAttachmentFiles.length > 0 && !isMember && (
                   <button type="button" onClick={() => setAttachments([])}>
                     Remove
                   </button>
                 )}
               </div>
+            )}
+            {!isMember && (
+              <label 
+                className="edit-detail-task-attach-btn" 
+                style={{display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginTop: 8, fontSize: 13, color: '#666', padding: '4px 8px', borderRadius: 4, border: '1px dashed #ccc'}}
+              >
+                <Icon name="paperclip" size={14} /> <span>Thêm file đính kèm cho Task</span>
+                <input
+                  type="file"
+                  hidden
+                  multiple
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                  onChange={handleAttachmentChange}
+                />
+              </label>
             )}
 
             <div className="edit-detail-subtasks">
@@ -358,24 +401,27 @@ export default function EditTaskModal({
                   <button
                     type="button"
                     className={`edit-detail-subtask-check ${subtask.completed_at ? "done" : ""}`}
-                    onClick={() => toggleSubtask(subtask)}
+                    onClick={() => !isMember && toggleSubtask(subtask)}
                     aria-label="Toggle sub-task"
+                    disabled={isMember}
                   >
                     {subtask.completed_at && <Icon name="check" size={12} />}
                   </button>
                   <span className={subtask.completed_at ? "done" : ""}>{subtask.title}</span>
-                  <button
-                    type="button"
-                    className="edit-detail-subtask-delete"
-                    onClick={() => deleteSubtask(subtask.subtask_id)}
-                    aria-label="Delete sub-task"
-                  >
-                    <Icon name="x" size={14} />
-                  </button>
+                  {!isMember && (
+                    <button
+                      type="button"
+                      className="edit-detail-subtask-delete"
+                      onClick={() => deleteSubtask(subtask.subtask_id)}
+                      aria-label="Delete sub-task"
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
 
-              {isAddingSubtask ? (
+              {!isMember && (isAddingSubtask ? (
                 <div className="edit-detail-subtask-form">
                   <input
                     value={subtaskDraft}
@@ -412,69 +458,99 @@ export default function EditTaskModal({
                   <Icon name="plus" size={18} />
                   Add sub-task
                 </button>
-              )}
+              ))}
             </div>
 
             <div className="edit-detail-comment-row">
-              <div className="edit-detail-avatar">Q</div>
-              <div className="edit-detail-comment-input">
-                <input
-                  value={commentDraft}
-                  onChange={(e) => setCommentDraft(e.target.value)}
-                  placeholder="Comment"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") createComment();
-                  }}
-                />
-                <label className="edit-detail-attach-btn">
-                  <Icon name="paperclip" size={18} />
+              <div className="edit-detail-avatar">{user?.username ? user.username[0].toUpperCase() : "U"}</div>
+              <div className="edit-detail-comment-input-wrap" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div className="edit-detail-comment-input" style={{ width: '100%' }}>
                   <input
-                    type="file"
-                    hidden
-                    multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-                    onChange={handleAttachmentChange}
+                    value={commentDraft}
+                    onChange={(e) => setCommentDraft(e.target.value)}
+                    placeholder="Comment"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") createComment();
+                    }}
                   />
-                </label>
-                <button
-                  type="button"
-                  className="edit-detail-comment-send"
-                  onClick={createComment}
-                  disabled={!commentDraft.trim()}
-                >
-                  Send
-                </button>
+                  <label className="edit-detail-attach-btn">
+                    <Icon name="paperclip" size={18} />
+                    <input
+                      type="file"
+                      hidden
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                      onChange={handleCommentAttachmentChange}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="edit-detail-comment-send"
+                    onClick={createComment}
+                  >
+                    Send
+                  </button>
+                </div>
+                {commentAttachments.length > 0 && (
+                  <div style={{ fontSize: 12, color: "#666", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Icon name="paperclip" size={12} />
+                    {commentAttachments.map((f) => f.name).join(", ")}
+                    <button
+                      type="button"
+                      style={{ color: "red", border: "none", background: "none", cursor: "pointer" }}
+                      onClick={() => setCommentAttachments([])}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
             {comments.length > 0 && (
               <div className="edit-detail-comments">
                 {comments.map((comment) => (
-                  <div className="edit-detail-comment" key={comment.comment_id}>
+                  <div className="edit-detail-comment-item" key={comment.comment_id}>
                     <div className="edit-detail-comment-avatar">
-                      {(comment.username || comment.email || "U").charAt(0).toUpperCase()}
+                      {comment.username ? comment.username[0].toUpperCase() : "U"}
                     </div>
-                    <div className="edit-detail-comment-body">
-                      <div className="edit-detail-comment-meta">
-                        <strong>{comment.username || comment.email || "User"}</strong>
-                        <span>
-                          {comment.created_at
-                            ? new Date(comment.created_at).toLocaleString("vi-VN")
-                            : ""}
+                    <div className="edit-detail-comment-content">
+                      <div className="edit-detail-comment-author">
+                        {comment.username || "User"}
+                        <span className="edit-detail-comment-time">
+                          {new Date(comment.created_at).toLocaleString("vi-VN")}
                         </span>
                       </div>
-                      <p>{comment.body}</p>
+                      {comment.body && <div className="edit-detail-comment-text">{comment.body}</div>}
+                      
+                      {comment.attachments && comment.attachments.length > 0 && (
+                        <div className="edit-detail-comment-attachments" style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                          {comment.attachments.map((att) => (
+                            <a
+                              key={att.attachment_id}
+                              href={`${API_ORIGIN}${att.file_url}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="edit-detail-attachment-link"
+                              style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}
+                            >
+                              <Icon name="paperclip" size={12} />
+                              {att.originalName}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
+                      {Number(comment.user_id) === Number(user?.id) && (
+                        <button
+                          type="button"
+                          className="edit-detail-comment-delete"
+                          onClick={() => deleteComment(comment.comment_id)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
-                    {Number(comment.user_id) === Number(user?.id) && (
-                      <button
-                        type="button"
-                        className="edit-detail-comment-delete"
-                        onClick={() => deleteComment(comment.comment_id)}
-                        aria-label="Delete comment"
-                      >
-                        <Icon name="x" size={14} />
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
@@ -496,7 +572,8 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className={`edit-detail-property-button ${deadline ? "has-value" : ""}`}
-                  onClick={() => setIsDatePickerOpen((prev) => !prev)}
+                  onClick={() => !isMember && setIsDatePickerOpen((prev) => !prev)}
+                  disabled={isMember}
                 >
                   <Icon name="calendar" size={15} color={deadline ? TASK_BLUE : "currentColor"} />
                   <span>
@@ -504,7 +581,7 @@ export default function EditTaskModal({
                   </span>
                 </button>
 
-                {isDatePickerOpen && (
+                {isDatePickerOpen && !isMember && (
                   <DatePickerPopover
                     taskDeadline={deadline}
                     setTaskDeadline={setDeadline}
@@ -532,13 +609,14 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className="edit-detail-property-button"
-                  onClick={() => setIsPriorityOpen((prev) => !prev)}
+                  onClick={() => !isMember && setIsPriorityOpen((prev) => !prev)}
+                  disabled={isMember}
                 >
                   <Icon name="flag" size={16} color={selectedPriority.color} />
                   <span>{selectedPriority.label}</span>
                 </button>
 
-                {isPriorityOpen && (
+                {isPriorityOpen && !isMember && (
                   <div className="edit-detail-menu">
                     {priorities.map((item) => (
                       <button
@@ -566,17 +644,18 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className="edit-detail-property-button labels"
-                  onClick={() => setIsLabelsOpen((prev) => !prev)}
+                  onClick={() => !isMember && setIsLabelsOpen((prev) => !prev)}
+                  disabled={isMember}
                 >
                   {labels.length > 0 ? (
                     <span>{labels.join(", ")}</span>
                   ) : (
                     <span>Add labels</span>
                   )}
-                  <Icon name="plus" size={16} />
+                  {!isMember && <Icon name="plus" size={16} />}
                 </button>
 
-                {isLabelsOpen && (
+                {isLabelsOpen && !isMember && (
                   <div className="edit-detail-menu labels">
                     {availableLabels.length === 0 && (
                       <div className="edit-detail-empty-menu">No labels</div>

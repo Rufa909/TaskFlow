@@ -1324,43 +1324,45 @@ export default function HomePage() {
               <div className="task-section">
 
                 {/* Add Task - on top */}
-                {isAddingTask ? (
-                  <AddTaskForm
-                    newTaskTitle={newTaskTitle}
-                    setNewTaskTitle={setNewTaskTitle}
-                    newTaskDesc={newTaskDesc}
-                    setNewTaskDesc={setNewTaskDesc}
-                    handleAddTask={handleAddTask}
-                    taskDeadline={taskDeadline}
-                    setTaskDeadline={setTaskDeadline}
-                    taskTime={taskTime}
-                    setTaskTime={setTaskTime}
-                    taskAttachment={taskAttachment}
-                    setTaskAttachment={setTaskAttachment}
-                    taskPriority={taskPriority}
-                    setTaskPriority={setTaskPriority}
-                    taskLabels={newTaskLabels}
-                    setTaskLabels={setNewTaskLabels}
-                    availableLabels={allLabels}
-                    taskAssignee={taskAssignee}
-                    setTaskAssignee={setTaskAssignee}
-                    isDatePickerOpen={isDatePickerOpen}
-                    setIsDatePickerOpen={setIsDatePickerOpen}
-                    activeProject={activeProject}
-                    projects={projects}
-                    setActiveProject={setActiveProject}
-                    isTaskProjectMenuOpen={isTaskProjectMenuOpen}
-                    setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
-                    setIsAddingTask={setIsAddingTask}
-                  />
-                ) : (
-                  <button
-                    className="add-task-btn add-task-btn--top"
-                    onClick={() => setIsAddingTask(true)}
-                  >
-                    <span className="icon"><Icon name="plus" size={18} /></span>
-                    Add task
-                  </button>
+                {currentProjectRole !== "member" && (
+                  isAddingTask ? (
+                    <AddTaskForm
+                      newTaskTitle={newTaskTitle}
+                      setNewTaskTitle={setNewTaskTitle}
+                      newTaskDesc={newTaskDesc}
+                      setNewTaskDesc={setNewTaskDesc}
+                      handleAddTask={handleAddTask}
+                      taskDeadline={taskDeadline}
+                      setTaskDeadline={setTaskDeadline}
+                      taskTime={taskTime}
+                      setTaskTime={setTaskTime}
+                      taskAttachment={taskAttachment}
+                      setTaskAttachment={setTaskAttachment}
+                      taskPriority={taskPriority}
+                      setTaskPriority={setTaskPriority}
+                      taskLabels={newTaskLabels}
+                      setTaskLabels={setNewTaskLabels}
+                      availableLabels={allLabels}
+                      taskAssignee={taskAssignee}
+                      setTaskAssignee={setTaskAssignee}
+                      isDatePickerOpen={isDatePickerOpen}
+                      setIsDatePickerOpen={setIsDatePickerOpen}
+                      activeProject={activeProject}
+                      projects={projects}
+                      setActiveProject={setActiveProject}
+                      isTaskProjectMenuOpen={isTaskProjectMenuOpen}
+                      setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
+                      setIsAddingTask={setIsAddingTask}
+                    />
+                  ) : (
+                    <button
+                      className="add-task-btn add-task-btn--top"
+                      onClick={() => setIsAddingTask(true)}
+                    >
+                      <span className="icon"><Icon name="plus" size={18} /></span>
+                      Add task
+                    </button>
+                  )
                 )}
 
                 {/* Active tasks with dropdown */}

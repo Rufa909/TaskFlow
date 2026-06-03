@@ -72,7 +72,7 @@ router.get("/projects/:projectId/tasks/:taskId/details", authMiddleware, getTask
 router.post("/projects/:projectId/tasks/:taskId/subtasks", authMiddleware, createSubtask);
 router.put("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, updateSubtask);
 router.delete("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, deleteSubtask);
-router.post("/projects/:projectId/tasks/:taskId/comments", authMiddleware, createTaskComment);
+router.post("/projects/:projectId/tasks/:taskId/comments", authMiddleware, uploadAttachment, createTaskComment);
 router.delete("/projects/:projectId/tasks/:taskId/comments/:commentId", authMiddleware, deleteTaskComment);
 // These routes need the project ID in the path
 

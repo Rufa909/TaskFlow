@@ -217,6 +217,7 @@ async function ensureTaskAttachmentTable() {
       CREATE TABLE IF NOT EXISTS attachments (
         attachment_id INT AUTO_INCREMENT PRIMARY KEY,
         task_id INT NOT NULL,
+        comment_id INT NULL,
         originalName VARCHAR(255) NOT NULL,
         file_url VARCHAR(500) NOT NULL,
         fileName VARCHAR(255) NOT NULL,
@@ -224,7 +225,8 @@ async function ensureTaskAttachmentTable() {
         size INT,
         upload_by INT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_attachments_task_id (task_id)
+        INDEX idx_attachments_task_id (task_id),
+        FOREIGN KEY (comment_id) REFERENCES task_comments(comment_id) ON DELETE CASCADE
       )
       `,
     );
@@ -248,6 +250,20 @@ async function ensureTaskLabelsColumn() {
 
       if (columns.length === 0) {
         await pool.query("ALTER TABLE tasks ADD COLUMN labels TEXT NULL");
+      }
+
+      const [attachColumns] = await pool.query(
+        `
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'attachments'
+          AND COLUMN_NAME = 'comment_id'
+        `
+      );
+      if (attachColumns.length === 0) {
+        await pool.query("ALTER TABLE attachments ADD COLUMN comment_id INT NULL");
+        await pool.query("ALTER TABLE attachments ADD FOREIGN KEY (comment_id) REFERENCES task_comments(comment_id) ON DELETE CASCADE");
       }
     })();
   }
@@ -349,6 +365,28 @@ async function insertTaskAttachments(taskId, files, userId) {
   }
 }
 
+async function insertCommentAttachments(taskId, commentId, files, userId) {
+  for (const file of files) {
+    await pool.query(
+      `
+      INSERT INTO attachments
+      (task_id, comment_id, originalName, file_url, fileName, mimeType, size, upload_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        taskId,
+        commentId,
+        file.originalname,
+        `/uploads/files/${file.filename}`,
+        file.filename,
+        file.mimetype,
+        file.size,
+        userId,
+      ],
+    );
+  }
+}
+
 // GET /api/projects/:projectId/tasks
 exports.getTasks = async (req, res) => {
   try {
@@ -374,6 +412,7 @@ exports.getTasks = async (req, res) => {
         JOIN (
           SELECT task_id, MIN(attachment_id) AS attachment_id
           FROM attachments
+          WHERE comment_id IS NULL
           GROUP BY task_id
         ) first_attachment ON first_attachment.attachment_id = a.attachment_id
       ) ta ON ta.task_id = t.task_id
@@ -410,6 +449,20 @@ exports.createTask = async (req, res) => {
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
     await ensureTaskWorkflowSchema();
+
+    const role = await getProjectRole(projectId, req.user.id);
+    if (!role) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not a project member",
+      });
+    }
+    if (role === "member") {
+      return res.status(403).json({
+        success: false,
+        message: "Only owner/leader can create tasks in this team project",
+      });
+    }
 
     const [[project]] = await pool.query(
       `SELECT p.project_id, p.owner_id
@@ -571,43 +624,56 @@ exports.updateTask = async (req, res) => {
       }
     }
 
-    const [result] = await pool.query(
-      `
-            UPDATE tasks
-            SET
-                title = ?,
-                description = ?,
-                deadline = ?,
-                time = ?,
-                priority = ?,
-                labels = ?
-            WHERE task_id = ?
-              AND project_id = ?
-              AND deleted_at IS NULL
-              AND EXISTS (
-                SELECT 1 FROM projects p
-                WHERE p.project_id = ?
-                  AND p.deleted_at IS NULL
-              )
-            `,
-      [
-        title.trim(),
-        description || null,
-        deadlineDate,
-        time || null,
-        priority || "medium",
-        JSON.stringify(parseTaskLabels(labels)),
-        taskId,
-        projectId,
-        projectId,
-      ],
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
+    const role = await getProjectRole(projectId, req.user.id);
+    if (!role) {
+      return res.status(403).json({
         success: false,
-        message: "Task not found",
+        message: "You are not a project member",
       });
+    }
+
+    if (role !== "member") {
+      const [result] = await pool.query(
+        `
+        UPDATE tasks
+        SET
+            title = ?,
+            description = ?,
+            deadline = ?,
+            time = ?,
+            priority = ?,
+            labels = ?
+        WHERE task_id = ?
+          AND project_id = ?
+          AND deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM projects p
+            WHERE p.project_id = ?
+              AND p.deleted_at IS NULL
+          )
+        `,
+        [
+          title.trim(),
+          description || null,
+          deadlineDate,
+          time || null,
+          priority || "medium",
+          JSON.stringify(parseTaskLabels(labels)),
+          taskId,
+          projectId,
+          projectId,
+        ],
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Task not found",
+        });
+      }
+    } else {
+      const [[task]] = await pool.query("SELECT 1 FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL", [taskId, projectId]);
+      if (!task) return res.status(404).json({ success: false, message: "Task not found" });
     }
 
     await insertTaskAttachments(taskId, getUploadedTaskFiles(req), req.user.id);
@@ -784,6 +850,7 @@ exports.getCompletedTasks = async (req, res) => {
         JOIN (
           SELECT task_id, MIN(attachment_id) AS attachment_id
           FROM attachments
+          WHERE comment_id IS NULL
           GROUP BY task_id
         ) first_attachment ON first_attachment.attachment_id = a.attachment_id
       ) ta ON ta.task_id = t.task_id
@@ -870,7 +937,31 @@ exports.getTaskDetails = async (req, res) => {
       [taskId, projectId],
     );
 
-    res.json({ success: true, subtasks, comments });
+    const [commentAttachments] = await pool.query(
+      `
+      SELECT attachment_id, comment_id, originalName, file_url, fileName, mimeType, size
+      FROM attachments
+      WHERE task_id = ? AND comment_id IS NOT NULL
+      `,
+      [taskId]
+    );
+
+    comments.forEach((c) => {
+      c.attachments = commentAttachments.filter((a) => a.comment_id === c.comment_id);
+    });
+
+    const [taskAttachments] = await pool.query(
+      `
+      SELECT attachment_id, originalName, file_url, fileName, mimeType, size, upload_by
+      FROM attachments
+      WHERE task_id = ? AND comment_id IS NULL
+      `,
+      [taskId]
+    );
+
+    const role = await getProjectRole(projectId, req.user.id);
+
+    res.json({ success: true, subtasks, comments, role, attachments: taskAttachments });
   } catch (err) {
     console.error("Loi getTaskDetails:", err);
     res.status(500).json({ success: false, message: "Lá»—i server" });
@@ -1004,11 +1095,13 @@ exports.deleteSubtask = async (req, res) => {
 exports.createTaskComment = async (req, res) => {
   try {
     await ensureTaskDetailSchema();
+    await ensureTaskAttachmentTable();
     const { projectId, taskId } = req.params;
     const body = String(req.body.body || "").trim();
+    const files = getUploadedTaskFiles(req);
 
-    if (!body) {
-      return res.status(400).json({ success: false, message: "Comment is required" });
+    if (!body && files.length === 0) {
+      return res.status(400).json({ success: false, message: "Comment body or attachments are required" });
     }
 
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
@@ -1023,6 +1116,12 @@ exports.createTaskComment = async (req, res) => {
       [taskId, projectId, req.user.id, body],
     );
 
+    const commentId = result.insertId;
+
+    if (files.length > 0) {
+      await insertCommentAttachments(taskId, commentId, files, req.user.id);
+    }
+
     const [[comment]] = await pool.query(
       `
       SELECT c.comment_id, c.task_id, c.project_id, c.user_id, c.body, c.created_at,
@@ -1031,13 +1130,24 @@ exports.createTaskComment = async (req, res) => {
       LEFT JOIN users u ON u.user_id = c.user_id
       WHERE c.comment_id = ?
       `,
-      [result.insertId],
+      [commentId],
     );
+
+    const [attachments] = await pool.query(
+      `
+      SELECT attachment_id, comment_id, originalName, file_url, fileName, mimeType, size
+      FROM attachments
+      WHERE comment_id = ?
+      `,
+      [commentId]
+    );
+
+    comment.attachments = attachments;
 
     res.status(201).json({ success: true, comment });
   } catch (err) {
     console.error("Loi createTaskComment:", err);
-    res.status(500).json({ success: false, message: "Lá»—i server" });
+    res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 
@@ -1092,6 +1202,7 @@ exports.getTasksToday = async (req, res) => {
          JOIN (
            SELECT task_id, MIN(attachment_id) AS attachment_id
            FROM attachments
+           WHERE comment_id IS NULL
            GROUP BY task_id
          ) first_attachment ON first_attachment.attachment_id = a.attachment_id
        ) ta ON ta.task_id = t.task_id
@@ -1141,6 +1252,7 @@ exports.getAllTasks = async (req, res) => {
          JOIN (
            SELECT task_id, MIN(attachment_id) AS attachment_id
            FROM attachments
+           WHERE comment_id IS NULL
            GROUP BY task_id
          ) first_attachment ON first_attachment.attachment_id = a.attachment_id
        ) ta ON ta.task_id = t.task_id
