@@ -926,7 +926,7 @@ exports.getTaskDetails = async (req, res) => {
     const [comments] = await pool.query(
       `
       SELECT c.comment_id, c.task_id, c.project_id, c.user_id, c.body, c.created_at,
-             u.username, u.email
+             u.username, u.email, u.user_photo
       FROM task_comments c
       LEFT JOIN users u ON u.user_id = c.user_id
       WHERE c.task_id = ?
@@ -1125,7 +1125,7 @@ exports.createTaskComment = async (req, res) => {
     const [[comment]] = await pool.query(
       `
       SELECT c.comment_id, c.task_id, c.project_id, c.user_id, c.body, c.created_at,
-             u.username, u.email
+             u.username, u.email, u.user_photo
       FROM task_comments c
       LEFT JOIN users u ON u.user_id = c.user_id
       WHERE c.comment_id = ?

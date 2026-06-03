@@ -459,7 +459,13 @@ export default function EditTaskModal({
             </div>
 
             <div className="edit-detail-comment-row">
-              <div className="edit-detail-avatar">{user?.username ? user.username[0].toUpperCase() : "U"}</div>
+              <div className="edit-detail-avatar">
+                {user?.user_photo ? (
+                  <img src={`${API_ORIGIN}${user.user_photo}`} alt={user.username} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  user?.username ? user.username[0].toUpperCase() : "U"
+                )}
+              </div>
               <div className="edit-detail-comment-input-wrap">
                 <div className="edit-detail-comment-box">
                   <input
@@ -507,7 +513,11 @@ export default function EditTaskModal({
                 {comments.map((comment) => (
                   <div className="edit-detail-comment-item" key={comment.comment_id}>
                     <div className="edit-detail-comment-avatar">
-                      {comment.username ? comment.username[0].toUpperCase() : "U"}
+                      {comment.user_photo ? (
+                        <img src={`${API_ORIGIN}${comment.user_photo}`} alt={comment.username} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                      ) : (
+                        comment.username ? comment.username[0].toUpperCase() : "U"
+                      )}
                     </div>
                     <div className="edit-detail-comment-content">
                       <div className="edit-detail-comment-author">
