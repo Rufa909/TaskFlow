@@ -19,7 +19,15 @@ function normalizeTaskForAI(task) {
   };
 }
 
-async function getUserTaskContext(userId) {
+async function getUserTaskContext(userId, selectedTaskIds = []) {
+  const selectedIds = selectedTaskIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  const selectedFilter =
+    selectedIds.length > 0
+      ? `AND t.task_id IN (${selectedIds.map(() => "?").join(",")})`
+      : "";
+
   const [rows] = await pool.query(
     `
     SELECT
@@ -47,6 +55,7 @@ async function getUserTaskContext(userId) {
       AND p.deleted_at IS NULL
       AND t.deleted_at IS NULL
       AND t.completed_at IS NULL
+      ${selectedFilter}
     ORDER BY
       CASE t.priority
         WHEN 'high' THEN 1
@@ -59,7 +68,7 @@ async function getUserTaskContext(userId) {
       t.created_at ASC
     LIMIT 50
     `,
-    [userId, userId],
+    [userId, userId, ...selectedIds],
   );
 
   return rows.map(normalizeTaskForAI);
@@ -76,10 +85,14 @@ router.post("/chat", authMiddleware, async (req, res) => {
       });
     }
 
-    const tasks = await getUserTaskContext(req.user.id);
+    const selectedTaskIds = Array.isArray(req.body.selectedTaskIds)
+      ? req.body.selectedTaskIds
+      : [];
+    const tasks = await getUserTaskContext(req.user.id, selectedTaskIds);
     const response = await axios.post("http://localhost:5001/ai", {
       message,
       tasks,
+      selectedTaskIds,
       user: {
         id: req.user.id,
         username: req.user.username,
