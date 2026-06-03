@@ -350,6 +350,7 @@ export default function TodayPage() {
         selectedTask={selectedTask}
         setSelectedTask={setSelectedTask}
         handleUpdateTask={handleUpdateTask}
+        handleCompleteTask={handleCompleteTask}
       />
     </div>
   );

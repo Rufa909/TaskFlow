@@ -1544,6 +1544,7 @@ export default function HomePage() {
         selectedTask={selectedTask}
         setSelectedTask={setSelectedTask}
         handleUpdateTask={handleUpdateTask}
+        handleCompleteTask={handleCompleteTask}
         availableLabels={allLabels}
       />
     </div>

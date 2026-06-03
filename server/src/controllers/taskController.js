@@ -4,21 +4,7 @@ let completionColumnReady;
 let attachmentTableReady;
 let labelsColumnReady;
 let workflowSchemaReady;
-
-const TASK_STATUSES = [
-  "DRAFT",
-  "ASSIGNED",
-  "ACCEPTED",
-  "IN_PROGRESS",
-  "SUBMITTED",
-  "LEADER_APPROVED",
-  "OWNER_APPROVED",
-  "COMPLETED",
-  "CHANGES_REQUESTED",
-  "REJECTED",
-];
-
-const TASK_STATUS_ENUM = TASK_STATUSES.map((status) => `'${status}'`).join(",");
+let taskDetailSchemaReady;
 
 function getMailTransporter() {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -58,63 +44,22 @@ async function ensureTaskWorkflowSchema() {
 
       const [taskColumns] = await pool.query(
         `
-        SELECT COLUMN_NAME, COLUMN_TYPE
+        SELECT COLUMN_NAME
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'tasks'
-          AND COLUMN_NAME IN ('status', 'assignment_status', 'deadline_notified_at', 'completed_at')
+          AND COLUMN_NAME IN ('assignment_status', 'deadline_notified_at')
         `,
       );
       const taskColumnNames = new Set(taskColumns.map((column) => column.COLUMN_NAME));
-      const statusColumn = taskColumns.find((column) => column.COLUMN_NAME === "status");
 
       if (!taskColumnNames.has("assignment_status")) {
         await pool.query(
           "ALTER TABLE tasks ADD COLUMN assignment_status ENUM('none','pending','approved','rejected') DEFAULT 'none'",
         );
-        taskColumnNames.add("assignment_status");
       }
       if (!taskColumnNames.has("deadline_notified_at")) {
         await pool.query("ALTER TABLE tasks ADD COLUMN deadline_notified_at DATETIME NULL");
-        taskColumnNames.add("deadline_notified_at");
-      }
-      if (!taskColumnNames.has("completed_at")) {
-        await pool.query("ALTER TABLE tasks ADD COLUMN completed_at DATETIME NULL");
-        taskColumnNames.add("completed_at");
-      }
-
-      if (!statusColumn) {
-        await pool.query(
-          `ALTER TABLE tasks ADD COLUMN status ENUM(${TASK_STATUS_ENUM}) DEFAULT 'DRAFT'`,
-        );
-      } else if (!String(statusColumn.COLUMN_TYPE).includes("LEADER_APPROVED")) {
-        await pool.query("ALTER TABLE tasks MODIFY COLUMN status VARCHAR(32) DEFAULT 'DRAFT'");
-        await pool.query(
-          `
-          UPDATE tasks
-          SET status = CASE LOWER(COALESCE(status, ''))
-            WHEN 'done' THEN 'COMPLETED'
-            WHEN 'completed' THEN 'COMPLETED'
-            WHEN 'in_progress' THEN 'IN_PROGRESS'
-            WHEN 'submitted' THEN 'SUBMITTED'
-            WHEN 'leader_approved' THEN 'LEADER_APPROVED'
-            WHEN 'owner_approved' THEN 'OWNER_APPROVED'
-            WHEN 'changes_requested' THEN 'CHANGES_REQUESTED'
-            WHEN 'rejected' THEN 'REJECTED'
-            WHEN 'assigned' THEN 'ASSIGNED'
-            WHEN 'accepted' THEN 'ACCEPTED'
-            ELSE
-              CASE
-                WHEN completed_at IS NOT NULL THEN 'COMPLETED'
-                WHEN assigned_to IS NOT NULL AND assignment_status = 'approved' THEN 'ASSIGNED'
-                ELSE 'DRAFT'
-              END
-          END
-          `,
-        );
-        await pool.query(
-          `ALTER TABLE tasks MODIFY COLUMN status ENUM(${TASK_STATUS_ENUM}) DEFAULT 'DRAFT'`,
-        );
       }
 
       await pool.query(
@@ -160,25 +105,6 @@ async function ensureTaskWorkflowSchema() {
         )
         `,
       );
-
-      const [submissionStatusColumns] = await pool.query(
-        `
-        SELECT COLUMN_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'task_submissions'
-          AND COLUMN_NAME = 'status'
-        `,
-      );
-
-      if (
-        submissionStatusColumns.length > 0 &&
-        !String(submissionStatusColumns[0].COLUMN_TYPE).includes("leader_approved")
-      ) {
-        await pool.query(
-          "ALTER TABLE task_submissions MODIFY COLUMN status ENUM('pending','leader_approved','approved','rejected') DEFAULT 'pending'",
-        );
-      }
     })();
   }
 
@@ -205,6 +131,33 @@ async function getProjectRole(projectId, userId) {
 async function isProjectMember(projectId, userId) {
   const role = await getProjectRole(projectId, userId);
   return Boolean(role);
+}
+
+async function canAccessTask(projectId, taskId, userId) {
+  const [[task]] = await pool.query(
+    `
+    SELECT t.task_id
+    FROM tasks t
+    JOIN projects p ON p.project_id = t.project_id
+    WHERE t.task_id = ?
+      AND t.project_id = ?
+      AND t.deleted_at IS NULL
+      AND p.deleted_at IS NULL
+      AND (
+        p.owner_id = ?
+        OR EXISTS (
+          SELECT 1
+          FROM project_members pm
+          WHERE pm.project_id = p.project_id
+            AND pm.user_id = ?
+        )
+      )
+    LIMIT 1
+    `,
+    [taskId, projectId, userId, userId],
+  );
+
+  return Boolean(task);
 }
 
 async function sendDeadlineMail(task) {
@@ -300,6 +253,49 @@ async function ensureTaskLabelsColumn() {
   }
 
   return labelsColumnReady;
+}
+
+async function ensureTaskDetailSchema() {
+  if (!taskDetailSchemaReady) {
+    taskDetailSchemaReady = (async () => {
+      await pool.query(
+        `
+        CREATE TABLE IF NOT EXISTS task_subtasks (
+          subtask_id INT AUTO_INCREMENT PRIMARY KEY,
+          task_id INT NOT NULL,
+          project_id INT NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          completed_at DATETIME NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          deleted_at DATETIME NULL,
+          FOREIGN KEY (task_id) REFERENCES tasks(task_id) ON DELETE CASCADE,
+          FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+          INDEX idx_task_subtasks_task (task_id)
+        )
+        `,
+      );
+
+      await pool.query(
+        `
+        CREATE TABLE IF NOT EXISTS task_comments (
+          comment_id INT AUTO_INCREMENT PRIMARY KEY,
+          task_id INT NOT NULL,
+          project_id INT NOT NULL,
+          user_id INT NOT NULL,
+          body TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          deleted_at DATETIME NULL,
+          FOREIGN KEY (task_id) REFERENCES tasks(task_id) ON DELETE CASCADE,
+          FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+          FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+          INDEX idx_task_comments_task (task_id)
+        )
+        `,
+      );
+    })();
+  }
+
+  return taskDetailSchemaReady;
 }
 
 function parseTaskLabels(value) {
@@ -409,7 +405,7 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time, priority, labels, assigned_to } = req.body;
+    const { title, description, deadline, time, priority, labels, assigned_to, note } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
@@ -474,16 +470,14 @@ exports.createTask = async (req, res) => {
         });
       }
 
-      assignmentStatus = "approved";
+      assignmentStatus = requesterRole === "owner" ? "approved" : "pending";
     }
-
-    const taskStatus = assignedTo ? "ASSIGNED" : "DRAFT";
 
     const [result] = await pool.query(
       `
     INSERT INTO tasks 
-    (title, description, deadline, time, priority, labels, project_id, assigned_to, assignment_status, status, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (title, description, deadline, time, priority, labels, project_id, assigned_to, assignment_status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         title,
@@ -495,14 +489,30 @@ exports.createTask = async (req, res) => {
         projectId,
         assignedTo,
         assignmentStatus,
-        taskStatus,
         req.user.id,
       ],
     );
 
     const taskId = result.insertId;
 
-    if (assignedTo) {
+    if (assignedTo && assignmentStatus === "pending") {
+      await pool.query(
+        `
+        INSERT INTO task_assignment_requests
+        (task_id, project_id, assigned_to, requested_by, note)
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [taskId, projectId, assignedTo, req.user.id, note || null],
+      );
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_request', ?)",
+        [project.owner_id, taskId],
+      );
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_pending', ?)",
+        [assignedTo, taskId],
+      );
+    } else if (assignedTo && assignmentStatus === "approved") {
       await pool.query(
         "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
         [assignedTo, taskId],
@@ -540,31 +550,6 @@ exports.updateTask = async (req, res) => {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
-    await ensureTaskWorkflowSchema();
-
-    const [[taskAccess]] = await pool.query(
-      `
-      SELECT created_by
-      FROM tasks
-      WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL
-      `,
-      [taskId, projectId],
-    );
-
-    if (!taskAccess) {
-      return res.status(404).json({
-        success: false,
-        message: "Task not found",
-      });
-    }
-
-    const role = await getProjectRole(projectId, req.user.id);
-    if (!["owner", "leader"].includes(role) && Number(taskAccess.created_by) !== Number(req.user.id)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only owner or leader can edit tasks",
-      });
-    }
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -697,83 +682,45 @@ exports.completeTask = async (req, res) => {
       Number(task.assigned_to) === Number(req.user.id) &&
       !["owner", "leader"].includes(role)
     ) {
-      let nextTaskStatus = "SUBMITTED";
-      if (task.status === "ASSIGNED") {
-        nextTaskStatus = "IN_PROGRESS";
-      } else if (task.status === "ACCEPTED") {
-        nextTaskStatus = "IN_PROGRESS";
-      } else if (!["IN_PROGRESS", "CHANGES_REQUESTED", "SUBMITTED"].includes(task.status)) {
-        nextTaskStatus = "IN_PROGRESS";
+      const [[pendingSubmission]] = await pool.query(
+        `
+        SELECT submission_id
+        FROM task_submissions
+        WHERE task_id = ?
+          AND submitted_by = ?
+          AND status = 'pending'
+        LIMIT 1
+        `,
+        [taskId, req.user.id],
+      );
+
+      if (!pendingSubmission) {
+        await pool.query(
+          `
+          INSERT INTO task_submissions (task_id, project_id, submitted_by, note)
+          VALUES (?, ?, ?, ?)
+          `,
+          [taskId, projectId, req.user.id, note || null],
+        );
       }
 
-      if (nextTaskStatus === "SUBMITTED") {
-        const [[pendingSubmission]] = await pool.query(
-          `
-          SELECT submission_id
-          FROM task_submissions
-          WHERE task_id = ?
-            AND submitted_by = ?
-            AND status = 'pending'
-          LIMIT 1
-          `,
-          [taskId, req.user.id],
-        );
-
-        if (!pendingSubmission) {
-          await pool.query(
-            `
-            INSERT INTO task_submissions (task_id, project_id, submitted_by, note)
-            VALUES (?, ?, ?, ?)
-            `,
-            [taskId, projectId, req.user.id, note || null],
-          );
-        }
-
-        await pool.query(
-          "UPDATE tasks SET status = 'SUBMITTED' WHERE task_id = ? AND project_id = ?",
-          [taskId, projectId],
-        );
-
-        const [reviewers] = await pool.query(
-          `
-          SELECT user_id
-          FROM project_members
-          WHERE project_id = ?
-            AND role = 'leader'
-          UNION
-          SELECT owner_id AS user_id
-          FROM projects
-          WHERE project_id = ?
-          `,
-          [projectId, projectId],
-        );
-        for (const reviewer of reviewers) {
-          if (Number(reviewer.user_id) !== Number(req.user.id)) {
-            await pool.query(
-              "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_submitted', ?)",
-              [reviewer.user_id, taskId],
-            );
-          }
-        }
-      } else {
-        await pool.query(
-          "UPDATE tasks SET status = ? WHERE task_id = ? AND project_id = ?",
-          [nextTaskStatus, taskId, projectId],
-        );
-      }
+      await pool.query(
+        "UPDATE tasks SET status = 'in_progress' WHERE task_id = ? AND project_id = ?",
+        [taskId, projectId],
+      );
 
       return res.json({
         success: true,
-        pendingApproval: nextTaskStatus === "SUBMITTED",
+        pendingApproval: true,
         message: "Task submitted. Waiting for leader approval.",
-        task: normalizeTaskRows([{ ...task, status: nextTaskStatus }])[0],
+        task: normalizeTaskRows([{ ...task, status: "in_progress" }])[0],
       });
     }
 
     const [result] = await pool.query(
       `
       UPDATE tasks
-      SET status = 'COMPLETED', completed_at = COALESCE(completed_at, NOW())
+      SET completed_at = COALESCE(completed_at, NOW())
       WHERE task_id = ?
         AND project_id = ?
         AND deleted_at IS NULL
@@ -818,7 +765,6 @@ exports.getCompletedTasks = async (req, res) => {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
-    await ensureTaskWorkflowSchema();
 
     const [rows] = await pool.query(
       `
@@ -870,29 +816,6 @@ exports.deleteTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
     await ensureTaskCompletionColumn();
-    await ensureTaskWorkflowSchema();
-
-    const [[taskAccess]] = await pool.query(
-      `
-      SELECT created_by
-      FROM tasks
-      WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL
-      `,
-      [taskId, projectId],
-    );
-
-    if (!taskAccess) {
-      return res.status(404).json({ success: false, message: "Task not found" });
-    }
-
-    const role = await getProjectRole(projectId, req.user.id);
-    if (!["owner", "leader"].includes(role) && Number(taskAccess.created_by) !== Number(req.user.id)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only owner or leader can delete tasks",
-      });
-    }
-
     await pool.query(
       `UPDATE tasks
        SET deleted_at = NOW()
@@ -912,13 +835,246 @@ exports.deleteTask = async (req, res) => {
   }
 };
 
+exports.getTaskDetails = async (req, res) => {
+  try {
+    await ensureTaskDetailSchema();
+    const { projectId, taskId } = req.params;
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    const [subtasks] = await pool.query(
+      `
+      SELECT subtask_id, task_id, project_id, title, completed_at, created_at
+      FROM task_subtasks
+      WHERE task_id = ?
+        AND project_id = ?
+        AND deleted_at IS NULL
+      ORDER BY created_at ASC
+      `,
+      [taskId, projectId],
+    );
+
+    const [comments] = await pool.query(
+      `
+      SELECT c.comment_id, c.task_id, c.project_id, c.user_id, c.body, c.created_at,
+             u.username, u.email
+      FROM task_comments c
+      LEFT JOIN users u ON u.user_id = c.user_id
+      WHERE c.task_id = ?
+        AND c.project_id = ?
+        AND c.deleted_at IS NULL
+      ORDER BY c.created_at ASC
+      `,
+      [taskId, projectId],
+    );
+
+    res.json({ success: true, subtasks, comments });
+  } catch (err) {
+    console.error("Loi getTaskDetails:", err);
+    res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
+exports.createSubtask = async (req, res) => {
+  try {
+    await ensureTaskDetailSchema();
+    const { projectId, taskId } = req.params;
+    const title = String(req.body.title || "").trim();
+
+    if (!title) {
+      return res.status(400).json({ success: false, message: "Subtask title is required" });
+    }
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    const [result] = await pool.query(
+      `
+      INSERT INTO task_subtasks (task_id, project_id, title)
+      VALUES (?, ?, ?)
+      `,
+      [taskId, projectId, title],
+    );
+
+    const [[subtask]] = await pool.query(
+      `
+      SELECT subtask_id, task_id, project_id, title, completed_at, created_at
+      FROM task_subtasks
+      WHERE subtask_id = ?
+      `,
+      [result.insertId],
+    );
+
+    res.status(201).json({ success: true, subtask });
+  } catch (err) {
+    console.error("Loi createSubtask:", err);
+    res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
+exports.updateSubtask = async (req, res) => {
+  try {
+    await ensureTaskDetailSchema();
+    const { projectId, taskId, subtaskId } = req.params;
+    const completed = Boolean(req.body.completed);
+    const title = req.body.title;
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    if (typeof title === "string") {
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle) {
+        return res.status(400).json({ success: false, message: "Subtask title is required" });
+      }
+
+      await pool.query(
+        `
+        UPDATE task_subtasks
+        SET title = ?
+        WHERE subtask_id = ?
+          AND task_id = ?
+          AND project_id = ?
+          AND deleted_at IS NULL
+        `,
+        [trimmedTitle, subtaskId, taskId, projectId],
+      );
+    } else {
+      await pool.query(
+        `
+        UPDATE task_subtasks
+        SET completed_at = ?
+        WHERE subtask_id = ?
+          AND task_id = ?
+          AND project_id = ?
+          AND deleted_at IS NULL
+        `,
+        [completed ? new Date() : null, subtaskId, taskId, projectId],
+      );
+    }
+
+    const [[subtask]] = await pool.query(
+      `
+      SELECT subtask_id, task_id, project_id, title, completed_at, created_at
+      FROM task_subtasks
+      WHERE subtask_id = ?
+        AND deleted_at IS NULL
+      `,
+      [subtaskId],
+    );
+
+    res.json({ success: true, subtask });
+  } catch (err) {
+    console.error("Loi updateSubtask:", err);
+    res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
+exports.deleteSubtask = async (req, res) => {
+  try {
+    await ensureTaskDetailSchema();
+    const { projectId, taskId, subtaskId } = req.params;
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    await pool.query(
+      `
+      UPDATE task_subtasks
+      SET deleted_at = NOW()
+      WHERE subtask_id = ?
+        AND task_id = ?
+        AND project_id = ?
+      `,
+      [subtaskId, taskId, projectId],
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Loi deleteSubtask:", err);
+    res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
+exports.createTaskComment = async (req, res) => {
+  try {
+    await ensureTaskDetailSchema();
+    const { projectId, taskId } = req.params;
+    const body = String(req.body.body || "").trim();
+
+    if (!body) {
+      return res.status(400).json({ success: false, message: "Comment is required" });
+    }
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    const [result] = await pool.query(
+      `
+      INSERT INTO task_comments (task_id, project_id, user_id, body)
+      VALUES (?, ?, ?, ?)
+      `,
+      [taskId, projectId, req.user.id, body],
+    );
+
+    const [[comment]] = await pool.query(
+      `
+      SELECT c.comment_id, c.task_id, c.project_id, c.user_id, c.body, c.created_at,
+             u.username, u.email
+      FROM task_comments c
+      LEFT JOIN users u ON u.user_id = c.user_id
+      WHERE c.comment_id = ?
+      `,
+      [result.insertId],
+    );
+
+    res.status(201).json({ success: true, comment });
+  } catch (err) {
+    console.error("Loi createTaskComment:", err);
+    res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
+exports.deleteTaskComment = async (req, res) => {
+  try {
+    await ensureTaskDetailSchema();
+    const { projectId, taskId, commentId } = req.params;
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    await pool.query(
+      `
+      UPDATE task_comments
+      SET deleted_at = NOW()
+      WHERE comment_id = ?
+        AND task_id = ?
+        AND project_id = ?
+        AND user_id = ?
+      `,
+      [commentId, taskId, projectId, req.user.id],
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Loi deleteTaskComment:", err);
+    res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
 // GET /api/tasks/today
 exports.getTasksToday = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
-    await ensureTaskWorkflowSchema();
     const [rows] = await pool.query(
       `SELECT
          t.*,
@@ -968,7 +1124,6 @@ exports.getAllTasks = async (req, res) => {
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
-    await ensureTaskWorkflowSchema();
     const [rows] = await pool.query(
       `SELECT
          t.*,
@@ -1015,7 +1170,6 @@ exports.getAllTasks = async (req, res) => {
 exports.getTaskCounts = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
-    await ensureTaskWorkflowSchema();
     const userId = req.user.id;
     // Today count
     const [[{ todayCount }]] = await pool.query(
@@ -1058,7 +1212,6 @@ exports.getTaskCounts = async (req, res) => {
 exports.getTaskCountsByProject = async (req, res) => {
   try {
     await ensureTaskCompletionColumn();
-    await ensureTaskWorkflowSchema();
     const userId = req.user.id;
     const [rows] = await pool.query(
       `SELECT t.project_id, COUNT(DISTINCT t.task_id) as count 
@@ -1090,7 +1243,7 @@ exports.requestTaskAssignment = async (req, res) => {
   try {
     await ensureTaskWorkflowSchema();
     const { projectId, taskId } = req.params;
-    const { assigned_to } = req.body;
+    const { assigned_to, note } = req.body;
 
     if (!assigned_to) {
       return res.status(400).json({ success: false, message: "assigned_to is required" });
@@ -1127,22 +1280,78 @@ exports.requestTaskAssignment = async (req, res) => {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
 
+    if (role === "owner") {
+      await pool.query(
+        `
+        UPDATE tasks
+        SET assigned_to = ?, assignment_status = 'approved'
+        WHERE task_id = ? AND project_id = ?
+        `,
+        [assigned_to, taskId, projectId],
+      );
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
+        [assigned_to, taskId],
+      );
+
+      return res.json({ success: true, message: "Task assigned" });
+    }
+
+    const [[existingRequest]] = await pool.query(
+      `
+      SELECT request_id
+      FROM task_assignment_requests
+      WHERE task_id = ?
+        AND status = 'pending'
+      LIMIT 1
+      `,
+      [taskId],
+    );
+
+    if (existingRequest) {
+      return res.status(409).json({
+        success: false,
+        message: "Task already has a pending assignment request",
+      });
+    }
+
     await pool.query(
       `
       UPDATE tasks
-      SET assigned_to = ?, assignment_status = 'approved', status = 'ASSIGNED'
+      SET assigned_to = ?, assignment_status = 'pending'
       WHERE task_id = ? AND project_id = ?
       `,
       [assigned_to, taskId, projectId],
     );
+
+    const [result] = await pool.query(
+      `
+      INSERT INTO task_assignment_requests
+      (task_id, project_id, assigned_to, requested_by, note)
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [taskId, projectId, assigned_to, req.user.id, note || null],
+    );
+
+    const [[project]] = await pool.query(
+      "SELECT owner_id FROM projects WHERE project_id = ?",
+      [projectId],
+    );
+    if (project?.owner_id) {
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_request', ?)",
+        [project.owner_id, taskId],
+      );
+    }
     await pool.query(
-      "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
+      "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'assignment_pending', ?)",
       [assigned_to, taskId],
     );
 
-    res.json({
+    res.status(201).json({
       success: true,
-      message: "Task assigned",
+      message: "Assignment request created. Waiting for owner approval.",
+      request_id: result.insertId,
     });
   } catch (err) {
     console.error("Loi requestTaskAssignment:", err);
@@ -1297,13 +1506,9 @@ exports.getTaskSubmissions = async (req, res) => {
       JOIN tasks t ON t.task_id = ts.task_id
       JOIN users submitter ON submitter.user_id = ts.submitted_by
       WHERE ts.project_id = ?
-        AND (
-          (? = 'owner' AND ts.status = 'leader_approved')
-          OR (? = 'leader' AND ts.status = 'pending')
-        )
       ORDER BY ts.created_at DESC
       `,
-      [projectId, role, role],
+      [projectId],
     );
 
     res.json({ success: true, submissions });
@@ -1319,19 +1524,12 @@ exports.reviewTaskSubmission = async (req, res) => {
     await ensureTaskWorkflowSchema();
     await ensureTaskCompletionColumn();
     const { projectId, submissionId } = req.params;
-    const { action, reason } = req.body;
+    const { action } = req.body;
 
     if (!["approve", "reject"].includes(action)) {
       return res.status(400).json({
         success: false,
         message: "action must be approve or reject",
-      });
-    }
-
-    if (action === "reject" && !String(reason || "").trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Reason is required when requesting changes",
       });
     }
 
@@ -1349,12 +1547,9 @@ exports.reviewTaskSubmission = async (req, res) => {
       FROM task_submissions
       WHERE submission_id = ?
         AND project_id = ?
-        AND (
-          (? = 'owner' AND status = 'leader_approved')
-          OR (? = 'leader' AND status = 'pending')
-        )
+        AND status = 'pending'
       `,
-      [submissionId, projectId, role, role],
+      [submissionId, projectId],
     );
 
     if (!submission) {
@@ -1364,50 +1559,21 @@ exports.reviewTaskSubmission = async (req, res) => {
       });
     }
 
-    const nextStatus =
-      action === "approve" && role === "leader"
-        ? "leader_approved"
-        : action === "approve"
-          ? "approved"
-          : "rejected";
+    const nextStatus = action === "approve" ? "approved" : "rejected";
     await pool.query(
       `
       UPDATE task_submissions
-      SET status = ?, reviewed_at = NOW(), reviewed_by = ?, note = COALESCE(?, note)
+      SET status = ?, reviewed_at = NOW(), reviewed_by = ?
       WHERE submission_id = ?
       `,
-      [
-        nextStatus,
-        req.user.id,
-        action === "reject" ? String(reason).trim() : null,
-        submissionId,
-      ],
+      [nextStatus, req.user.id, submissionId],
     );
 
-    if (action === "approve" && role === "leader") {
+    if (action === "approve") {
       await pool.query(
         `
         UPDATE tasks
-        SET status = 'LEADER_APPROVED'
-        WHERE task_id = ? AND project_id = ?
-        `,
-        [submission.task_id, projectId],
-      );
-      const [[project]] = await pool.query(
-        "SELECT owner_id FROM projects WHERE project_id = ?",
-        [projectId],
-      );
-      if (project?.owner_id) {
-        await pool.query(
-          "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'leader_approved_task', ?)",
-          [project.owner_id, submission.task_id],
-        );
-      }
-    } else if (action === "approve") {
-      await pool.query(
-        `
-        UPDATE tasks
-        SET status = 'COMPLETED', completed_at = COALESCE(completed_at, NOW())
+        SET status = 'done', completed_at = COALESCE(completed_at, NOW())
         WHERE task_id = ? AND project_id = ?
         `,
         [submission.task_id, projectId],
@@ -1416,14 +1582,10 @@ exports.reviewTaskSubmission = async (req, res) => {
       await pool.query(
         `
         UPDATE tasks
-        SET status = 'CHANGES_REQUESTED'
+        SET status = 'in_progress'
         WHERE task_id = ? AND project_id = ?
         `,
         [submission.task_id, projectId],
-      );
-      await pool.query(
-        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_changes_requested', ?)",
-        [submission.submitted_by, submission.task_id],
       );
     }
 
@@ -1437,150 +1599,6 @@ exports.reviewTaskSubmission = async (req, res) => {
   } catch (err) {
     console.error("Loi reviewTaskSubmission:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
-  }
-};
-
-// POST /api/projects/:projectId/tasks/:taskId/review-submission
-exports.reviewTaskSubmissionByTask = async (req, res) => {
-  try {
-    await ensureTaskWorkflowSchema();
-    await ensureTaskCompletionColumn();
-    const { projectId, taskId } = req.params;
-    const { action, reason } = req.body;
-
-    if (!["approve", "reject"].includes(action)) {
-      return res.status(400).json({
-        success: false,
-        message: "action must be approve or reject",
-      });
-    }
-
-    if (action === "reject" && !String(reason || "").trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Reason is required when requesting changes",
-      });
-    }
-
-    const role = await getProjectRole(projectId, req.user.id);
-    if (!["owner", "leader"].includes(role)) {
-      return res.status(403).json({
-        success: false,
-        message: "Only owner or leader can review task submissions",
-      });
-    }
-
-    const allowedSubmissionStatus = role === "leader" ? "pending" : "leader_approved";
-    const [[submission]] = await pool.query(
-      `
-      SELECT *
-      FROM task_submissions
-      WHERE task_id = ?
-        AND project_id = ?
-        AND status = ?
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      [taskId, projectId, allowedSubmissionStatus],
-    );
-
-    if (!submission) {
-      return res.status(404).json({
-        success: false,
-        message: "Pending submission not found",
-      });
-    }
-
-    const nextSubmissionStatus =
-      action === "approve" && role === "leader"
-        ? "leader_approved"
-        : action === "approve"
-          ? "approved"
-          : "rejected";
-
-    await pool.query(
-      `
-      UPDATE task_submissions
-      SET status = ?, reviewed_at = NOW(), reviewed_by = ?, note = COALESCE(?, note)
-      WHERE submission_id = ?
-      `,
-      [
-        nextSubmissionStatus,
-        req.user.id,
-        action === "reject" ? String(reason).trim() : null,
-        submission.submission_id,
-      ],
-    );
-
-    let nextTaskStatus = "CHANGES_REQUESTED";
-    if (action === "approve" && role === "leader") {
-      nextTaskStatus = "LEADER_APPROVED";
-    } else if (action === "approve") {
-      nextTaskStatus = "COMPLETED";
-    }
-
-    await pool.query(
-      `
-      UPDATE tasks
-      SET status = ?,
-          completed_at = CASE WHEN ? = 'COMPLETED' THEN COALESCE(completed_at, NOW()) ELSE completed_at END
-      WHERE task_id = ? AND project_id = ?
-      `,
-      [nextTaskStatus, nextTaskStatus, taskId, projectId],
-    );
-
-    if (action === "approve" && role === "leader") {
-      const [[project]] = await pool.query(
-        "SELECT owner_id FROM projects WHERE project_id = ?",
-        [projectId],
-      );
-      if (project?.owner_id) {
-        await pool.query(
-          "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'leader_approved_task', ?)",
-          [project.owner_id, taskId],
-        );
-      }
-    } else if (action === "reject") {
-      await pool.query(
-        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_changes_requested', ?)",
-        [submission.submitted_by, taskId],
-      );
-    }
-
-    const [rows] = await pool.query(
-      `
-      SELECT
-        t.*,
-        p.name AS project_name,
-        ta.attachment_id,
-        ta.originalName AS attachment_name,
-        ta.file_url AS attachment_url,
-        ta.mimeType AS attachment_type,
-        ta.size AS attachment_size
-      FROM tasks t
-      JOIN projects p ON p.project_id = t.project_id
-      LEFT JOIN (
-        SELECT a.*
-        FROM attachments a
-        JOIN (
-          SELECT task_id, MIN(attachment_id) AS attachment_id
-          FROM attachments
-          GROUP BY task_id
-        ) first_attachment ON first_attachment.attachment_id = a.attachment_id
-      ) ta ON ta.task_id = t.task_id
-      WHERE t.task_id = ? AND t.project_id = ?
-      `,
-      [taskId, projectId],
-    );
-
-    res.json({
-      success: true,
-      message: action === "approve" ? "Task submission approved" : "Changes requested",
-      task: normalizeTaskRows(rows)[0],
-    });
-  } catch (err) {
-    console.error("Loi reviewTaskSubmissionByTask:", err);
-    res.status(500).json({ success: false, message: "Lá»—i server" });
   }
 };
 
