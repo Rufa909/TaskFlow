@@ -31,7 +31,7 @@ export default function AddTaskForm({
   taskLabels = [],
   setTaskLabels = () => {},
   availableLabels = [],
-  taskAssignee = "",
+  taskAssignee = [],
   setTaskAssignee = () => {},
 
   isDatePickerOpen,
@@ -69,7 +69,7 @@ const selectedPriority =
     async function loadMembers() {
       if (!activeProject?.project_id) {
         setProjectMembers([]);
-        setTaskAssignee("");
+        setTaskAssignee([]);
         return;
       }
 
@@ -79,7 +79,7 @@ const selectedPriority =
         );
         if (!active) return;
         setProjectMembers(res.data.members || []);
-        setTaskAssignee("");
+        setTaskAssignee([]);
       } catch (err) {
         if (!active) return;
         setProjectMembers([]);
@@ -100,10 +100,15 @@ const selectedPriority =
   const canAssignTask = ["owner", "leader"].includes(userRole);
   const isMember = userRole === "member";
   const assignableMembers = projectMembers.filter(
-    (member) => member.role !== "owner",
+    (member) => member.role === "member",
   );
-  const selectedAssignee = assignableMembers.find(
-    (member) => Number(member.user_id) === Number(taskAssignee),
+  const selectedAssigneeIds = Array.isArray(taskAssignee)
+    ? taskAssignee.map(Number)
+    : taskAssignee
+      ? [Number(taskAssignee)]
+      : [];
+  const selectedAssignees = assignableMembers.filter((member) =>
+    selectedAssigneeIds.includes(Number(member.user_id)),
   );
 
   const handleAttachmentChange = (e) => {
@@ -161,7 +166,7 @@ const selectedPriority =
             color={taskDeadline ? "#058527" : "currentColor"}
           />
           <span style={{ color: taskDeadline ? "#058527" : "inherit" }}>
-            {taskDeadline ? format(taskDeadline, "d MMM") : "Date"}{" "}
+            {taskDeadline ? format(taskDeadline, "d MMM") : "Deadline"}{" "}
             {taskTime && `at ${taskTime}`}
           </span>
           {taskDeadline && (
@@ -260,11 +265,13 @@ const selectedPriority =
           <div className="assignee-picker">
             <button
               type="button"
-              className={taskAssignee ? "has-assignee" : ""}
+              className={selectedAssigneeIds.length > 0 ? "has-assignee" : ""}
               onClick={() => setIsAssigneeOpen((prev) => !prev)}
             >
               <Icon name="user" size={14} />
-              {selectedAssignee ? selectedAssignee.username : "Assign"}
+              {selectedAssignees.length > 0
+                ? `${selectedAssignees.length} member${selectedAssignees.length > 1 ? "s" : ""}`
+                : "Assign"}
               <Icon name={isAssigneeOpen ? "chevronUp" : "chevronDown"} size={12} />
             </button>
             {isAssigneeOpen && (
@@ -273,8 +280,7 @@ const selectedPriority =
                   type="button"
                   className="assignee-option"
                   onClick={() => {
-                    setTaskAssignee("");
-                    setIsAssigneeOpen(false);
+                    setTaskAssignee([]);
                   }}
                 >
                   No assignee
@@ -282,11 +288,20 @@ const selectedPriority =
                 {assignableMembers.map((member) => (
                   <button
                     type="button"
-                    className={`assignee-option ${Number(taskAssignee) === Number(member.user_id) ? "active" : ""}`}
+                    className={`assignee-option ${selectedAssigneeIds.includes(Number(member.user_id)) ? "active" : ""}`}
                     key={member.user_id}
                     onClick={() => {
-                      setTaskAssignee(String(member.user_id));
-                      setIsAssigneeOpen(false);
+                      setTaskAssignee((prev) => {
+                        const values = Array.isArray(prev)
+                          ? prev.map(Number)
+                          : prev
+                            ? [Number(prev)]
+                            : [];
+                        const userId = Number(member.user_id);
+                        return values.includes(userId)
+                          ? values.filter((id) => id !== userId)
+                          : [...values, userId];
+                      });
                     }}
                   >
                     <span>{member.username}</span>
@@ -390,7 +405,7 @@ const selectedPriority =
               setTaskAttachment([]);
               setTaskPriority("medium");
               setTaskLabels([]);
-              setTaskAssignee("");
+              setTaskAssignee([]);
             }}
           >
             Cancel

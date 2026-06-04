@@ -68,6 +68,7 @@ router.get("/projects/:projectId/task-assignment-requests", authMiddleware, getT
 router.put("/projects/:projectId/task-assignment-requests/:requestId", authMiddleware, reviewTaskAssignmentRequest);
 router.get("/projects/:projectId/task-submissions", authMiddleware, getTaskSubmissions);
 router.put("/projects/:projectId/task-submissions/:submissionId", authMiddleware, reviewTaskSubmission);
+router.post("/projects/:projectId/tasks/:taskId/review-submission", authMiddleware, reviewTaskSubmission);
 router.get("/projects/:projectId/tasks/:taskId/details", authMiddleware, getTaskDetails);
 router.post("/projects/:projectId/tasks/:taskId/subtasks", authMiddleware, createSubtask);
 router.put("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, updateSubtask);

@@ -72,7 +72,7 @@ export default function UpcomingPage() {
   const [taskDeadline, setTaskDeadline] = useState(tomorrow());
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
-  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState([]);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
 
@@ -211,8 +211,8 @@ export default function UpcomingPage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
-      if (taskAssignee) {
-        formData.append("assigned_to", taskAssignee);
+      if (taskAssignee.length > 0) {
+        formData.append("assigned_to", JSON.stringify(taskAssignee));
       }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
@@ -239,7 +239,7 @@ export default function UpcomingPage() {
       setTaskDeadline(tomorrow());
       setTaskTime("");
       setTaskPriority("medium");
-      setTaskAssignee("");
+      setTaskAssignee([]);
       setTaskAttachment([]);
       setIsAddingTask(false);
     } catch (err) {

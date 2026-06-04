@@ -140,7 +140,7 @@ export default function HomePage() {
   const [taskDeadline, setTaskDeadline] = useState(null);
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
-  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState([]);
   const [newTaskLabels, setNewTaskLabels] = useState([]);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
@@ -346,8 +346,8 @@ export default function HomePage() {
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
       formData.append("labels", JSON.stringify(newTaskLabels));
-      if (taskAssignee) {
-        formData.append("assigned_to", taskAssignee);
+      if (taskAssignee.length > 0) {
+        formData.append("assigned_to", JSON.stringify(taskAssignee));
       }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
@@ -366,7 +366,7 @@ export default function HomePage() {
       setTaskDeadline(null);
       setTaskTime("");
       setTaskPriority("medium");
-      setTaskAssignee("");
+      setTaskAssignee([]);
       setNewTaskLabels([]);
       setTaskAttachment([]);
       setIsAddingTask(false);
@@ -417,13 +417,13 @@ export default function HomePage() {
     }
   };
 
-  const handleReviewTaskSubmission = async (task, action) => {
+  const handleReviewTaskSubmission = async (task, action, reason = "") => {
     if (!activeProject || !task?.task_id) return;
 
     try {
       const res = await api.post(
         `/projects/${activeProject.project_id}/tasks/${task.task_id}/review-submission`,
-        { action },
+        { action, reason },
       );
       const updatedTask = {
         ...task,

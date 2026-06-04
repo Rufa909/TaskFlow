@@ -44,7 +44,7 @@ export default function TodayPage() {
   const [taskDeadline, setTaskDeadline] = useState(new Date()); // Default to today
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
-  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState([]);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
   const [taskAttachment, setTaskAttachment] = useState([]);
@@ -164,8 +164,8 @@ export default function TodayPage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
-      if (taskAssignee) {
-        formData.append("assigned_to", taskAssignee);
+      if (taskAssignee.length > 0) {
+        formData.append("assigned_to", JSON.stringify(taskAssignee));
       }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
@@ -183,7 +183,7 @@ export default function TodayPage() {
       setTaskDeadline(new Date());
       setTaskTime("");
       setTaskPriority("medium");
-      setTaskAssignee("");
+      setTaskAssignee([]);
       setTaskAttachment([]);
       setIsAddingTask(false);
     } catch (err) {

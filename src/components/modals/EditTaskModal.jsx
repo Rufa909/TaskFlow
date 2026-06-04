@@ -51,6 +51,10 @@ export default function EditTaskModal({
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
+  const [isAssigneesOpen, setIsAssigneesOpen] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [assigneeIds, setAssigneeIds] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [subtasks, setSubtasks] = useState([]);
   const [comments, setComments] = useState([]);
@@ -81,6 +85,15 @@ export default function EditTaskModal({
       setIsDatePickerOpen(false);
       setIsPriorityOpen(false);
       setIsLabelsOpen(false);
+      setIsAssigneesOpen(false);
+      setProjectName(selectedTask.project_name || "");
+      setAssigneeIds(
+        Array.isArray(selectedTask.assignee_ids)
+          ? selectedTask.assignee_ids.map(Number)
+          : selectedTask.assigned_to
+            ? [Number(selectedTask.assigned_to)]
+            : [],
+      );
       setAttachments([]);
       setSubtasks([]);
       setComments([]);
@@ -105,6 +118,9 @@ export default function EditTaskModal({
         setSubtasks(res.data.subtasks || []);
         setComments(res.data.comments || []);
         setUserRole(res.data.role || "member");
+        setProjectName(res.data.project_name || selectedTask.project_name || "");
+        setProjectMembers(res.data.members || []);
+        setAssigneeIds((res.data.assignees || []).map((member) => Number(member.user_id)));
       } catch (err) {
         if (!active) return;
         showToast("Không thể tải chi tiết task", "error");
@@ -147,6 +163,7 @@ export default function EditTaskModal({
       formData.append("priority", priority);
       formData.append("labels", JSON.stringify(labels));
       formData.append("project_id", selectedTask.project_id || "");
+      formData.append("assigned_to", JSON.stringify(assigneeIds));
 
       attachments.forEach((file) => formData.append("attachments", file));
 
@@ -566,12 +583,13 @@ export default function EditTaskModal({
               <div className="edit-detail-property-label">Project</div>
               <div className="edit-detail-property-value">
                 
-                <span>{selectedTask.project_name}</span>
+                <Icon name="hash" size={15} />
+                <span>{projectName || `Project #${selectedTask.project_id}`}</span>
               </div>
             </section>
 
             <section className="edit-detail-property">
-              <div className="edit-detail-property-label">Date</div>
+              <div className="edit-detail-property-label">Deadline</div>
               <div className="edit-detail-property-control">
                 <button
                   type="button"
@@ -597,13 +615,51 @@ export default function EditTaskModal({
               </div>
             </section>
 
-            <section className="edit-detail-property locked">
-              <div className="edit-detail-property-label">
-                Deadline <span className="edit-detail-pro-dot">*</span>
-              </div>
-              <div className="edit-detail-property-value muted">
-                <span />
-                <Icon name="lock" size={16} />
+            <section className="edit-detail-property">
+              <div className="edit-detail-property-label">Assignees</div>
+              <div className="edit-detail-property-control">
+                <button
+                  type="button"
+                  className="edit-detail-property-button labels"
+                  onClick={() => !isMember && setIsAssigneesOpen((prev) => !prev)}
+                  disabled={isMember}
+                >
+                  <span>
+                    {assigneeIds.length > 0
+                      ? `${assigneeIds.length} member${assigneeIds.length > 1 ? "s" : ""}`
+                      : "Add members"}
+                  </span>
+                  {!isMember && <Icon name="plus" size={16} />}
+                </button>
+
+                {isAssigneesOpen && !isMember && (
+                  <div className="edit-detail-menu labels">
+                    {projectMembers.length === 0 && (
+                      <div className="edit-detail-empty-menu">No members</div>
+                    )}
+                    {projectMembers.map((member) => {
+                      const selected = assigneeIds.includes(Number(member.user_id));
+                      return (
+                        <button
+                          key={member.user_id}
+                          type="button"
+                          className={selected ? "active" : ""}
+                          onClick={() =>
+                            setAssigneeIds((prev) =>
+                              selected
+                                ? prev.filter((id) => id !== Number(member.user_id))
+                                : [...prev, Number(member.user_id)],
+                            )
+                          }
+                        >
+                          <Icon name="user" size={14} />
+                          <span>{member.username}</span>
+                          {selected && <Icon name="check" size={14} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </section>
 

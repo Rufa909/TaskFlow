@@ -76,7 +76,7 @@ export default function InboxPage() {
   const [taskDeadline, setTaskDeadline] = useState(null);
   const [taskTime, setTaskTime] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
-  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState([]);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isTaskProjectMenuOpen, setIsTaskProjectMenuOpen] = useState(false);
   const [activeProject, setActiveProject] = useState(null);
@@ -257,8 +257,8 @@ export default function InboxPage() {
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
-      if (taskAssignee) {
-        formData.append("assigned_to", taskAssignee);
+      if (taskAssignee.length > 0) {
+        formData.append("assigned_to", JSON.stringify(taskAssignee));
       }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
@@ -276,7 +276,7 @@ export default function InboxPage() {
       setTaskDeadline(null);
       setTaskTime("");
       setTaskPriority("medium");
-      setTaskAssignee("");
+      setTaskAssignee([]);
       setTaskAttachment([]);
       setIsAddingTask(false);
     } catch (err) {
@@ -327,10 +327,22 @@ export default function InboxPage() {
     const key = `submission-${submission.submission_id}`;
     setReviewingKey(key);
     try {
-      await api.put(
+      const res = await api.put(
         `/projects/${submission.project_id}/task-submissions/${submission.submission_id}`,
         { action, reason: reason.trim() },
       );
+      const updatedTask = res.data.task;
+      if (updatedTask) {
+        setTasks((prev) =>
+          updatedTask.completed_at || updatedTask.status === "COMPLETED"
+            ? prev.filter((task) => task.task_id !== updatedTask.task_id)
+            : prev.map((task) =>
+                task.task_id === updatedTask.task_id
+                  ? { ...task, ...updatedTask }
+                  : task,
+              ),
+        );
+      }
       setTaskSubmissions((prev) =>
         prev.filter((item) => item.submission_id !== submission.submission_id),
       );

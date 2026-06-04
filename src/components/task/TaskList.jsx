@@ -18,16 +18,18 @@ const STATUS_LABELS = {
 };
 
 function getTaskAction(task) {
+  const total = Number(task.assignee_count || 0);
+  const accepted = Number(task.accepted_count || 0);
+  const submitted = Number(task.submitted_count || 0);
   switch (task.status) {
     case "DRAFT":
       return { label: "Draft", title: "Assign a member to start", disabled: true };
     case "ASSIGNED":
-      return { label: "Accept", title: "Accept task", disabled: false };
+      return { label: `Accept ${accepted}/${total}`, title: "Accept task", disabled: false };
     case "ACCEPTED":
-      return { label: "Start", title: "Start task", disabled: false };
     case "IN_PROGRESS":
     case "CHANGES_REQUESTED":
-      return { label: "Submit", title: "Submit for review", disabled: false };
+      return { label: `Submit ${submitted}/${total}`, title: "Submit for review", disabled: false };
     case "SUBMITTED":
       return { label: "Waiting", title: "Waiting for leader approval", disabled: true };
     case "LEADER_APPROVED":
@@ -50,7 +52,9 @@ function canReviewTask(task, userRole) {
 }
 
 function canWorkOnTask(task, userId) {
-  return Number(task.assigned_to) === Number(userId);
+  return (task.assignees || []).some(
+    (assignee) => Number(assignee.user_id) === Number(userId),
+  );
 }
 
 function canManageTask(task, userRole, userId) {
@@ -94,12 +98,26 @@ export default function TaskList({
         const statusLabel = STATUS_LABELS[task.status] || task.status;
         const reviewable = canReviewTask(task, currentUserRole);
         const manageable = canManageTask(task, currentUserRole, currentUserId);
-        const actionable = canWorkOnTask(task, currentUserId) && !action.disabled;
+        const currentAssignee = (task.assignees || []).find(
+          (assignee) => Number(assignee.user_id) === Number(currentUserId),
+        );
+        const alreadyActed =
+          (task.status === "ASSIGNED" && currentAssignee?.accepted_at) ||
+          (["ACCEPTED", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(task.status) &&
+            currentAssignee?.submitted_at);
+        const actionable =
+          canWorkOnTask(task, currentUserId) && !alreadyActed && !action.disabled;
         const displayAction = action.disabled
           ? action
           : actionable
             ? action
-            : { ...action, disabled: true, title: "Only the assigned member can do this" };
+            : {
+                ...action,
+                disabled: true,
+                title: alreadyActed
+                  ? "Waiting for the remaining assigned members"
+                  : "Only assigned members can do this",
+              };
 
         return (
           <div
@@ -268,6 +286,17 @@ export default function TaskList({
               {task.priority && (
                 <div className={`task-priority priority-${task.priority}`}>
                   <Icon name="flag" size={12} /> {task.priority}
+                </div>
+              )}
+
+              {task.assignees?.length > 0 && (
+                <div className="task-labels">
+                  {task.assignees.map((assignee) => (
+                    <span key={assignee.user_id} className="task-label-badge">
+                      <Icon name="user" size={10} />
+                      {assignee.username}
+                    </span>
+                  ))}
                 </div>
               )}
 
