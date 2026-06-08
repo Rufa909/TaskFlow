@@ -24,3 +24,5 @@ server/uploads
 *.sln
 *.sw?
 .env
+
+test.js
