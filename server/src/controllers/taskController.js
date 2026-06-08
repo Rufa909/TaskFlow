@@ -479,17 +479,32 @@ async function enrichTaskRows(rows) {
     byTask.set(Number(assignee.task_id), list);
   }
 
-  return normalized.map((task) => {
+  return Promise.all(normalized.map(async (task) => {
     const taskAssignees = byTask.get(Number(task.task_id)) || [];
+    const shouldRepairDraftStatus = taskAssignees.length > 0 && task.status === "DRAFT";
+    if (shouldRepairDraftStatus) {
+      await pool.query(
+        `
+        UPDATE tasks
+        SET assigned_to = ?, assignment_status = 'approved', status = 'ASSIGNED'
+        WHERE task_id = ?
+        `,
+        [taskAssignees[0].user_id, task.task_id],
+      );
+    }
+
     return {
       ...task,
+      status: shouldRepairDraftStatus ? "ASSIGNED" : task.status,
+      assignment_status: shouldRepairDraftStatus ? "approved" : task.assignment_status,
+      assigned_to: shouldRepairDraftStatus ? taskAssignees[0].user_id : task.assigned_to,
       assignees: taskAssignees,
       assignee_ids: taskAssignees.map((assignee) => assignee.user_id),
       assignee_count: taskAssignees.length,
       accepted_count: taskAssignees.filter((assignee) => assignee.accepted_at).length,
       submitted_count: taskAssignees.filter((assignee) => assignee.submitted_at).length,
     };
-  });
+  }));
 }
 
 function parseAssigneeIds(value) {
@@ -527,7 +542,35 @@ async function replaceTaskAssignees(taskId, assigneeIds) {
     existingIds.length !== nextIds.length ||
     existingIds.some((id, index) => id !== nextIds[index]);
 
-  if (!changed) return;
+  if (!changed) {
+    await pool.query(
+      `
+      UPDATE tasks
+      SET
+        assigned_to = ?,
+        assignment_status = CASE
+          WHEN ? > 0 AND status = 'DRAFT' THEN 'approved'
+          WHEN ? = 0 THEN 'none'
+          ELSE assignment_status
+        END,
+        status = CASE
+          WHEN ? > 0 AND status = 'DRAFT' THEN 'ASSIGNED'
+          WHEN ? = 0 THEN 'DRAFT'
+          ELSE status
+        END
+      WHERE task_id = ?
+      `,
+      [
+        assigneeIds[0] || null,
+        assigneeIds.length,
+        assigneeIds.length,
+        assigneeIds.length,
+        assigneeIds.length,
+        taskId,
+      ],
+    );
+    return;
+  }
 
   if (nextIds.length === 0) {
     await pool.query("DELETE FROM task_assignees WHERE task_id = ?", [taskId]);
@@ -550,10 +593,15 @@ async function replaceTaskAssignees(taskId, assigneeIds) {
   await pool.query(
     `
     UPDATE tasks
-    SET assigned_to = ?, status = ?
+    SET assigned_to = ?, assignment_status = ?, status = ?
     WHERE task_id = ?
     `,
-    [assigneeIds[0] || null, assigneeIds.length > 0 ? "ASSIGNED" : "DRAFT", taskId],
+    [
+      assigneeIds[0] || null,
+      assigneeIds.length > 0 ? "approved" : "none",
+      assigneeIds.length > 0 ? "ASSIGNED" : "DRAFT",
+      taskId,
+    ],
   );
 }
 
@@ -743,7 +791,7 @@ exports.createTask = async (req, res) => {
 
       await validateAssigneeIds(projectId, assigneeIds);
 
-      assignmentStatus = requesterRole === "owner" ? "approved" : "pending";
+      assignmentStatus = "approved";
     }
 
     const [result] = await pool.query(
@@ -835,6 +883,21 @@ exports.updateTask = async (req, res) => {
     await ensureTaskLabelsColumn();
     await ensureTaskWorkflowSchema();
 
+    const role = await getProjectRole(projectId, req.user.id);
+    if (!role) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not a project member",
+      });
+    }
+
+    if (role === "member") {
+      return res.status(403).json({
+        success: false,
+        message: "Members cannot edit tasks",
+      });
+    }
+
     if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
@@ -855,61 +918,48 @@ exports.updateTask = async (req, res) => {
       }
     }
 
-    const role = await getProjectRole(projectId, req.user.id);
-    if (!role) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not a project member",
-      });
+    if (assigned_to !== undefined) {
+      const assigneeIds = parseAssigneeIds(assigned_to);
+      await validateAssigneeIds(projectId, assigneeIds);
+      await replaceTaskAssignees(taskId, assigneeIds);
     }
+    const [result] = await pool.query(
+      `
+      UPDATE tasks
+      SET
+          title = ?,
+          description = ?,
+          deadline = ?,
+          time = ?,
+          priority = ?,
+          labels = ?
+      WHERE task_id = ?
+        AND project_id = ?
+        AND deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM projects p
+          WHERE p.project_id = ?
+            AND p.deleted_at IS NULL
+        )
+      `,
+      [
+        title.trim(),
+        description || null,
+        deadlineDate,
+        time || null,
+        priority || "medium",
+        JSON.stringify(parseTaskLabels(labels)),
+        taskId,
+        projectId,
+        projectId,
+      ],
+    );
 
-    if (role !== "member") {
-      if (assigned_to !== undefined) {
-        const assigneeIds = parseAssigneeIds(assigned_to);
-        await validateAssigneeIds(projectId, assigneeIds);
-        await replaceTaskAssignees(taskId, assigneeIds);
-      }
-      const [result] = await pool.query(
-        `
-        UPDATE tasks
-        SET
-            title = ?,
-            description = ?,
-            deadline = ?,
-            time = ?,
-            priority = ?,
-            labels = ?
-        WHERE task_id = ?
-          AND project_id = ?
-          AND deleted_at IS NULL
-          AND EXISTS (
-            SELECT 1 FROM projects p
-            WHERE p.project_id = ?
-              AND p.deleted_at IS NULL
-          )
-        `,
-        [
-          title.trim(),
-          description || null,
-          deadlineDate,
-          time || null,
-          priority || "medium",
-          JSON.stringify(parseTaskLabels(labels)),
-          taskId,
-          projectId,
-          projectId,
-        ],
-      );
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Task not found",
-        });
-      }
-    } else {
-      const [[task]] = await pool.query("SELECT 1 FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL", [taskId, projectId]);
-      if (!task) return res.status(404).json({ success: false, message: "Task not found" });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
     }
 
     await insertTaskAttachments(taskId, getUploadedTaskFiles(req), req.user.id);
@@ -1145,6 +1195,10 @@ exports.completeTask = async (req, res) => {
     );
 
     if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: "Task not found",
@@ -1228,6 +1282,21 @@ exports.deleteTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
     await ensureTaskCompletionColumn();
+
+    const role = await getProjectRole(projectId, req.user.id);
+    if (!role) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not a project member",
+      });
+    }
+    if (role === "member") {
+      return res.status(403).json({
+        success: false,
+        message: "Members cannot delete tasks",
+      });
+    }
+
     await pool.query(
       `UPDATE tasks
        SET deleted_at = NOW()

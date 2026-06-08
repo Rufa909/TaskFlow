@@ -63,7 +63,8 @@ export default function EditTaskModal({
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [userRole, setUserRole] = useState(null);
-  const isMember = userRole === "member";
+  const canEditTask = ["owner", "leader"].includes(userRole);
+  const isMember = !canEditTask;
   const [commentAttachments, setCommentAttachments] = useState([]);
 
   const selectedPriority =
@@ -151,7 +152,7 @@ export default function EditTaskModal({
   if (!selectedTask) return null;
 
   const handleSave = async () => {
-    if (!title.trim() || saving) return;
+    if (!canEditTask || !title.trim() || saving) return;
 
     try {
       setSaving(true);
@@ -314,7 +315,7 @@ export default function EditTaskModal({
         <header className="edit-detail-topbar">
           <div className="edit-detail-project">
             <Icon name="edit" size={15} />
-            <span>Edit Task</span>
+            <span>{canEditTask ? "Edit Task" : "Task Details"}</span>
           </div>
 
           <div className="edit-detail-top-actions">
@@ -327,14 +328,16 @@ export default function EditTaskModal({
             <button type="button" className="edit-detail-icon-btn" aria-label="More actions">
               <Icon name="more" size={18} />
             </button> */}
-            <button
-              type="button"
-              className="edit-detail-save-btn"
-              onClick={handleSave}
-              disabled={!title.trim() || saving}
-            >
-              {saving ? "Saving..." : "Save"}
-            </button>
+            {canEditTask && (
+              <button
+                type="button"
+                className="edit-detail-save-btn"
+                onClick={handleSave}
+                disabled={!title.trim() || saving}
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+            )}
             <button
               type="button"
               className="edit-detail-close-btn"

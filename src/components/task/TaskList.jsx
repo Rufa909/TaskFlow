@@ -58,11 +58,7 @@ function canWorkOnTask(task, userId) {
 }
 
 function canManageTask(task, userRole, userId) {
-  return (
-    userRole === "owner" ||
-    userRole === "leader" ||
-    Number(task.created_by) === Number(userId)
-  );
+  return userRole === "owner" || userRole === "leader";
 }
 
 export default function TaskList({
