@@ -433,7 +433,6 @@ export default function InboxPage() {
               </div>
             ) : taskSubmissions.length === 0 ? (
               <div className="inv-empty-state">
-                <div className="inv-empty-icon">✓</div>
                 <div className="inv-empty-text">No pending approvals</div>
               </div>
             ) : (
@@ -495,7 +494,6 @@ export default function InboxPage() {
               </div>
             ) : invitations.length === 0 ? (
               <div className="inv-empty-state">
-                <div className="inv-empty-icon">📭</div>
                 <div className="inv-empty-text">No pending invitations</div>
               </div>
             ) : (

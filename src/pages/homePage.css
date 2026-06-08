@@ -985,27 +985,13 @@ body {
   padding: 9px 18px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #1e88e5, #1565c0);
-  box-shadow: 0 2px 8px rgba(30, 136, 229, 0.3);
+  background: #1e88e5;
   color: #fff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition:
-    box-shadow 0.2s,
-    transform 0.15s;
 }
 
-.add-task-btn.add-task-btn--top:hover {
-  box-shadow: 0 4px 16px rgba(30, 136, 229, 0.45);
-  transform: translateY(-1px);
-}
-
-.add-task-btn.add-task-btn--top .icon {
-  color: #fff;
-  display: flex;
-  align-items: center;
-}
 
 .project-task-group {
   margin-bottom: 10px;
@@ -1499,10 +1485,10 @@ body {
   font-size: 14px;
 }
 .add-task-btn:hover {
-  color: var(--accent-color);
+  cursor: pointer;
 }
 .add-task-btn .icon {
-  color: var(--accent-color);
+  color: #fff;
   display: flex;
   align-items: center;
 }
@@ -2166,28 +2152,6 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.add-task-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 12px 0;
-  font-size: 14px;
-}
-
-.add-task-btn:hover {
-  color: var(--accent-color);
-}
-
-.add-task-btn .icon {
-  color: var(--accent-color);
-  display: flex;
-  align-items: center;
 }
 
 /* --- ADD TASK FORM --- */

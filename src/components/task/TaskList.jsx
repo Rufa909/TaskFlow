@@ -23,17 +23,37 @@ function getTaskAction(task) {
   const submitted = Number(task.submitted_count || 0);
   switch (task.status) {
     case "DRAFT":
-      return { label: "Draft", title: "Assign a member to start", disabled: true };
+      return {
+        label: "Draft",
+        title: "Assign a member to start",
+        disabled: true,
+      };
     case "ASSIGNED":
-      return { label: `Accept ${accepted}/${total}`, title: "Accept task", disabled: false };
+      return {
+        label: `Accept ${accepted}/${total}`,
+        title: "Accept task",
+        disabled: false,
+      };
     case "ACCEPTED":
     case "IN_PROGRESS":
     case "CHANGES_REQUESTED":
-      return { label: `Submit ${submitted}/${total}`, title: "Submit for review", disabled: false };
+      return {
+        label: `Submit ${submitted}/${total}`,
+        title: "Submit for review",
+        disabled: false,
+      };
     case "SUBMITTED":
-      return { label: "Waiting", title: "Waiting for leader approval", disabled: true };
+      return {
+        label: "Waiting",
+        title: "Waiting for leader approval",
+        disabled: true,
+      };
     case "LEADER_APPROVED":
-      return { label: "Owner", title: "Waiting for owner approval", disabled: true };
+      return {
+        label: "Owner",
+        title: "Waiting for owner approval",
+        disabled: true,
+      };
     case "COMPLETED":
     case "OWNER_APPROVED":
       return { label: "Done", title: "Task completed", disabled: true };
@@ -99,10 +119,14 @@ export default function TaskList({
         );
         const alreadyActed =
           (task.status === "ASSIGNED" && currentAssignee?.accepted_at) ||
-          (["ACCEPTED", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(task.status) &&
+          (["ACCEPTED", "IN_PROGRESS", "CHANGES_REQUESTED"].includes(
+            task.status,
+          ) &&
             currentAssignee?.submitted_at);
         const actionable =
-          canWorkOnTask(task, currentUserId) && !alreadyActed && !action.disabled;
+          canWorkOnTask(task, currentUserId) &&
+          !alreadyActed &&
+          !action.disabled;
         const displayAction = action.disabled
           ? action
           : actionable
@@ -120,7 +144,9 @@ export default function TaskList({
             key={task.task_id || task.id}
             data-task-id={task.task_id}
             className={`task-item ${
-              Number(highlightedTaskId) === Number(task.task_id) ? "highlighted" : ""
+              Number(highlightedTaskId) === Number(task.task_id)
+                ? "highlighted"
+                : ""
             }`}
             onClick={() => setSelectedTask(task)}
           >
@@ -173,7 +199,9 @@ export default function TaskList({
               aria-label="Task actions"
               onClick={(e) => {
                 e.stopPropagation();
-                setOpenMenuId(openMenuId === task.task_id ? null : task.task_id);
+                setOpenMenuId(
+                  openMenuId === task.task_id ? null : task.task_id,
+                );
               }}
             >
               <Icon name="more" size={16} />
@@ -241,13 +269,17 @@ export default function TaskList({
               <div className="task-title-row">
                 <div className="task-title">{task.title}</div>
                 {statusLabel && (
-                  <span className={`task-status-badge status-${task.status?.toLowerCase()}`}>
+                  <span
+                    className={`task-status-badge status-${task.status?.toLowerCase()}`}
+                  >
                     {statusLabel}
                   </span>
                 )}
               </div>
 
-              {task.description && <div className="task-meta">{task.description}</div>}
+              {task.description && (
+                <div className="task-meta">{task.description}</div>
+              )}
 
               {task.attachment_url && (
                 <a
@@ -275,7 +307,9 @@ export default function TaskList({
                 >
                   <Icon name="calendar" size={12} />
                   {new Date(task.deadline).toLocaleDateString()}
-                  {task.time && <span className="task-time">{task.time.slice(0, 5)}</span>}
+                  {task.time && (
+                    <span className="task-time">{task.time.slice(0, 5)}</span>
+                  )}
                 </div>
               )}
 
@@ -288,9 +322,13 @@ export default function TaskList({
               {task.assignees?.length > 0 && (
                 <div className="task-labels">
                   {task.assignees.map((assignee) => (
-                    <span key={assignee.user_id} className="task-label-badge">
-                      <Icon name="user" size={10} />
-                      {assignee.username}
+                    <span
+                      key={assignee.user_id}
+                      className="task-label-badge"
+                      style={{ fontSize: 14 }}
+                    >
+                      <Icon name="user" size={13} />
+                      &nbsp;{assignee.username}
                     </span>
                   ))}
                 </div>
@@ -318,8 +356,14 @@ export default function TaskList({
       })}
 
       {changesTask && (
-        <div className="task-changes-overlay" onClick={() => setChangesTask(null)}>
-          <div className="task-changes-dialog" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="task-changes-overlay"
+          onClick={() => setChangesTask(null)}
+        >
+          <div
+            className="task-changes-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="task-changes-header">
               <h3>Request changes</h3>
               <button
@@ -353,7 +397,11 @@ export default function TaskList({
                 className="task-changes-submit"
                 disabled={!changesReason.trim()}
                 onClick={() => {
-                  handleReviewTaskSubmission(changesTask, "reject", changesReason.trim());
+                  handleReviewTaskSubmission(
+                    changesTask,
+                    "reject",
+                    changesReason.trim(),
+                  );
                   setChangesTask(null);
                   setChangesReason("");
                 }}
