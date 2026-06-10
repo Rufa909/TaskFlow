@@ -1,31 +1,29 @@
-# Hướng dẫn Xây dựng Backend
+# Hướng dẫn Xây dựng Backend - TaskFlow (MySQL)
 
-## 1. Khởi tạo
+## Khởi tạo Backend
+
 ```bash
-mkdir backend && cd backend
+cd server
 npm init -y
-npm install express mongoose dotenv cors bcryptjs jsonwebtoken socket.io
+
+# Cài các package cần thiết
+npm install express mysql2 dotenv cors bcryptjs jsonwebtoken multer body-parser
 npm install --save-dev nodemon
-```
 
-## 2. Cấu hình cơ bản
-- Kết nối MongoDB trong `config/db.js`
-- Middleware auth: verify JWT
-- Error handling global
+# Real-time (nếu cần)
+npm install socket.io
 
-## 3. Implement Controllers
-Ví dụ Task Controller:
-- createTask
-- updateTask (cập nhật position khi move)
-- getTasksByProject
-
-## 4. Real-time với Socket.io
-```js
-io.on('connection', (socket) => {
-  socket.on('joinProject', (projectId) => {
-    socket.join(projectId);
-  });
-});
-```
+server/
+├── config/
+│   └── db.js                    # Kết nối MySQL
+├── controllers/
+├── routes/
+├── middleware/
+│   ├── auth.js
+│   └── errorHandler.js
+├── utils/
+├── uploads/                     # Lưu file đính kèm
+├── .env
+└── server.js
 
 Sau khi hoàn thành API, test bằng Postman hoặc Thunder Client.
