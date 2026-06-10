@@ -29,6 +29,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const upload = require("../middleware/uploadMiddleware");
 const {
   getMyNotifications,
+  markAllNotificationsRead,
   markNotificationRead,
 } = require("../controllers/notificationController");
 
@@ -57,6 +58,7 @@ function uploadAttachment(req, res, next) {
 // The route prefix in app.js will be /api
 router.get("/tasks/today", authMiddleware, getTasksToday);
 router.get("/notifications", authMiddleware, getMyNotifications);
+router.put("/notifications/read-all", authMiddleware, markAllNotificationsRead);
 router.put("/notifications/:id/read", authMiddleware, markNotificationRead);
 router.get("/tasks/counts", authMiddleware, getTaskCounts);
 router.get("/tasks/counts/projects", authMiddleware, getTaskCountsByProject);

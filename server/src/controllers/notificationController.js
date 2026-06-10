@@ -132,3 +132,17 @@ exports.markNotificationRead = async (req, res) => {
     res.status(500).json({ success: false, message: "Loi server" });
   }
 };
+
+exports.markAllNotificationsRead = async (req, res) => {
+  try {
+    await pool.query(
+      "UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+      [req.user.id],
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Loi markAllNotificationsRead:", err);
+    res.status(500).json({ success: false, message: "Loi server" });
+  }
+};

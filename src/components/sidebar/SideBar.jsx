@@ -153,6 +153,22 @@ export default function Sidebar({
   const { setIsFiltersOpen } = useFilters();
   const { invitationCount } = useTeams();
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+
+  const handleMarkAllNotificationsRead = async (e) => {
+    e.stopPropagation();
+    if (unreadNotificationCount === 0 || isMarkingAllRead) return;
+
+    setIsMarkingAllRead(true);
+    try {
+      await api.put("/notifications/read-all");
+      setNotifications((prev) => prev.map((item) => ({ ...item, is_read: 1 })));
+    } catch (err) {
+      console.error("Cannot mark all notifications read", err);
+    } finally {
+      setIsMarkingAllRead(false);
+    }
+  };
 
   const handleNotificationClick = async (notification) => {
     if (!notification.is_read) {
@@ -260,8 +276,18 @@ export default function Sidebar({
               <div className="notification-popover-header">
                 <span>Notifications</span>
                 {unreadNotificationCount > 0 && (
-                  <span className="notification-popover-count">
-                    {unreadNotificationCount}
+                  <span className="notification-popover-actions">
+                    <button
+                      type="button"
+                      className="notification-read-all-btn"
+                      disabled={isMarkingAllRead}
+                      onClick={handleMarkAllNotificationsRead}
+                    >
+                      Read all
+                    </button>
+                    <span className="notification-popover-count">
+                      {unreadNotificationCount}
+                    </span>
                   </span>
                 )}
               </div>

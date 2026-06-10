@@ -173,6 +173,33 @@
   text-align: center;
 }
 
+.notification-popover-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-read-all-btn {
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.notification-read-all-btn:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.notification-read-all-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .notification-popover-list {
   max-height: 416px;
   overflow-y: auto;
