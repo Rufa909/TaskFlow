@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const ProjectStage = require('../models/ProjectStage');
 
 // GET /api/projects → lấy tất cả project của user đang đăng nhập
 exports.getProjects = async (req, res) => {
@@ -36,7 +37,7 @@ exports.getProjects = async (req, res) => {
 
 // POST /api/projects → tạo project mới
 exports.createProject = async (req, res) => {
-    const { name } = req.body;
+    const { name, workflow_stages } = req.body;
     if (!name || !name.trim()) {
         return res.status(400).json({ success: false, message: 'Ten project khong duoc de trong!' });
     }
@@ -45,9 +46,38 @@ exports.createProject = async (req, res) => {
             'INSERT INTO projects (owner_id, name) VALUES (?, ?)',
             [req.user.id, name.trim()]
         );
+        const projectId = result.insertId;
+
+        // Use custom workflow stages or defaults
+        const stagesToCreate = workflow_stages || [
+            {
+                name: '📋 Planning',
+                description: 'Requirement analysis & planning phase'
+            },
+            {
+                name: '💻 Development',
+                description: 'Implementation & coding phase'
+            },
+            {
+                name: '🧪 Testing',
+                description: 'QA & testing phase'
+            },
+            {
+                name: '🚀 Deployment',
+                description: 'Release to production'
+            }
+        ];
+
+        try {
+            await ProjectStage.createDefaultStages(projectId, stagesToCreate);
+        } catch (stageErr) {
+            console.warn('Could not create workflow stages:', stageErr.message);
+            // Không báo lỗi, project vẫn được tạo
+        }
+
         const [rows] = await pool.query(
             'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
-            [result.insertId]
+            [projectId]
         );
         res.status(201).json({ success: true, project: rows[0] });
     } catch (err) {

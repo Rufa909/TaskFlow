@@ -17,6 +17,9 @@ import AddProjectModal from "../components/modals/AddProjectModal";
 import EditProjectModal from "../components/modals/EditProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
+import ProjectWorkflowTracker from "../components/ProjectWorkflowTracker";
+import WorkflowProgressBar from "../components/WorkflowProgressBar";
+import CustomizeWorkflowModal from "../components/modals/CustomizeWorkflowModal";
 
 const LABELS_STORAGE_KEY = "taskflow.labels";
 const DEFAULT_LABEL_COLOR = "#ef4444";
@@ -163,6 +166,13 @@ export default function HomePage() {
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(true);
   const [isLabelsExpanded, setIsLabelsExpanded] = useState(true);
 
+  // Workflow tracker state
+  const [workflowStages, setWorkflowStages] = useState([]);
+  const [loadingWorkflow, setLoadingWorkflow] = useState(false);
+  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(true);
+  const [isCustomizeWorkflowOpen, setIsCustomizeWorkflowOpen] = useState(false);
+  const [customWorkflowStages, setCustomWorkflowStages] = useState(null);
+
   // Task section UI state
   const [taskSectionDropdownOpen, setTaskSectionDropdownOpen] = useState(false);
   const [visibleSections, setVisibleSections] = useState({ overdue: false, completed: false });
@@ -210,6 +220,23 @@ export default function HomePage() {
     if (activeProject) {
       fetchReportingTasks();
     }
+  }, [activeProject?.project_id]);
+
+  // Fetch workflow stages when project changes
+  useEffect(() => {
+    const fetchWorkflow = async () => {
+      if (!activeProject) return;
+      setLoadingWorkflow(true);
+      try {
+        const res = await api.get(`/projects/${activeProject.project_id}/workflow`);
+        setWorkflowStages(res.data.data || []);
+      } catch (err) {
+        console.error("Cannot load workflow:", err);
+      } finally {
+        setLoadingWorkflow(false);
+      }
+    };
+    fetchWorkflow();
   }, [activeProject?.project_id]);
 
   const fetchReportingTasks = async () => {
@@ -460,19 +487,30 @@ export default function HomePage() {
     }
   };
   const handleAddProject = async () => {
+    // Close project name modal and open workflow customization
+    setIsAddProjectModalOpen(false);
+    setIsCustomizeWorkflowOpen(true);
+  };
+
+  const handleCreateProjectWithWorkflow = async (workflowStages) => {
     if (!newProjectName.trim()) return;
     setSavingProject(true);
     try {
-      const res = await api.post("/projects", { name: newProjectName.trim() });
+      const res = await api.post("/projects", { 
+        name: newProjectName.trim(),
+        workflow_stages: workflowStages 
+      });
       const created = res.data.project;
       setProjects((prev) => [...prev, created]);
       setActiveProject(created);
       setActiveView("project");
       setNewProjectName("");
-      setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
+      setIsCustomizeWorkflowOpen(false);
+      setCustomWorkflowStages(null);
+      showToast("Project created with custom workflow!", "success");
     } catch (err) {
-      showToast(t("cannotCreateProject"), "error");
+      showToast(t("cannotCreateProject") || err.response?.data?.message, "error");
     } finally {
       setSavingProject(false);
     }
@@ -1317,9 +1355,54 @@ export default function HomePage() {
             </div>
           ) : (
             <>
+              {/* Workflow Progress Bar - Top Priority */}
+              {activeProject && !loadingWorkflow && workflowStages.length > 0 && (
+                <WorkflowProgressBar stages={workflowStages} />
+              )}
+
               <h1 className="page-title">
                 {activeProject?.name || "Select a project"}
               </h1>
+
+              {/* Detailed Workflow Tracker Section */}
+              {activeProject && (
+                <div style={{ marginBottom: "2rem" }}>
+                  <div 
+                    style={{ 
+                      cursor: "pointer", 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "8px",
+                      marginBottom: "1rem",
+                      fontSize: "14px",
+                      fontWeight: "500",
+                      color: "#666"
+                    }}
+                    onClick={() => setIsWorkflowExpanded(!isWorkflowExpanded)}
+                  >
+                    <Icon 
+                      name={isWorkflowExpanded ? "chevronDown" : "chevronRight"} 
+                      size={18} 
+                    />
+                    � Detailed Workflow
+                  </div>
+                  {isWorkflowExpanded && (
+                    <div style={{ background: "#f8f9fa", padding: "1rem", borderRadius: "8px" }}>
+                      {loadingWorkflow ? (
+                        <p>Loading workflow...</p>
+                      ) : workflowStages.length > 0 ? (
+                        <ProjectWorkflowTracker 
+                          projectId={activeProject.project_id}
+                          isOwner={Number(activeProject.owner_id) === Number(user?.id)}
+                          stages={workflowStages}
+                        />
+                      ) : (
+                        <p>No workflow stages defined for this project.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="task-section">
 
@@ -1527,6 +1610,16 @@ export default function HomePage() {
         setNewProjectName={setNewProjectName}
         handleAddProject={handleAddProject}
         savingProject={savingProject}
+      />
+
+      <CustomizeWorkflowModal
+        isOpen={isCustomizeWorkflowOpen}
+        onClose={() => {
+          setIsCustomizeWorkflowOpen(false);
+          setNewProjectName("");
+        }}
+        onSave={handleCreateProjectWithWorkflow}
+        loading={savingProject}
       />
 
       <SettingsModal

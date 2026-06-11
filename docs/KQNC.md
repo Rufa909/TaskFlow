@@ -51,7 +51,6 @@
 
 ## 4. Khó khăn gặp phải & Bài học rút ra
 
-- Cấu trúc package.json bị lẫn giữa root và server → Đã fix.
 - Tích hợp AI local tốn tài nguyên → Cần tối ưu model nhỏ.
 - Quản lý state phức tạp khi làm Kanban → Sẽ dùng @dnd-kit.
 - Đồng bộ real-time chưa hoàn thiện → Sắp tích hợp Socket.io.

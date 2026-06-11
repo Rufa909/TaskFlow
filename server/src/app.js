@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-
+const workflowRoutes = require('./routes/workflowRoutes');
 const aiRoutes = require("./routes/aiRoutes");
 const { checkOverdueTasks } = require("./controllers/taskController");
 
@@ -40,6 +40,7 @@ app.use('/api/projects', require('./routes/projectRoutes'));
 app.use('/api', require('./routes/taskRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
 app.use("/api/ai", aiRoutes);
+app.use('/api', workflowRoutes);
 // ─── Global Error Handler
 // Bắt lỗi từ tất cả route, phải có 4 tham số (err, req, res, next)
 app.use((err, req, res, next) => {

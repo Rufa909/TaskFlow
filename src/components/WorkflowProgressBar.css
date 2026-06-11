@@ -1,0 +1,317 @@
+.workflow-progress-container {
+  background: #f8f9fa;
+  padding: 20px 0;
+  margin-bottom: 32px;
+}
+
+.workflow-progress-card {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e8e8e8;
+}
+
+.workflow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+  gap: 24px;
+}
+
+.workflow-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.progress-stats {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex: 1;
+}
+
+.progress-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progress-label {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.progress-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a1a;
+  min-width: 50px;
+}
+
+.progress-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 180px;
+}
+
+.progress-track {
+  flex: 1;
+  height: 8px;
+  background: #e8e8e8;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50 0%, #66bb6a 100%);
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.progress-percent {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4caf50;
+  min-width: 40px;
+  text-align: right;
+}
+
+.workflow-timeline {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.workflow-timeline::-webkit-scrollbar {
+  height: 6px;
+}
+
+.workflow-timeline::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 3px;
+}
+
+.workflow-timeline::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.workflow-timeline::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.workflow-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 120px;
+  padding: 14px 12px;
+  background: white;
+  border: 2px solid #e8e8e8;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.workflow-stage:hover {
+  border-color: #d0d0d0;
+  background: #fafafa;
+}
+
+.workflow-stage.approved {
+  background: #f1f8f4;
+  border-color: #4caf50;
+}
+
+.workflow-stage.approved:hover {
+  border-color: #388e3c;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
+}
+
+.workflow-stage.completed {
+  background: #f1f8f4;
+  border-color: #4caf50;
+}
+
+.workflow-stage.completed:hover {
+  border-color: #388e3c;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
+}
+
+.workflow-stage.pending {
+  background: #fafafa;
+}
+
+.stage-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+
+.stage-icon {
+  flex-shrink: 0;
+}
+
+.stage-icon.completed {
+  color: #4caf50;
+}
+
+.stage-icon.active {
+  color: #2196f3;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.stage-icon.rejected {
+  color: #f44336;
+}
+
+.stage-icon.pending {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #d0d0d0;
+  border-radius: 50%;
+  background: white;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.stage-info {
+  text-align: center;
+}
+
+.stage-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.stage-status {
+  font-size: 11px;
+  color: #999;
+  font-weight: 500;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.timeline-connector {
+  color: #d0d0d0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: slideRight 1.5s ease-in-out infinite;
+}
+
+.timeline-connector.completed {
+  color: #4caf50;
+}
+
+@keyframes slideRight {
+  0%, 100% {
+    transform: translateX(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateX(4px);
+    opacity: 1;
+  }
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .workflow-progress-card {
+    padding: 16px;
+  }
+
+  .workflow-header {
+    flex-direction: column;
+    margin-bottom: 20px;
+  }
+
+  .progress-stats {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .progress-bar-wrapper {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .workflow-stage {
+    min-width: 100px;
+    padding: 10px 8px;
+    gap: 8px;
+  }
+
+  .stage-label {
+    font-size: 12px;
+  }
+
+  .stage-icon-wrapper {
+    width: 32px;
+    height: 32px;
+  }
+
+  .stage-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .stage-icon.pending {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .progress-item {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .progress-label {
+    font-size: 12px;
+  }
+
+  .progress-value {
+    font-size: 18px;
+  }
+
+  .progress-bar-wrapper {
+    min-width: 100%;
+  }
+
+  .progress-percent {
+    font-size: 12px;
+  }
+}

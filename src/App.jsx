@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AuthPage from './pages/authPage';
@@ -13,6 +13,7 @@ import { ConfirmProvider } from './context/ConfirmContext';
 import FiltersModal from './components/modals/FiltersModal';
 import AddTeamModal from './components/modals/AddTeamModal';
 import AIChatBox from './components/AI/AIChatBox';
+import ProjectWorkflowTracker from './components/ProjectWorkflowTracker';
 
 function AuthenticatedAIChatBox() {
   const { user } = useAuth();
@@ -23,6 +24,11 @@ function AuthenticatedAIChatBox() {
   }
 
   return <AIChatBox />;
+}
+
+function ProjectWorkflowPage() {
+  const { projectId } = useParams();
+  return <ProjectWorkflowTracker projectId={projectId} isOwner={false} />;
 }
 
 export default function App() {
@@ -68,6 +74,14 @@ export default function App() {
                     }
                   />
                   <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route
+                      path="/projects/:projectId/workflow"
+                      element={
+                        <ProtectedRoute>
+                          <ProjectWorkflowPage />
+                        </ProtectedRoute>
+                      }
+                    />
                 </Routes>
 
                 <FiltersModal />
