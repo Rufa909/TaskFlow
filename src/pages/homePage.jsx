@@ -17,8 +17,8 @@ import AddProjectModal from "../components/modals/AddProjectModal";
 import EditProjectModal from "../components/modals/EditProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
-import ProjectWorkflowTracker from "../components/ProjectWorkflowTracker";
-import WorkflowProgressBar from "../components/WorkflowProgressBar";
+import ProjectWorkflowTracker from "../components/project/ProjectWorkflowTracker";
+import WorkflowProgressBar from "../components/project/WorkflowProgressBar";
 import CustomizeWorkflowModal from "../components/modals/CustomizeWorkflowModal";
 
 const LABELS_STORAGE_KEY = "taskflow.labels";
@@ -1384,7 +1384,7 @@ export default function HomePage() {
                       name={isWorkflowExpanded ? "chevronDown" : "chevronRight"} 
                       size={18} 
                     />
-                    � Detailed Workflow
+                  Detailed Workflow
                   </div>
                   {isWorkflowExpanded && (
                     <div style={{ background: "#f8f9fa", padding: "1rem", borderRadius: "8px" }}>
@@ -1395,6 +1395,7 @@ export default function HomePage() {
                           projectId={activeProject.project_id}
                           isOwner={Number(activeProject.owner_id) === Number(user?.id)}
                           stages={workflowStages}
+                          onStagesChange={setWorkflowStages}
                         />
                       ) : (
                         <p>No workflow stages defined for this project.</p>

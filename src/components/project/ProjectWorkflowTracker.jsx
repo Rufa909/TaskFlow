@@ -3,7 +3,7 @@ import { CheckCircle, Clock, ChevronRight, ChevronLeft, User, Calendar } from 'l
 import axios from 'axios';
 import './ProjectWorkflowTracker.css';
 
-const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialStages = [] }) => {
+const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialStages = [], onStagesChange }) => {
   const [stages, setStages] = useState(initialStages);
   const [loading, setLoading] = useState(!initialStages || initialStages.length === 0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,6 +58,9 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       setStages(res.data.data);
+      if (onStagesChange) {
+        onStagesChange(res.data.data);
+      }
       if (res.data.isOwner !== undefined) {
         setIsOwnerState(res.data.isOwner);
       }
@@ -82,6 +85,9 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       setStages(res.data.data);
+      if (onStagesChange) {
+        onStagesChange(res.data.data);
+      }
       if (res.data.isOwner !== undefined) {
         setIsOwnerState(res.data.isOwner);
       }
@@ -124,8 +130,8 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
   return (
     <div className="workflow-tracker-container">
       <div className="workflow-tracker-header">
-        <h2 className="workflow-tracker-title">Quy trình thực hiện</h2>
-        <p className="workflow-tracker-subtitle">Theo dõi tiến độ từng giai đoạn dự án</p>
+        <h2 className="workflow-tracker-title">Progressing</h2>
+        <p className="workflow-tracker-subtitle">Keep track of the progress of each project stage</p>
       </div>
 
       <div className="workflow-timeline-container">

@@ -4,10 +4,10 @@ import './CustomizeWorkflowModal.css';
 
 const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) => {
   const [stages, setStages] = useState([
-    { order: 1, name: '📋 Planning', description: 'Requirement analysis & planning phase' },
-    { order: 2, name: '💻 Development', description: 'Implementation & coding phase' },
-    { order: 3, name: '🧪 Testing', description: 'QA & testing phase' },
-    { order: 4, name: '🚀 Deployment', description: 'Release to production' }
+    { order: 1, name: 'Analyst & Planning', description: 'Requirement analysis & planning phase' },
+    { order: 2, name: 'Development', description: 'Implementation & coding phase' },
+    { order: 3, name: 'Testing', description: 'QA & testing phase' },
+    { order: 4, name: 'Deployment & Maintenance', description: 'Release to production' }
   ]);
 
   const handleAddStage = () => {

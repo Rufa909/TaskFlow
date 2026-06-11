@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
+import ProtectedRoute from './components/project/ProtectedRoute';
 import AuthPage from './pages/authPage';
 import HomePage from './pages/homePage';
 import TodayPage from './pages/todayPage';
@@ -13,7 +13,7 @@ import { ConfirmProvider } from './context/ConfirmContext';
 import FiltersModal from './components/modals/FiltersModal';
 import AddTeamModal from './components/modals/AddTeamModal';
 import AIChatBox from './components/AI/AIChatBox';
-import ProjectWorkflowTracker from './components/ProjectWorkflowTracker';
+import ProjectWorkflowTracker from './components/project/ProjectWorkflowTracker';
 
 function AuthenticatedAIChatBox() {
   const { user } = useAuth();
