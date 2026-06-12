@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { io } = require("../app");
 const nodemailer = require("nodemailer");
 let completionColumnReady;
 let attachmentTableReady;
@@ -867,7 +868,18 @@ exports.createTask = async (req, res) => {
       `,
       [taskId],
     );
-    res.status(201).json({ success: true, task: (await enrichTaskRows(rows))[0] });
+const enrichedTask = (await enrichTaskRows(rows))[0];
+
+// realtime push
+try {
+  io.to(`project:${projectId}`).emit('taskChanged', {
+    type: 'created',
+    task: enrichedTask,
+    projectId: Number(projectId),
+  });
+} catch (_) {}
+
+res.status(201).json({ success: true, task: enrichedTask });
   } catch (err) {
     console.error("Loi createTask:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -982,9 +994,19 @@ exports.updateTask = async (req, res) => {
       [taskId, projectId],
     );
 
-    res.json({
+const enrichedTask = (await enrichTaskRows(rows))[0];
+
+try {
+  io.to(`project:${projectId}`).emit('taskChanged', {
+    type: 'updated',
+    task: enrichedTask,
+    projectId: Number(projectId),
+  });
+} catch (_) {}
+
+res.json({
       success: true,
-      task: (await enrichTaskRows(rows))[0],
+      task: enrichedTask,
     });
   } catch (err) {
     console.error("Loi updateTask:", err);
@@ -1217,7 +1239,17 @@ exports.completeTask = async (req, res) => {
       [taskId, projectId],
     );
 
-    res.json({ success: true, task: (await enrichTaskRows(rows))[0] });
+const enrichedTask = (await enrichTaskRows(rows))[0];
+
+try {
+  io.to(`project:${projectId}`).emit('taskChanged', {
+    type: 'completed',
+    task: enrichedTask,
+    projectId: Number(projectId),
+  });
+} catch (_) {}
+
+res.json({ success: true, task: enrichedTask });
   } catch (err) {
     console.error("Loi completeTask:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
@@ -1309,7 +1341,15 @@ exports.deleteTask = async (req, res) => {
          )`,
       [taskId, projectId, projectId],
     );
-    res.json({ success: true, message: "Đã xóa task" });
+try {
+      io.to(`project:${projectId}`).emit('taskChanged', {
+        type: 'deleted',
+        taskId: Number(taskId),
+        projectId: Number(projectId),
+      });
+    } catch (_) {}
+
+res.json({ success: true, message: "Đã xóa task" });
   } catch (err) {
     console.error("Loi deleteTask:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
