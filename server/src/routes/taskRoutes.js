@@ -23,6 +23,7 @@ const {
   deleteSubtask,
   createTaskComment,
   deleteTaskComment,
+  getTasksByStage,
 } = require("../controllers/taskController");
 
 const authMiddleware = require("../middleware/authMiddleware");
@@ -66,6 +67,7 @@ router.get("/tasks", authMiddleware, getAllTasks);
 router.get("/tasks/completed", authMiddleware, getCompletedTasks);
 router.post("/tasks/overdue/check", authMiddleware, checkOverdueTasksNow);
 router.get("/projects/:projectId/tasks", authMiddleware, getTasks);
+router.get("/projects/:projectId/stages/:stageId/tasks", authMiddleware, getTasksByStage);
 router.get("/projects/:projectId/task-assignment-requests", authMiddleware, getTaskAssignmentRequests);
 router.put("/projects/:projectId/task-assignment-requests/:requestId", authMiddleware, reviewTaskAssignmentRequest);
 router.get("/projects/:projectId/task-submissions", authMiddleware, getTaskSubmissions);

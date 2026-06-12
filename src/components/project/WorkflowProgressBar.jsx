@@ -2,7 +2,7 @@ import React from 'react';
 import { CheckCircle, Clock, AlertCircle, ChevronRight } from 'lucide-react';
 import './WorkflowProgressBar.css';
 
-const WorkflowProgressBar = ({ stages = [] }) => {
+const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => {
   if (!stages || stages.length === 0) return null;
 
   const completedCount = stages.filter(s => s.status === 'completed').length;
@@ -43,28 +43,35 @@ const WorkflowProgressBar = ({ stages = [] }) => {
 
         {/* Horizontal stages timeline */}
         <div className="workflow-timeline">
-          {stages.map((stage, index) => (
-            <React.Fragment key={stage.id}>
-              <div className={`workflow-stage ${stage.status}`}>
-                <div className="stage-icon-wrapper">
-                  {getStageIcon(stage.status)}
-                </div>
-                <div className="stage-info">
-                  <div className="stage-label">{stage.stage_name}</div>
-                  <div className="stage-status">
-                    {stage.status === 'completed' && 'Done'}
-                    {stage.status === 'in_progress' && 'Current'}
-                    {stage.status === 'pending' && 'Pending'}
+          {stages.map((stage, index) => {
+            const isClickable = typeof onStageClick === 'function';
+            const isSelected = selectedStageId === stage.id;
+            return (
+              <React.Fragment key={stage.id}>
+                <div 
+                  className={`workflow-stage ${stage.status} ${isClickable ? 'clickable' : ''} ${isSelected ? 'selected' : ''}`}
+                  onClick={() => isClickable && onStageClick(stage)}
+                >
+                  <div className="stage-icon-wrapper">
+                    {getStageIcon(stage.status)}
+                  </div>
+                  <div className="stage-info">
+                    <div className="stage-label">{stage.stage_name}</div>
+                    <div className="stage-status">
+                      {stage.status === 'completed' && 'Done'}
+                      {stage.status === 'in_progress' && 'Current'}
+                      {stage.status === 'pending' && 'Pending'}
+                    </div>
                   </div>
                 </div>
-              </div>
-              {index < stages.length - 1 && (
-                <div className={`timeline-connector ${stage.status === 'approved' ? 'completed' : ''}`}>
-                  <ChevronRight size={18} />
-                </div>
-              )}
-            </React.Fragment>
-          ))}
+                {index < stages.length - 1 && (
+                  <div className={`timeline-connector ${stage.status === 'approved' || stage.status === 'completed' ? 'completed' : ''}`}>
+                    <ChevronRight size={18} />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
     </div>

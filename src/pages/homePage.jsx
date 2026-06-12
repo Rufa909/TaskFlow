@@ -20,6 +20,7 @@ import EditTaskModal from "../components/modals/EditTaskModal";
 import ProjectWorkflowTracker from "../components/project/ProjectWorkflowTracker";
 import WorkflowProgressBar from "../components/project/WorkflowProgressBar";
 import CustomizeWorkflowModal from "../components/modals/CustomizeWorkflowModal";
+import StageTaskPanel from "../components/project/StageTaskPanel";
 
 const LABELS_STORAGE_KEY = "taskflow.labels";
 const DEFAULT_LABEL_COLOR = "#ef4444";
@@ -173,6 +174,13 @@ export default function HomePage() {
   const [isCustomizeWorkflowOpen, setIsCustomizeWorkflowOpen] = useState(false);
   const [customWorkflowStages, setCustomWorkflowStages] = useState(null);
 
+  // Stage Task Viewer state
+  const [selectedStage, setSelectedStage] = useState(null);
+  const [stageTasks, setStageTasks] = useState([]);
+  const [loadingStageTasks, setLoadingStageTasks] = useState(false);
+  const [isStagePanelOpen, setIsStagePanelOpen] = useState(false);
+  const [taskStageId, setTaskStageId] = useState(null);
+
   // Task section UI state
   const [taskSectionDropdownOpen, setTaskSectionDropdownOpen] = useState(false);
   const [visibleSections, setVisibleSections] = useState({ overdue: false, completed: false });
@@ -250,6 +258,43 @@ export default function HomePage() {
       setLoadingReporting(false);
     }
   };
+
+const fetchStageTasks = async (stage) => {
+    if (!activeProject || !stage) return;
+    setLoadingStageTasks(true);
+    try {
+      const stageId = stage.id ?? stage.stage_id ?? "unassigned";
+      // Backend expects stageId as:
+      // - number for tasks.stage_id
+      // - string "unassigned" for tasks where stage_id IS NULL
+      const normalizedStageId = stageId === null || stageId === undefined || stageId === ""
+        ? "unassigned"
+        : stageId;
+
+console.log('[StageTaskPanel] stage.id:', stage?.id, 'stage.stage_id:', stage?.stage_id, 'normalizedStageId:', normalizedStageId);
+
+      const encodedStageId = encodeURIComponent(String(normalizedStageId));
+      const res = await api.get(`/projects/${activeProject.project_id}/stages/${encodedStageId}/tasks`);
+      setStageTasks(res.data.tasks || []);
+    } catch (err) {
+      console.error("Cannot load stage tasks:", err);
+      showToast("Cannot load tasks for this stage", "error");
+    } finally {
+      setLoadingStageTasks(false);
+    }
+  };
+
+  const handleStageClick = (stage) => {
+    setSelectedStage(stage);
+    setIsStagePanelOpen(true);
+    fetchStageTasks(stage);
+  };
+
+  useEffect(() => {
+    if (isStagePanelOpen && selectedStage) {
+      fetchStageTasks(selectedStage);
+    }
+  }, [tasksByProject, isStagePanelOpen, selectedStage]);
 
   useEffect(() => {
     if (activeView === "reporting") {
@@ -376,6 +421,9 @@ export default function HomePage() {
       if (taskAssignee.length > 0) {
         formData.append("assigned_to", JSON.stringify(taskAssignee));
       }
+      if (taskStageId) {
+        formData.append("stage_id", taskStageId);
+      }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
 
@@ -396,6 +444,7 @@ export default function HomePage() {
       setTaskAssignee([]);
       setNewTaskLabels([]);
       setTaskAttachment([]);
+      setTaskStageId(null);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
@@ -1357,7 +1406,11 @@ export default function HomePage() {
             <>
               {/* Workflow Progress Bar - Top Priority */}
               {activeProject && !loadingWorkflow && workflowStages.length > 0 && (
-                <WorkflowProgressBar stages={workflowStages} />
+                <WorkflowProgressBar 
+                  stages={workflowStages} 
+                  onStageClick={handleStageClick}
+                  selectedStageId={selectedStage?.id}
+                />
               )}
 
               <h1 className="page-title">
@@ -1437,6 +1490,8 @@ export default function HomePage() {
                       isTaskProjectMenuOpen={isTaskProjectMenuOpen}
                       setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
                       setIsAddingTask={setIsAddingTask}
+                      taskStageId={taskStageId}
+                      setTaskStageId={setTaskStageId}
                     />
                   ) : (
                     <button
@@ -1642,6 +1697,23 @@ export default function HomePage() {
         handleUpdateTask={handleUpdateTask}
         handleCompleteTask={handleCompleteTask}
         availableLabels={allLabels}
+      />
+
+      <StageTaskPanel
+        isOpen={isStagePanelOpen}
+        onClose={() => {
+          setIsStagePanelOpen(false);
+          setSelectedStage(null);
+        }}
+        stage={selectedStage}
+        tasks={stageTasks}
+        loading={loadingStageTasks}
+        handleDeleteTask={handleDeleteTask}
+        handleCompleteTask={handleCompleteTask}
+        handleReviewTaskSubmission={handleReviewTaskSubmission}
+        currentUserRole={currentProjectRole}
+        currentUserId={user?.id}
+        setSelectedTask={setSelectedTask}
       />
     </div>
   );

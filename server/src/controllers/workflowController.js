@@ -30,7 +30,9 @@ const workflowController = {
 
       const stages = await ProjectStage.getByProjectId(projectId);
       
-      // Xử lý status: Giai đoạn đầu tiên chưa hoàn thành (không phải 'completed') sẽ là 'in_progress'
+      // Chuẩn hoá để UI luôn có đúng 1 stage ở trạng thái 'in_progress':
+      // - Duyệt từ đầu: stage đầu tiên KHÔNG phải completed => in_progress
+      // - Các stage trước đó giữ nguyên (completed), các stage sau vẫn giữ status từ DB.
       if (stages.length > 0) {
         for (let i = 0; i < stages.length; i++) {
           if (stages[i].status !== 'completed') {
@@ -41,6 +43,7 @@ const workflowController = {
       }
 
       res.json({ success: true, data: stages, isOwner });
+
     } catch (error) {
       console.error('Workflow getProjectWorkflow error:', error);
       res.status(500).json({ success: false, message: error.message });
@@ -74,15 +77,7 @@ const workflowController = {
       // Get updated workflow
       const stages = await ProjectStage.getByProjectId(projectId);
       
-      // Reprocess statuses: Giai đoạn đầu tiên chưa hoàn thành sẽ là 'in_progress'
-      if (stages.length > 0) {
-        for (let i = 0; i < stages.length; i++) {
-          if (stages[i].status !== 'completed') {
-            stages[i].status = 'in_progress';
-            break;
-          }
-        }
-      }
+
 
       res.json({ 
         success: true, 

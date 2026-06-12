@@ -83,7 +83,10 @@ const ProjectStage = {
       if (prevStage.length > 0) {
         await db.query(`
           UPDATE project_stages 
-          SET status = 'completed'
+          SET status = 'in_progress',
+              approved_by = NULL,
+              approved_at = NULL,
+              updated_at = NOW()
           WHERE id = ?
         `, [prevStage[0].id]);
       }

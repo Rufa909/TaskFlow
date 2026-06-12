@@ -315,3 +315,25 @@
     font-size: 12px;
   }
 }
+
+.workflow-stage.clickable {
+  cursor: pointer;
+}
+
+.workflow-stage.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: #2196f3;
+}
+
+.workflow-stage.selected {
+  border-color: #2196f3 !important;
+  background: #e3f2fd !important;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
+}
+
+.workflow-stage.selected.completed {
+  border-color: #4caf50 !important;
+  background: #e8f5e9 !important;
+  box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.25);
+}

@@ -49,7 +49,7 @@ async function ensureTaskWorkflowSchema() {
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'tasks'
-          AND COLUMN_NAME IN ('assignment_status', 'deadline_notified_at')
+          AND COLUMN_NAME IN ('assignment_status', 'deadline_notified_at', 'stage_id')
         `,
       );
       const taskColumnNames = new Set(taskColumns.map((column) => column.COLUMN_NAME));
@@ -61,6 +61,9 @@ async function ensureTaskWorkflowSchema() {
       }
       if (!taskColumnNames.has("deadline_notified_at")) {
         await pool.query("ALTER TABLE tasks ADD COLUMN deadline_notified_at DATETIME NULL");
+      }
+      if (!taskColumnNames.has("stage_id")) {
+        await pool.query("ALTER TABLE tasks ADD COLUMN stage_id INT NULL");
       }
 
       await pool.query(
@@ -718,7 +721,7 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time, priority, labels, assigned_to, note } = req.body;
+    const { title, description, deadline, time, priority, labels, assigned_to, note, stage_id, stageId } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
@@ -795,11 +798,13 @@ exports.createTask = async (req, res) => {
       assignmentStatus = "approved";
     }
 
+    const taskStageId = stage_id || stageId || null;
+
     const [result] = await pool.query(
       `
     INSERT INTO tasks 
-    (title, description, deadline, time, priority, labels, project_id, assigned_to, assignment_status, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (title, description, deadline, time, priority, labels, project_id, assigned_to, assignment_status, created_by, stage_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         title,
@@ -812,6 +817,7 @@ exports.createTask = async (req, res) => {
         assignedTo,
         assignmentStatus,
         req.user.id,
+        taskStageId,
       ],
     );
 
@@ -889,7 +895,7 @@ res.status(201).json({ success: true, task: enrichedTask });
 exports.updateTask = async (req, res) => {
   try {
     const { projectId, taskId } = req.params;
-    const { title, description, deadline, time, priority, labels, assigned_to } = req.body;
+    const { title, description, deadline, time, priority, labels, assigned_to, stage_id, stageId } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
@@ -935,6 +941,26 @@ exports.updateTask = async (req, res) => {
       await validateAssigneeIds(projectId, assigneeIds);
       await replaceTaskAssignees(taskId, assigneeIds);
     }
+
+    let taskStageId = undefined;
+    if (req.body.hasOwnProperty("stage_id")) {
+      taskStageId = stage_id;
+    } else if (req.body.hasOwnProperty("stageId")) {
+      taskStageId = stageId;
+    }
+
+    if (taskStageId === undefined) {
+      const [[existingTask]] = await pool.query(
+        "SELECT stage_id FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL",
+        [taskId, projectId],
+      );
+      taskStageId = existingTask ? existingTask.stage_id : null;
+    }
+
+    if (taskStageId === "" || taskStageId === "null" || taskStageId === "undefined") {
+      taskStageId = null;
+    }
+
     const [result] = await pool.query(
       `
       UPDATE tasks
@@ -944,7 +970,8 @@ exports.updateTask = async (req, res) => {
           deadline = ?,
           time = ?,
           priority = ?,
-          labels = ?
+          labels = ?,
+          stage_id = ?
       WHERE task_id = ?
         AND project_id = ?
         AND deleted_at IS NULL
@@ -961,6 +988,7 @@ exports.updateTask = async (req, res) => {
         time || null,
         priority || "medium",
         JSON.stringify(parseTaskLabels(labels)),
+        taskStageId,
         taskId,
         projectId,
         projectId,
@@ -2477,6 +2505,70 @@ exports.checkOverdueTasksNow = async (req, res) => {
     res.json({ success: true, sent });
   } catch (err) {
     console.error("Loi checkOverdueTasksNow:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
+// GET /api/projects/:projectId/stages/:stageId/tasks
+exports.getTasksByStage = async (req, res) => {
+  try {
+    const { projectId, stageId } = req.params;
+    await ensureTaskCompletionColumn();
+    await ensureTaskAttachmentTable();
+    await ensureTaskLabelsColumn();
+    await ensureTaskWorkflowSchema();
+
+    // Check project role/membership
+    const role = await getProjectRole(projectId, req.user.id);
+    if (!role) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not a project member",
+      });
+    }
+
+    // stageId could be "unassigned" (for tasks with stage_id IS NULL) or a number
+    let query = `
+      SELECT
+        t.*,
+        p.name AS project_name,
+        ta.attachment_id,
+        ta.originalName AS attachment_name,
+        ta.file_url AS attachment_url,
+        ta.mimeType AS attachment_type,
+        ta.size AS attachment_size
+      FROM tasks t
+      JOIN projects p ON t.project_id = p.project_id
+      LEFT JOIN (
+        SELECT a.*
+        FROM attachments a
+        JOIN (
+          SELECT task_id, MIN(attachment_id) AS attachment_id
+          FROM attachments
+          WHERE comment_id IS NULL
+          GROUP BY task_id
+        ) first_attachment ON first_attachment.attachment_id = a.attachment_id
+      ) ta ON ta.task_id = t.task_id
+      WHERE t.project_id = ?
+        AND p.deleted_at IS NULL
+        AND t.deleted_at IS NULL
+    `;
+
+    const queryParams = [projectId];
+
+    if (stageId === "unassigned") {
+      query += " AND t.stage_id IS NULL";
+    } else {
+      query += " AND t.stage_id = ?";
+      queryParams.push(stageId);
+    }
+
+    query += " ORDER BY t.created_at ASC";
+
+    const [rows] = await pool.query(query, queryParams);
+    res.json({ success: true, tasks: await enrichTaskRows(rows) });
+  } catch (err) {
+    console.error("Loi getTasksByStage:", err);
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
