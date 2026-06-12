@@ -1174,6 +1174,7 @@ exports.completeTask = async (req, res) => {
           `,
           [projectId],
         );
+
         const reviewerIds =
           leaders.length > 0
             ? leaders.map((leader) => leader.user_id)
@@ -1185,6 +1186,9 @@ exports.completeTask = async (req, res) => {
             [reviewerId, taskId],
           );
         }
+
+        // Nếu không có leader trong project thì owner sẽ duyệt ngay (không đi qua bước leader_approved)
+        // Logic này được đảm bảo bởi getTaskSubmissions/reviewTaskSubmission thông qua leader_count.
       }
 
       await pool.query(
@@ -2308,30 +2312,81 @@ exports.reviewTaskSubmission = async (req, res) => {
         );
       }
     } else {
-      await pool.query(
+      // Owner duyệt.
+      // Nếu project có leader => chỉ chuyển từ pending/leader_approved về trạng thái phù hợp.
+      // Nếu project không có leader => owner duyệt thẳng pending => COMPLETED.
+      const [[{ leader_count }]] = await pool.query(
         `
-        UPDATE task_submissions
-        SET status = 'approved', reviewed_at = NOW(), reviewed_by = ?
-        WHERE submission_id = ?
+        SELECT COUNT(*) AS leader_count
+        FROM project_members
+        WHERE project_id = ?
+          AND role = 'leader'
         `,
-        [req.user.id, submission.submission_id],
+        [projectId],
       );
-      await pool.query(
-        `
-        UPDATE tasks
-        SET status = 'COMPLETED', completed_at = COALESCE(completed_at, NOW())
-        WHERE task_id = ? AND project_id = ?
-        `,
-        [submission.task_id, projectId],
-      );
-      await pool.query(
-        `
-        DELETE FROM notifications
-        WHERE reference_id = ?
-          AND type IN ('task_submitted', 'leader_approved_task')
-        `,
-        [submission.task_id],
-      );
+
+      if (Number(leader_count) > 0) {
+        if (submission.status === 'pending') {
+          // Trường hợp này không nên xảy ra nếu UI gửi đúng người duyệt,
+          // nhưng vẫn xử lý để không bypass luồng.
+          return res.status(409).json({
+            success: false,
+            message: 'Waiting for leader approval',
+          });
+        }
+
+        // submission.status phải là leader_approved
+        await pool.query(
+          `
+          UPDATE task_submissions
+          SET status = 'approved', reviewed_at = NOW(), reviewed_by = ?
+          WHERE submission_id = ?
+          `,
+          [req.user.id, submission.submission_id],
+        );
+        await pool.query(
+          `
+          UPDATE tasks
+          SET status = 'COMPLETED', completed_at = COALESCE(completed_at, NOW())
+          WHERE task_id = ? AND project_id = ?
+          `,
+          [submission.task_id, projectId],
+        );
+        await pool.query(
+          `
+          DELETE FROM notifications
+          WHERE reference_id = ?
+            AND type IN ('task_submitted', 'leader_approved_task')
+          `,
+          [submission.task_id],
+        );
+      } else {
+        // Không có leader => owner duyệt thẳng pending => COMPLETED
+        await pool.query(
+          `
+          UPDATE task_submissions
+          SET status = 'approved', reviewed_at = NOW(), reviewed_by = ?
+          WHERE submission_id = ?
+          `,
+          [req.user.id, submission.submission_id],
+        );
+        await pool.query(
+          `
+          UPDATE tasks
+          SET status = 'COMPLETED', completed_at = COALESCE(completed_at, NOW())
+          WHERE task_id = ? AND project_id = ?
+          `,
+          [submission.task_id, projectId],
+        );
+        await pool.query(
+          `
+          DELETE FROM notifications
+          WHERE reference_id = ?
+            AND type IN ('task_submitted', 'leader_approved_task')
+          `,
+          [submission.task_id],
+        );
+      }
     }
 
     const [[updatedTask]] = await pool.query(
