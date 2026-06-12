@@ -109,9 +109,9 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
 
   const getStatusLabel = (status) => {
     switch(status) {
-      case 'completed': return 'Đã hoàn thành';
-      case 'in_progress': return 'Đang thực hiện';
-      case 'pending': return 'Chưa bắt đầu';
+      case 'completed': return 'Completed';
+      case 'in_progress': return 'In Progress';
+      case 'pending': return 'Pending';
       default: return status;
     }
   };
@@ -124,7 +124,7 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
     }
   };
 
-  if (loading) return <div className="workflow-loading">Đang tải workflow...</div>;
+  if (loading) return <div className="workflow-loading">Loading workflow...</div>;
   if (error && stages.length === 0) return <div className="workflow-error">{error}</div>;
 
   return (
@@ -136,17 +136,9 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
 
       <div className="workflow-timeline-container">
         {stages.map((stage, index) => (
-          <div key={stage.id} className={`workflow-item ${stage.status}`}>
-            {/* Connector line to next stage */}
-            {index < stages.length - 1 && <div className="workflow-connector" />}
-            
+          <div key={stage.id} className={`workflow-item ${stage.status}`}>            
             {/* Stage card */}
             <div className="stage-card">
-              {/* Status indicator */}
-              <div className="stage-status-indicator">
-                {getStatusIcon(stage.status)}
-              </div>
-
               {/* Stage content */}
               <div className="stage-content">
                 <div className="stage-header">
@@ -189,15 +181,15 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                         disabled={isSubmitting}
                       >
                         <ChevronRight size={18} />
-                        <span>Tiếp tục</span>
+                        <span>Next</span>
                       </button>
                       <button
                         className="btn-previous"
                         onClick={() => handleMovePrevious(stage.id)}
                         disabled={isSubmitting || stage.stage_order === 1}
                       >
+                        <span>Previous</span>
                         <ChevronLeft size={18} />
-                        <span>Quay lại</span>
                       </button>
                     </div>
                   </div>
