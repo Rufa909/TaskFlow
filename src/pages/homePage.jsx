@@ -263,18 +263,38 @@ const fetchStageTasks = async (stage) => {
     if (!activeProject || !stage) return;
     setLoadingStageTasks(true);
     try {
-      const stageId = stage.id ?? stage.stage_id ?? "unassigned";
+let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       // Backend expects stageId as:
-      // - number for tasks.stage_id
-      // - string "unassigned" for tasks where stage_id IS NULL
-      const normalizedStageId = stageId === null || stageId === undefined || stageId === ""
-        ? "unassigned"
-        : stageId;
+      // - number (tasks.stage_id)
+      // - string "unassigned" (tasks.stage_id IS NULL)
+      const normalizedStageId =
+        stageId === null || stageId === undefined || stageId === ""
+          ? "unassigned"
+          : stageId;
 
-console.log('[StageTaskPanel] stage.id:', stage?.id, 'stage.stage_id:', stage?.stage_id, 'normalizedStageId:', normalizedStageId);
+      // If normalizedStageId is a numeric string, convert to number (avoid route mismatch in DB layer)
+      const finalStageId =
+        normalizedStageId === "unassigned" ? "unassigned" : Number(normalizedStageId);
 
-      const encodedStageId = encodeURIComponent(String(normalizedStageId));
-      const res = await api.get(`/projects/${activeProject.project_id}/stages/${encodedStageId}/tasks`);
+      console.log(
+        "[StageTaskPanel] stage.id:",
+        stage?.id,
+        "stage.stage_id:",
+        stage?.stage_id,
+        "normalizedStageId:",
+        normalizedStageId,
+        "finalStageId:",
+        finalStageId,
+      );
+
+      const encodedStageId =
+        finalStageId === "unassigned"
+          ? "unassigned"
+          : encodeURIComponent(String(finalStageId));
+
+      const res = await api.get(
+        `/projects/${activeProject.project_id}/stages/${encodedStageId}/tasks`,
+      );
       setStageTasks(res.data.tasks || []);
     } catch (err) {
       console.error("Cannot load stage tasks:", err);
