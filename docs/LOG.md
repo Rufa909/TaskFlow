@@ -6,6 +6,41 @@
 
 ## Activities (đã làm trong hôm nay)
 
+### 2026-06-20 - Stage-scoped tasks and completed workflow lock
+
+**Mo ta:**
+- Cap nhat workflow/task de moi stage co danh sach task rieng.
+- Khi chuyen sang stage moi, danh sach task chinh cua project chi hien task cua stage hien tai; stage moi se trong neu chua co task.
+- Bam vao tung stage van mo panel xem lich su task cua stage do.
+
+**Thay doi:**
+- Frontend:
+  - `src/pages/homePage.jsx`
+    - Xac dinh stage hien tai bang `in_progress` hoac stage dau tien chua `completed`.
+    - Loc task list chinh theo `stage_id` cua stage hien tai.
+    - Khi workflow stages thay doi, cap nhat lai `taskStageId` theo stage hien tai.
+    - Khi tat ca stages da `completed`, tu dong dong form add task va an nut `Add task`.
+  - `src/components/task/AddTaskForm.jsx`
+    - Go bo dropdown chon stage trong form tao task vi task da duoc gan theo stage hien tai.
+- Backend:
+  - `server/src/controllers/taskController.js`
+    - Them helper resolve stage khi tao task.
+    - Neu client khong gui `stage_id`, backend tu gan task vao stage dang `in_progress`.
+    - Neu `stage_id` khong thuoc project thi tra loi 400.
+    - Neu project co workflow va tat ca stages da `completed`, chan tao task moi va tra loi 409.
+
+**Ket qua:**
+- Task duoc tach theo tung stage dung workflow.
+- Stage cu van xem duoc lich su task bang cach bam vao stage.
+- Stage moi bat dau voi task list trong.
+- Khi complete het workflow thi project coi nhu xong, khong tao task moi duoc nua.
+
+**Kiem tra:**
+- `npm.cmd run build` pass.
+- `node -c server\src\controllers\taskController.js` pass.
+
+---
+
 ### 2026-06-12 - Task Stage
 
 **Mô tả:**
