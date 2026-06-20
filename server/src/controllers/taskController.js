@@ -609,6 +609,57 @@ async function replaceTaskAssignees(taskId, assigneeIds) {
   );
 }
 
+async function resolveTaskStageId(projectId, rawStageId) {
+  if (
+    rawStageId !== undefined &&
+    rawStageId !== null &&
+    rawStageId !== "" &&
+    rawStageId !== "null" &&
+    rawStageId !== "undefined"
+  ) {
+    const [[stage]] = await pool.query(
+      "SELECT id FROM project_stages WHERE id = ? AND project_id = ? LIMIT 1",
+      [rawStageId, projectId],
+    );
+
+    if (!stage) {
+      const error = new Error("Stage does not belong to this project");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    return stage.id;
+  }
+
+  const [[activeStage]] = await pool.query(
+    `
+    SELECT id
+    FROM project_stages
+    WHERE project_id = ?
+      AND status = 'in_progress'
+    ORDER BY stage_order ASC
+    LIMIT 1
+    `,
+    [projectId],
+  );
+
+  if (activeStage) return activeStage.id;
+
+  const [[nextStage]] = await pool.query(
+    `
+    SELECT id
+    FROM project_stages
+    WHERE project_id = ?
+      AND status <> 'completed'
+    ORDER BY stage_order ASC
+    LIMIT 1
+    `,
+    [projectId],
+  );
+
+  return nextStage?.id || null;
+}
+
 function getUploadedTaskFiles(req) {
   if (req.file) return [req.file];
   if (!req.files) return [];
@@ -798,7 +849,7 @@ exports.createTask = async (req, res) => {
       assignmentStatus = "approved";
     }
 
-    const taskStageId = stage_id || stageId || null;
+    const taskStageId = await resolveTaskStageId(projectId, stage_id ?? stageId);
 
     const [result] = await pool.query(
       `
@@ -888,7 +939,10 @@ try {
 res.status(201).json({ success: true, task: enrichedTask });
   } catch (err) {
     console.error("Loi createTask:", err);
-    res.status(500).json({ success: false, message: "Lỗi server" });
+    res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.statusCode ? err.message : "Lỗi server",
+    });
   }
 };
 // PUT /api/projects/:projectId/tasks/:taskId

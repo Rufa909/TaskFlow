@@ -110,6 +110,14 @@ function isTaskOverdue(task) {
   return deadline < new Date();
 }
 
+function getCurrentWorkflowStage(stages = []) {
+  return (
+    stages.find((stage) => stage.status === "in_progress") ||
+    stages.find((stage) => stage.status !== "completed") ||
+    null
+  );
+}
+
 export default function HomePage() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -237,7 +245,9 @@ export default function HomePage() {
       setLoadingWorkflow(true);
       try {
         const res = await api.get(`/projects/${activeProject.project_id}/workflow`);
-        setWorkflowStages(res.data.data || []);
+        const stages = res.data.data || [];
+        setWorkflowStages(stages);
+        setTaskStageId(getCurrentWorkflowStage(stages)?.id || null);
       } catch (err) {
         console.error("Cannot load workflow:", err);
       } finally {
@@ -308,6 +318,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     setSelectedStage(stage);
     setIsStagePanelOpen(true);
     fetchStageTasks(stage);
+  };
+
+  const handleWorkflowStagesChange = (nextStages) => {
+    setWorkflowStages(nextStages);
+    setTaskStageId(getCurrentWorkflowStage(nextStages)?.id || null);
   };
 
   useEffect(() => {
@@ -426,6 +441,8 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !activeProject) return;
     const projId = activeProject.project_id;
+    const currentStageId = getCurrentWorkflowStage(workflowStages)?.id || null;
+    const targetStageId = taskStageId || currentStageId;
 
     try {
       const formData = new FormData();
@@ -441,8 +458,8 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       if (taskAssignee.length > 0) {
         formData.append("assigned_to", JSON.stringify(taskAssignee));
       }
-      if (taskStageId) {
-        formData.append("stage_id", taskStageId);
+      if (targetStageId) {
+        formData.append("stage_id", targetStageId);
       }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
@@ -464,7 +481,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       setTaskAssignee([]);
       setNewTaskLabels([]);
       setTaskAttachment([]);
-      setTaskStageId(null);
+      setTaskStageId(currentStageId);
       setIsAddingTask(false);
     } catch (err) {
       console.error(err);
@@ -643,6 +660,15 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   const currentTasks = activeProject
     ? tasksByProject[activeProject.project_id] || []
     : [];
+  const currentWorkflowStage = getCurrentWorkflowStage(workflowStages);
+  const currentWorkflowStageId = currentWorkflowStage?.id || null;
+  const stageScopedTasks = currentWorkflowStageId
+    ? currentTasks.filter(
+        (task) => Number(task.stage_id) === Number(currentWorkflowStageId),
+      )
+    : workflowStages.length > 0
+      ? []
+    : currentTasks;
   const currentProjectRole =
     activeProject?.user_role ||
     (Number(activeProject?.owner_id) === Number(user?.id) ? "owner" : "");
@@ -660,7 +686,12 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     removeLabelFromSavedFilters,
   } = useFilters();
 
-  const taskSourceForFilters = allTasks.length > 0 ? allTasks : currentTasks;
+  const taskSourceForFilters =
+    activeView === "filtersLabels" ||
+    activeView === "filterResults" ||
+    activeView === "labelResults"
+      ? allTasks
+      : stageScopedTasks;
   const taskLabels = taskSourceForFilters.flatMap((task) =>
     Array.isArray(task.labels) ? task.labels : [],
   );
@@ -743,7 +774,9 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   const projectOpenTasks = filteredTasks.filter((t) => !isTaskOverdue(t));
   const projectOverdueTasks = filteredTasks.filter(isTaskOverdue);
   const projectCompletedTasks = reportingTasks.filter(
-    (t) => Number(t.project_id) === Number(activeProject?.project_id),
+    (t) =>
+      Number(t.project_id) === Number(activeProject?.project_id) &&
+      (!currentWorkflowStageId || Number(t.stage_id) === Number(currentWorkflowStageId)),
   );
   const filterResultTasks = activeSavedFilter
     ? filterTasksByCriteria(activeSavedFilter.criteria)
@@ -1468,7 +1501,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                           projectId={activeProject.project_id}
                           isOwner={Number(activeProject.owner_id) === Number(user?.id)}
                           stages={workflowStages}
-                          onStagesChange={setWorkflowStages}
+                          onStagesChange={handleWorkflowStagesChange}
                         />
                       ) : (
                         <p>No workflow stages defined for this project.</p>
@@ -1510,13 +1543,14 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                       isTaskProjectMenuOpen={isTaskProjectMenuOpen}
                       setIsTaskProjectMenuOpen={setIsTaskProjectMenuOpen}
                       setIsAddingTask={setIsAddingTask}
-                      taskStageId={taskStageId}
-                      setTaskStageId={setTaskStageId}
                     />
                   ) : (
                     <button
                       className="add-task-btn add-task-btn--top"
-                      onClick={() => setIsAddingTask(true)}
+                      onClick={() => {
+                        setTaskStageId(currentWorkflowStageId);
+                        setIsAddingTask(true);
+                      }}
                     >
                       <span className="icon"><Icon name="plus" size={18} /></span>
                       Add task

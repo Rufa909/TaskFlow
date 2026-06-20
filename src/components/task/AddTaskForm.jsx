@@ -46,9 +46,6 @@ export default function AddTaskForm({
   setIsTaskProjectMenuOpen,
 
   setIsAddingTask,
-
-  taskStageId = null,
-  setTaskStageId = () => {},
 }) {
   const { showToast } = useToast();
   const { user } = useAuth();
@@ -56,8 +53,6 @@ export default function AddTaskForm({
   const [isLabelsDropdownOpen, setIsLabelsDropdownOpen] = useState(false);
   const [projectMembers, setProjectMembers] = useState([]);
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
-  const [stages, setStages] = useState([]);
-  const [isStageOpen, setIsStageOpen] = useState(false);
   const priorities = [
     { value: "urgent", label: "Urgent", color: "#dc2626" },
     { value: "high", label: "High", color: "#f97316" },
@@ -96,28 +91,6 @@ const selectedPriority =
       active = false;
     };
   }, [activeProject?.project_id, setTaskAssignee]);
-
-  useEffect(() => {
-    let active = true;
-    async function loadStages() {
-      if (!activeProject?.project_id) {
-        setStages([]);
-        return;
-      }
-      try {
-        const res = await api.get(`/projects/${activeProject.project_id}/workflow`);
-        if (!active) return;
-        setStages(res.data.data || []);
-      } catch (err) {
-        if (!active) return;
-        setStages([]);
-      }
-    }
-    loadStages();
-    return () => {
-      active = false;
-    };
-  }, [activeProject?.project_id]);
 
   const currentMember = projectMembers.find(
     (member) => Number(member.user_id) === Number(user?.id),
@@ -333,51 +306,6 @@ const selectedPriority =
                   >
                     <span>{member.username}</span>
                     <span className="assignee-role">{member.role}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {stages.length > 0 && (
-          <div className="stage-picker" style={{ position: "relative" }}>
-            <button
-              type="button"
-              className={taskStageId ? "has-stage" : ""}
-              onClick={() => setIsStageOpen((prev) => !prev)}
-            >
-              <Icon name="activity" size={14} />
-              <span>
-                {taskStageId
-                  ? stages.find((s) => Number(s.id) === Number(taskStageId))?.stage_name || "Stage"
-                  : "Stage"}
-              </span>
-              <Icon name={isStageOpen ? "chevronUp" : "chevronDown"} size={12} />
-            </button>
-            {isStageOpen && (
-              <div className="stage-menu">
-                <button
-                  type="button"
-                  className="stage-option"
-                  onClick={() => {
-                    setTaskStageId(null);
-                    setIsStageOpen(false);
-                  }}
-                >
-                  No Stage
-                </button>
-                {stages.map((stage) => (
-                  <button
-                    type="button"
-                    className={`stage-option ${Number(taskStageId) === Number(stage.id) ? "active" : ""}`}
-                    key={stage.id}
-                    onClick={() => {
-                      setTaskStageId(stage.id);
-                      setIsStageOpen(false);
-                    }}
-                  >
-                    <span>{stage.stage_name}</span>
                   </button>
                 ))}
               </div>
