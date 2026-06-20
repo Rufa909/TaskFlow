@@ -118,6 +118,10 @@ function getCurrentWorkflowStage(stages = []) {
   );
 }
 
+function isWorkflowComplete(stages = []) {
+  return stages.length > 0 && stages.every((stage) => stage.status === "completed");
+}
+
 export default function HomePage() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -248,6 +252,9 @@ export default function HomePage() {
         const stages = res.data.data || [];
         setWorkflowStages(stages);
         setTaskStageId(getCurrentWorkflowStage(stages)?.id || null);
+        if (isWorkflowComplete(stages)) {
+          setIsAddingTask(false);
+        }
       } catch (err) {
         console.error("Cannot load workflow:", err);
       } finally {
@@ -322,7 +329,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleWorkflowStagesChange = (nextStages) => {
     setWorkflowStages(nextStages);
-    setTaskStageId(getCurrentWorkflowStage(nextStages)?.id || null);
+    const nextStageId = getCurrentWorkflowStage(nextStages)?.id || null;
+    setTaskStageId(nextStageId);
+    if (isWorkflowComplete(nextStages)) {
+      setIsAddingTask(false);
+    }
   };
 
   useEffect(() => {
@@ -440,6 +451,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !activeProject) return;
+    if (isWorkflowComplete(workflowStages)) {
+      showToast("Project is completed. Cannot create new tasks.", "error");
+      setIsAddingTask(false);
+      return;
+    }
     const projId = activeProject.project_id;
     const currentStageId = getCurrentWorkflowStage(workflowStages)?.id || null;
     const targetStageId = taskStageId || currentStageId;
@@ -662,6 +678,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     : [];
   const currentWorkflowStage = getCurrentWorkflowStage(workflowStages);
   const currentWorkflowStageId = currentWorkflowStage?.id || null;
+  const workflowComplete = isWorkflowComplete(workflowStages);
   const stageScopedTasks = currentWorkflowStageId
     ? currentTasks.filter(
         (task) => Number(task.stage_id) === Number(currentWorkflowStageId),
@@ -1514,7 +1531,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
               <div className="task-section">
 
                 {/* Add Task - on top */}
-                {currentProjectRole !== "member" && (
+                {currentProjectRole !== "member" && !workflowComplete && (
                   isAddingTask ? (
                     <AddTaskForm
                       newTaskTitle={newTaskTitle}

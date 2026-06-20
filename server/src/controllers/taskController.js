@@ -610,6 +610,26 @@ async function replaceTaskAssignees(taskId, assigneeIds) {
 }
 
 async function resolveTaskStageId(projectId, rawStageId) {
+  const [[stageSummary]] = await pool.query(
+    `
+    SELECT
+      COUNT(*) AS total_stages,
+      SUM(CASE WHEN status <> 'completed' THEN 1 ELSE 0 END) AS open_stages
+    FROM project_stages
+    WHERE project_id = ?
+    `,
+    [projectId],
+  );
+
+  if (
+    Number(stageSummary?.total_stages || 0) > 0 &&
+    Number(stageSummary?.open_stages || 0) === 0
+  ) {
+    const error = new Error("Project is completed. Cannot create new tasks.");
+    error.statusCode = 409;
+    throw error;
+  }
+
   if (
     rawStageId !== undefined &&
     rawStageId !== null &&
