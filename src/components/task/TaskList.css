@@ -130,6 +130,43 @@
   border-color: #fecaca;
 }
 
+.task-labels {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.task-label-badge,
+.task-assignee-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  max-width: 180px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-label-badge {
+  color: var(--task-label-color, #6d28d9);
+  background: rgba(var(--task-label-rgb, 109, 40, 217), 0.1);
+  border: 1px solid rgba(var(--task-label-rgb, 109, 40, 217), 0.28);
+}
+
+.task-assignee-badge {
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+}
+
 .task-item.highlighted {
   background: #eff6ff;
   box-shadow: inset 3px 0 0 #3b82f6;

@@ -105,6 +105,13 @@ function canManageTask(task, userRole, userId) {
   return userRole === "owner" || userRole === "leader";
 }
 
+function hexToRgb(hex) {
+  const normalized = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
+  const value = parseInt(normalized, 16);
+  return `${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}`;
+}
+
 export default function TaskList({
   tasks,
   handleDeleteTask,
@@ -113,12 +120,19 @@ export default function TaskList({
   currentUserRole = "",
   currentUserId = null,
   highlightedTaskId = null,
+  availableLabels = [],
   setSelectedTask,
 }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [changesTask, setChangesTask] = useState(null);
   const [changesReason, setChangesReason] = useState("");
   const menuRef = useRef(null);
+  const labelColorMap = new Map(
+    availableLabels.map((label) => [
+      String(label.name).toLowerCase(),
+      label.color,
+    ]),
+  );
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -349,7 +363,7 @@ export default function TaskList({
                   {task.assignees.map((assignee) => (
                     <span
                       key={assignee.user_id}
-                      className="task-label-badge"
+                      className="task-assignee-badge"
                       style={{ fontSize: 14 }}
                     >
                       <Icon name="user" size={13} />
@@ -362,7 +376,17 @@ export default function TaskList({
               {task.labels && task.labels.length > 0 && (
                 <div className="task-labels">
                   {task.labels.map((label, idx) => (
-                    <span key={idx} className="task-label-badge">
+                    <span
+                      key={idx}
+                      className="task-label-badge"
+                      style={{
+                        "--task-label-color":
+                          labelColorMap.get(String(label).toLowerCase()) || "#6d28d9",
+                        "--task-label-rgb":
+                          hexToRgb(labelColorMap.get(String(label).toLowerCase())) ||
+                          "109, 40, 217",
+                      }}
+                    >
                       <Icon name="hash" size={10} />
                       {label}
                     </span>

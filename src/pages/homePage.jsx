@@ -182,7 +182,7 @@ export default function HomePage() {
   // Workflow tracker state
   const [workflowStages, setWorkflowStages] = useState([]);
   const [loadingWorkflow, setLoadingWorkflow] = useState(false);
-  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(true);
+  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isCustomizeWorkflowOpen, setIsCustomizeWorkflowOpen] = useState(false);
   const [customWorkflowStages, setCustomWorkflowStages] = useState(null);
 
@@ -246,6 +246,7 @@ export default function HomePage() {
   useEffect(() => {
     const fetchWorkflow = async () => {
       if (!activeProject) return;
+      setIsWorkflowExpanded(false);
       setLoadingWorkflow(true);
       try {
         const res = await api.get(`/projects/${activeProject.project_id}/workflow`);
@@ -1204,6 +1205,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         handleReviewTaskSubmission={handleReviewTaskSubmission}
                         currentUserRole={currentProjectRole}
                         currentUserId={user?.id}
+                        availableLabels={allLabels}
                         setSelectedTask={setSelectedTask}
                       />
                     ) : (
@@ -1276,6 +1278,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         handleReviewTaskSubmission={handleReviewTaskSubmission}
                         currentUserRole={currentProjectRole}
                         currentUserId={user?.id}
+                        availableLabels={allLabels}
                         setSelectedTask={setSelectedTask}
                       />
                     ) : (
@@ -1476,6 +1479,10 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
             </div>
           ) : (
             <>
+              <h1 className="page-title">
+                {activeProject?.name || "Select a project"}
+              </h1>
+
               {/* Workflow Progress Bar - Top Priority */}
               {activeProject && !loadingWorkflow && workflowStages.length > 0 && (
                 <WorkflowProgressBar 
@@ -1484,10 +1491,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                   selectedStageId={selectedStage?.id}
                 />
               )}
-
-              <h1 className="page-title">
-                {activeProject?.name || "Select a project"}
-              </h1>
 
               {/* Detailed Workflow Tracker Section */}
               {activeProject && (
@@ -1641,6 +1644,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         handleReviewTaskSubmission={handleReviewTaskSubmission}
                         currentUserRole={currentProjectRole}
                         currentUserId={user?.id}
+                        availableLabels={allLabels}
                         setSelectedTask={setSelectedTask}
                       />
                       {Math.ceil(projectOpenTasks.length / TASKS_PER_PAGE) > 1 && (
@@ -1676,6 +1680,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                           handleReviewTaskSubmission={handleReviewTaskSubmission}
                           currentUserRole={currentProjectRole}
                           currentUserId={user?.id}
+                          availableLabels={allLabels}
                           setSelectedTask={setSelectedTask}
                         />
                         {Math.ceil(projectOverdueTasks.length / TASKS_PER_PAGE) > 1 && (
@@ -1712,6 +1717,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                           handleReviewTaskSubmission={handleReviewTaskSubmission}
                           currentUserRole={currentProjectRole}
                           currentUserId={user?.id}
+                          availableLabels={allLabels}
                           setSelectedTask={setSelectedTask}
                         />
                         {Math.ceil(projectCompletedTasks.length / TASKS_PER_PAGE) > 1 && (
