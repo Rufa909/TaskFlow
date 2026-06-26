@@ -122,9 +122,11 @@ export default function TodayPage() {
       setTasks((prev) =>
         prev.map((t) => (t.task_id === taskId ? updatedTask : t)),
       );
+      showToast("Task updated successfully", "success");
     } catch (err) {
       console.error(err);
-      showToast("Cannot update task", "error");
+      showToast(err.response?.data?.message || "Cannot update task", "error");
+      throw err;
     }
   };
 

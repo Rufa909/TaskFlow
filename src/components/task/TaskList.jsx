@@ -17,12 +17,19 @@ const STATUS_LABELS = {
   REJECTED: "Rejected",
 };
 
-function getTaskAction(task) {
+function getTaskAction(task, canSelfCompleteDraft = false) {
   const total = Number(task.assignee_count || 0);
   const accepted = Number(task.accepted_count || 0);
   const submitted = Number(task.submitted_count || 0);
   switch (task.status) {
     case "DRAFT":
+      if (canSelfCompleteDraft) {
+        return {
+          label: "Done",
+          title: "Complete task",
+          disabled: false,
+        };
+      }
       return {
         label: "Draft",
         title: "Assign a member to start",
@@ -77,6 +84,23 @@ function canWorkOnTask(task, userId) {
   );
 }
 
+function isSoloProjectTask(task) {
+  if (task.is_solo_project !== undefined && task.is_solo_project !== null) {
+    return Boolean(task.is_solo_project);
+  }
+
+  const projectUserCount = Number(task.project_user_count);
+  return Number.isFinite(projectUserCount) && projectUserCount <= 1;
+}
+
+function canSelfCompleteDraftTask(task, userId) {
+  return (
+    task.status === "DRAFT" &&
+    isSoloProjectTask(task) &&
+    Number(task.created_by) === Number(userId)
+  );
+}
+
 function canManageTask(task, userRole, userId) {
   return userRole === "owner" || userRole === "leader";
 }
@@ -110,7 +134,8 @@ export default function TaskList({
   return (
     <>
       {tasks.map((task) => {
-        const action = getTaskAction(task);
+        const selfCompletableDraft = canSelfCompleteDraftTask(task, currentUserId);
+        const action = getTaskAction(task, selfCompletableDraft);
         const statusLabel = STATUS_LABELS[task.status] || task.status;
         const reviewable = canReviewTask(task, currentUserRole);
         const manageable = canManageTask(task, currentUserRole, currentUserId);
@@ -124,7 +149,7 @@ export default function TaskList({
           ) &&
             currentAssignee?.submitted_at);
         const actionable =
-          canWorkOnTask(task, currentUserId) &&
+          (selfCompletableDraft || canWorkOnTask(task, currentUserId)) &&
           !alreadyActed &&
           !action.disabled;
         const displayAction = action.disabled

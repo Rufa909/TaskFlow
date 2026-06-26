@@ -111,6 +111,14 @@ const selectedPriority =
     selectedAssigneeIds.includes(Number(member.user_id)),
   );
 
+  const closeOptionPopups = () => {
+    setIsDatePickerOpen(false);
+    setIsPriorityOpen(false);
+    setIsLabelsDropdownOpen(false);
+    setIsAssigneeOpen(false);
+    setIsTaskProjectMenuOpen(false);
+  };
+
   const handleAttachmentChange = (e) => {
     const files = Array.from(e.target.files || []);
     const oversized = files.find((file) => file.size > 5 * 1024 * 1024);
@@ -157,7 +165,11 @@ const selectedPriority =
       />
       <div className="form-actions-row" style={{ position: "relative" }}>
         <button
-          onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
+          onClick={() => {
+            const nextOpen = !isDatePickerOpen;
+            closeOptionPopups();
+            setIsDatePickerOpen(nextOpen);
+          }}
           className={taskDeadline ? "has-date" : ""}
         >
           <Icon
@@ -199,7 +211,11 @@ const selectedPriority =
           <button
             type="button"
             className={`priority-trigger priority-${selectedPriority.value}`}
-            onClick={() => setIsPriorityOpen((prev) => !prev)}
+            onClick={() => {
+              const nextOpen = !isPriorityOpen;
+              closeOptionPopups();
+              setIsPriorityOpen(nextOpen);
+            }}
           >
             <Icon name="flag" size={14} />
             {selectedPriority.label}
@@ -229,7 +245,11 @@ const selectedPriority =
           <div className="task-label-dropdown" style={{ position: "relative" }}>
             <button
               type="button"
-              onClick={() => setIsLabelsDropdownOpen(!isLabelsDropdownOpen)}
+              onClick={() => {
+                const nextOpen = !isLabelsDropdownOpen;
+                closeOptionPopups();
+                setIsLabelsDropdownOpen(nextOpen);
+              }}
               className="task-add-label-btn"
             >
               <Icon name="tag" size={14} />
@@ -245,6 +265,7 @@ const selectedPriority =
                     className={`task-label-option ${taskLabels.includes(label.name) ? "active" : ""}`}
                     onClick={() => {
                       toggleTaskLabel(label.name);
+                      setIsLabelsDropdownOpen(false);
                     }}
                     style={{
                       color: label.color,
@@ -266,7 +287,11 @@ const selectedPriority =
             <button
               type="button"
               className={selectedAssigneeIds.length > 0 ? "has-assignee" : ""}
-              onClick={() => setIsAssigneeOpen((prev) => !prev)}
+              onClick={() => {
+                const nextOpen = !isAssigneeOpen;
+                closeOptionPopups();
+                setIsAssigneeOpen(nextOpen);
+              }}
             >
               <Icon name="user" size={14} />
               {selectedAssignees.length > 0
@@ -281,6 +306,7 @@ const selectedPriority =
                   className="assignee-option"
                   onClick={() => {
                     setTaskAssignee([]);
+                    setIsAssigneeOpen(false);
                   }}
                 >
                   No assignee
@@ -302,6 +328,7 @@ const selectedPriority =
                           ? values.filter((id) => id !== userId)
                           : [...values, userId];
                       });
+                      setIsAssigneeOpen(false);
                     }}
                   >
                     <span>{member.username}</span>
@@ -335,7 +362,11 @@ const selectedPriority =
         <div className="form-footer-left">
           <div className="project-selector" style={{ position: "relative" }}>
             <button
-              onClick={() => setIsTaskProjectMenuOpen(!isTaskProjectMenuOpen)}
+              onClick={() => {
+                const nextOpen = !isTaskProjectMenuOpen;
+                closeOptionPopups();
+                setIsTaskProjectMenuOpen(nextOpen);
+              }}
             >
               <Icon name="hash" size={14} />
               {activeProject?.name || "Project"}

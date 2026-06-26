@@ -211,9 +211,11 @@ export default function InboxPage() {
         prev.map((t) => (t.task_id === taskId ? updatedTask : t)),
       );
       setSelectedTask(null);
+      showToast("Task updated successfully", "success");
     } catch (err) {
       console.error(err);
-      showToast("Cannot update task", "error");
+      showToast(err.response?.data?.message || "Cannot update task", "error");
+      throw err;
     }
   };
 

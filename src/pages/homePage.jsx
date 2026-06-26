@@ -443,9 +443,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
           (task) => (task.task_id === taskId ? updatedTask : task),
         ),
       }));
+      showToast("Task updated successfully", "success");
     } catch (err) {
       console.error(err);
-      showToast("Cannot update task", "error");
+      showToast(err.response?.data?.message || "Cannot update task", "error");
+      throw err;
     }
   };
 

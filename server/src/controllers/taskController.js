@@ -259,6 +259,40 @@ async function isProjectMember(projectId, userId) {
   return Boolean(role);
 }
 
+async function getProjectUserCounts(projectIds) {
+  const ids = [...new Set(projectIds.map(Number).filter(Number.isInteger))];
+  if (ids.length === 0) return new Map();
+
+  const [rows] = await pool.query(
+    `
+    SELECT project_id, COUNT(DISTINCT user_id) AS user_count
+    FROM (
+      SELECT project_id, owner_id AS user_id
+      FROM projects
+      WHERE project_id IN (?)
+      UNION
+      SELECT project_id, user_id
+      FROM project_members
+      WHERE project_id IN (?)
+    ) project_users
+    GROUP BY project_id
+    `,
+    [ids, ids],
+  );
+
+  return new Map(
+    rows.map((row) => [
+      Number(row.project_id),
+      Number(row.user_count || 0),
+    ]),
+  );
+}
+
+async function isSoloProject(projectId) {
+  const counts = await getProjectUserCounts([projectId]);
+  return Number(counts.get(Number(projectId)) || 0) <= 1;
+}
+
 async function canAccessTask(projectId, taskId, userId) {
   const [[task]] = await pool.query(
     `
@@ -463,6 +497,8 @@ async function enrichTaskRows(rows) {
   const normalized = normalizeTaskRows(rows);
   const taskIds = [...new Set(normalized.map((task) => Number(task.task_id)).filter(Boolean))];
   if (taskIds.length === 0) return normalized;
+  const projectIds = [...new Set(normalized.map((task) => Number(task.project_id)).filter(Boolean))];
+  const projectUserCounts = await getProjectUserCounts(projectIds);
 
   const [assignees] = await pool.query(
     `
@@ -485,6 +521,7 @@ async function enrichTaskRows(rows) {
 
   return Promise.all(normalized.map(async (task) => {
     const taskAssignees = byTask.get(Number(task.task_id)) || [];
+    const projectUserCount = projectUserCounts.get(Number(task.project_id)) || 0;
     const shouldRepairDraftStatus = taskAssignees.length > 0 && task.status === "DRAFT";
     if (shouldRepairDraftStatus) {
       await pool.query(
@@ -507,6 +544,8 @@ async function enrichTaskRows(rows) {
       assignee_count: taskAssignees.length,
       accepted_count: taskAssignees.filter((assignee) => assignee.accepted_at).length,
       submitted_count: taskAssignees.filter((assignee) => assignee.submitted_at).length,
+      project_user_count: projectUserCount,
+      is_solo_project: projectUserCount <= 1,
     };
   }));
 }
@@ -523,6 +562,10 @@ function parseAssigneeIds(value) {
   }
   if (!Array.isArray(values)) values = [values];
   return [...new Set(values.map(Number).filter(Number.isInteger))];
+}
+
+function hasBodyField(req, field) {
+  return Object.prototype.hasOwnProperty.call(req.body || {}, field);
 }
 
 async function validateAssigneeIds(projectId, assigneeIds) {
@@ -1011,15 +1054,20 @@ exports.updateTask = async (req, res) => {
     }
 
     if (assigned_to !== undefined) {
-      const assigneeIds = parseAssigneeIds(assigned_to);
+      let assigneeIds = parseAssigneeIds(assigned_to);
+      if (await isSoloProject(projectId)) {
+        assigneeIds = assigneeIds.filter(
+          (userId) => Number(userId) !== Number(req.user.id),
+        );
+      }
       await validateAssigneeIds(projectId, assigneeIds);
       await replaceTaskAssignees(taskId, assigneeIds);
     }
 
     let taskStageId = undefined;
-    if (req.body.hasOwnProperty("stage_id")) {
+    if (hasBodyField(req, "stage_id")) {
       taskStageId = stage_id;
-    } else if (req.body.hasOwnProperty("stageId")) {
+    } else if (hasBodyField(req, "stageId")) {
       taskStageId = stageId;
     }
 
@@ -1156,7 +1204,11 @@ exports.completeTask = async (req, res) => {
       });
     }
 
-    if (!["owner", "leader"].includes(role)) {
+    const canSelfApproveSoloTask =
+      (await isSoloProject(projectId)) &&
+      Number(task.created_by) === Number(req.user.id);
+
+    if (!["owner", "leader"].includes(role) && !canSelfApproveSoloTask) {
       const [[assignee]] = await pool.query(
         `
         SELECT *
@@ -1309,7 +1361,8 @@ exports.completeTask = async (req, res) => {
     const [result] = await pool.query(
       `
       UPDATE tasks
-      SET completed_at = COALESCE(completed_at, NOW())
+      SET status = 'COMPLETED',
+          completed_at = COALESCE(completed_at, NOW())
       WHERE task_id = ?
         AND project_id = ?
         AND deleted_at IS NULL

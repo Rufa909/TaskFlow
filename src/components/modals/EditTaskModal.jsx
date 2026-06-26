@@ -221,6 +221,13 @@ export default function EditTaskModal({
 
   const selectedAttachmentFiles = Array.isArray(attachments) ? attachments : [];
 
+  const closePropertyPopups = () => {
+    setIsDatePickerOpen(false);
+    setIsPriorityOpen(false);
+    setIsLabelsOpen(false);
+    setIsAssigneesOpen(false);
+  };
+
   const toggleTaskLabel = (label) => {
     setLabels((prev) =>
       prev.includes(label)
@@ -597,7 +604,12 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className={`edit-detail-property-button ${deadline ? "has-value" : ""}`}
-                  onClick={() => !isMember && setIsDatePickerOpen((prev) => !prev)}
+                  onClick={() => {
+                    if (isMember) return;
+                    const nextOpen = !isDatePickerOpen;
+                    closePropertyPopups();
+                    setIsDatePickerOpen(nextOpen);
+                  }}
                   disabled={isMember}
                 >
                   <Icon name="calendar" size={15} color={deadline ? TASK_BLUE : "currentColor"} />
@@ -624,7 +636,12 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className="edit-detail-property-button labels"
-                  onClick={() => !isMember && setIsAssigneesOpen((prev) => !prev)}
+                  onClick={() => {
+                    if (isMember) return;
+                    const nextOpen = !isAssigneesOpen;
+                    closePropertyPopups();
+                    setIsAssigneesOpen(nextOpen);
+                  }}
                   disabled={isMember}
                 >
                   <span>
@@ -647,13 +664,14 @@ export default function EditTaskModal({
                           key={member.user_id}
                           type="button"
                           className={selected ? "active" : ""}
-                          onClick={() =>
+                          onClick={() => {
                             setAssigneeIds((prev) =>
                               selected
                                 ? prev.filter((id) => id !== Number(member.user_id))
                                 : [...prev, Number(member.user_id)],
-                            )
-                          }
+                            );
+                            setIsAssigneesOpen(false);
+                          }}
                         >
                           <Icon name="user" size={14} />
                           <span>{member.username}</span>
@@ -672,7 +690,12 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className="edit-detail-property-button"
-                  onClick={() => !isMember && setIsPriorityOpen((prev) => !prev)}
+                  onClick={() => {
+                    if (isMember) return;
+                    const nextOpen = !isPriorityOpen;
+                    closePropertyPopups();
+                    setIsPriorityOpen(nextOpen);
+                  }}
                   disabled={isMember}
                 >
                   <Icon name="flag" size={16} color={selectedPriority.color} />
@@ -707,7 +730,12 @@ export default function EditTaskModal({
                 <button
                   type="button"
                   className="edit-detail-property-button labels"
-                  onClick={() => !isMember && setIsLabelsOpen((prev) => !prev)}
+                  onClick={() => {
+                    if (isMember) return;
+                    const nextOpen = !isLabelsOpen;
+                    closePropertyPopups();
+                    setIsLabelsOpen(nextOpen);
+                  }}
                   disabled={isMember}
                 >
                   {labels.length > 0 ? (
@@ -728,7 +756,10 @@ export default function EditTaskModal({
                         key={label.name}
                         type="button"
                         className={labels.includes(label.name) ? "active" : ""}
-                        onClick={() => toggleTaskLabel(label.name)}
+                        onClick={() => {
+                          toggleTaskLabel(label.name);
+                          setIsLabelsOpen(false);
+                        }}
                       >
                         <Icon name="tag" size={14} color={label.color} />
                         <span>{label.name}</span>
