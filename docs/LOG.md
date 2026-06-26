@@ -6,6 +6,77 @@
 
 ## Activities (đã làm trong hôm nay)
 
+### 2026-06-26 - Deadline, server startup, edit task UI, attachments
+
+**Mo ta:**
+- Tap trung sua cac loi deadline bi lech ngay, task hom nay bi roi vao qua han, UI date picker trong Edit Task bi che, va luong file dinh kem trong task.
+- Dong thoi cai thien cach start backend de khong phai tat port 5000 thu cong lien tuc.
+
+**Thay doi:**
+- Deadline va overdue:
+  - `src/pages/homePage.jsx`
+    - Sua logic `isTaskOverdue`: deadline khong co gio chi qua han khi ngay deadline nho hon hom nay.
+    - Them validation chan deadline ngay da qua khi add task.
+  - `src/utils/dateTime.js`
+    - Them helper format/parse ngay local de tranh lech timezone.
+    - Them helper `isPastLocalDate` va `startOfLocalToday`.
+  - `server/src/controllers/taskController.js`
+    - Chuan hoa deadline API tra ve dang local string `YYYY-MM-DD HH:mm:ss`.
+    - Khi create/update task, khong luu deadline khong co gio thanh cuoi ngay nua; luu dung local date.
+    - Backend cung chan deadline ngay da qua.
+  - `src/pages/todayPage.jsx`, `src/pages/InboxPage.jsx`, `src/pages/upcomingPage.jsx`, `src/components/modals/EditTaskModal.jsx`
+    - Bo `toISOString()` khi submit deadline, thay bang local datetime.
+    - Them validation ngay da qua cho add/edit task.
+
+- Date picker / Edit Task UI:
+  - `src/components/task/DatePickerPopover.jsx`
+    - Chan chon ngay da qua va hien toast: "Ngay da qua, vui long chon hom nay hoac ngay sau."
+    - Ngay da qua duoc style mo/gach ngang.
+  - `src/components/modals/EditTaskModal.css`
+    - Sua date picker trong sidebar Edit Task bi che/khuat.
+    - Chuyen popover thanh layout compact vua sidebar, thu nho calendar, tranh tran ngang.
+  - `src/pages/homePage.css`
+    - Them style cho ngay qua khu trong calendar.
+
+- Attachment trong task:
+  - `src/components/modals/EditTaskModal.jsx`
+    - Load va hien thi tat ca file dinh kem cua task, khong chi hien file dau tien.
+    - Cho chon them nhieu file nhieu lan, danh sach file moi duoc cong don.
+    - Them nut xoa rieng cho tung file da luu va file moi dang cho upload.
+  - `src/components/modals/EditTaskModal.css`
+    - Them UI danh sach file dinh kem, style file moi dang pending va nut xoa.
+  - `server/src/routes/taskRoutes.js`
+    - Them route `DELETE /projects/:projectId/tasks/:taskId/attachments/:attachmentId`.
+  - `server/src/controllers/taskController.js`
+    - Them `deleteTaskAttachment`: xoa record DB va file vat ly trong `server/uploads/files`.
+
+- Backend startup / Socket:
+  - `server/src/socket.js`
+    - Tach socket instance ra module rieng de het circular dependency giua `app.js` va `taskController.js`.
+  - `server/src/app.js`
+    - Dung `setIo(io)` va them handler loi port dang duoc su dung.
+  - `scripts/start-server.cjs`
+    - Them script tu dong dung process cu dang giu port 5000 truoc khi start server moi.
+  - `package.json`
+    - Doi `npm run server` sang `node scripts/start-server.cjs`.
+
+**Ket qua:**
+- Deadline chon ngay 26 se hien dung ngay 26, khong bi nhay 25/27 do timezone.
+- Task deadline hom nay khong con bi dua vao Overdue khi khong chon gio.
+- Khong chon/submit duoc deadline ngay da qua.
+- Edit Task date picker khong con bi che, khong tran ngang trong sidebar.
+- Task co the them nhieu file, hien thi nhieu file va xoa tung file.
+- Chay `npm run server` se tu don port 5000 cu, giam loi `EADDRINUSE`.
+
+**Kiem tra:**
+- `npm.cmd run build` pass.
+- `node --check server\src\controllers\taskController.js` pass.
+- `node --check server\src\routes\taskRoutes.js` pass.
+- `node --check server\src\app.js` pass.
+- `node --check scripts\start-server.cjs` pass.
+
+---
+
 ### 2026-06-20 - Stage-scoped tasks and completed workflow lock
 
 **Mo ta:**
