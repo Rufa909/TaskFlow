@@ -21,7 +21,7 @@ import ProjectWorkflowTracker from "../components/project/ProjectWorkflowTracker
 import WorkflowProgressBar from "../components/project/WorkflowProgressBar";
 import CustomizeWorkflowModal from "../components/modals/CustomizeWorkflowModal";
 import StageTaskPanel from "../components/project/StageTaskPanel";
-import { toLocalDateTime } from "../utils/dateTime";
+import { isPastLocalDate, toLocalDateTime } from "../utils/dateTime";
 
 const LABELS_STORAGE_KEY = "taskflow.labels";
 const DEFAULT_LABEL_COLOR = "#ef4444";
@@ -483,6 +483,10 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     const projId = activeProject.project_id;
     const currentStageId = getCurrentWorkflowStage(workflowStages)?.id || null;
     const targetStageId = taskStageId || currentStageId;
+    if (isPastLocalDate(taskDeadline)) {
+      showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+      return;
+    }
 
     try {
       const formData = new FormData();

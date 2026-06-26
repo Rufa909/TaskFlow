@@ -14,7 +14,7 @@ import { useTeams } from "../context/TeamsContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import useSocketIo from "../hooks/useSocketIo";
-import { toLocalDateTime } from "../utils/dateTime";
+import { isPastLocalDate, toLocalDateTime } from "../utils/dateTime";
 import "./InboxPage.css";
 
 
@@ -243,6 +243,10 @@ export default function InboxPage() {
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim()) return;
+    if (isPastLocalDate(taskDeadline)) {
+      showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+      return;
+    }
 
     try {
       // If no project selected, try to add to first project or create as inbox task

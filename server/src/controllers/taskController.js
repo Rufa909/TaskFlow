@@ -1,6 +1,8 @@
 const pool = require("../config/db");
 const { emitTaskChanged } = require("../socket");
 const nodemailer = require("nodemailer");
+const fs = require("fs/promises");
+const path = require("path");
 let completionColumnReady;
 let attachmentTableReady;
 let labelsColumnReady;
@@ -601,6 +603,20 @@ function buildDeadlineDate(deadline, time) {
   return deadlineDate;
 }
 
+function isPastDeadlineDate(deadlineDate) {
+  if (!deadlineDate) return false;
+
+  const deadlineDay = new Date(
+    deadlineDate.getFullYear(),
+    deadlineDate.getMonth(),
+    deadlineDate.getDate(),
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return deadlineDay < today;
+}
+
 async function validateAssigneeIds(projectId, assigneeIds) {
   for (const userId of assigneeIds) {
     if ((await getProjectRole(projectId, userId)) !== "member") {
@@ -913,6 +929,12 @@ exports.createTask = async (req, res) => {
     }
 
     const deadlineDate = buildDeadlineDate(deadline, time);
+    if (isPastDeadlineDate(deadlineDate)) {
+      return res.status(400).json({
+        success: false,
+        message: "Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.",
+      });
+    }
     if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
@@ -1070,6 +1092,12 @@ exports.updateTask = async (req, res) => {
     }
 
     const deadlineDate = buildDeadlineDate(deadline, time);
+    if (isPastDeadlineDate(deadlineDate)) {
+      return res.status(400).json({
+        success: false,
+        message: "Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.",
+      });
+    }
 
     if (assigned_to !== undefined) {
       let assigneeIds = parseAssigneeIds(assigned_to);
@@ -1584,6 +1612,7 @@ exports.getTaskDetails = async (req, res) => {
       SELECT attachment_id, originalName, file_url, fileName, mimeType, size, upload_by
       FROM attachments
       WHERE task_id = ? AND comment_id IS NULL
+      ORDER BY attachment_id ASC
       `,
       [taskId]
     );
@@ -1629,6 +1658,54 @@ exports.getTaskDetails = async (req, res) => {
   } catch (err) {
     console.error("Loi getTaskDetails:", err);
     res.status(500).json({ success: false, message: "Lá»—i server" });
+  }
+};
+
+exports.deleteTaskAttachment = async (req, res) => {
+  try {
+    await ensureTaskAttachmentTable();
+    const { projectId, taskId, attachmentId } = req.params;
+
+    const role = await getProjectRole(projectId, req.user.id);
+    if (!["owner", "leader"].includes(role)) {
+      return res.status(403).json({ success: false, message: "You cannot delete task attachments" });
+    }
+
+    if (!(await canAccessTask(projectId, taskId, req.user.id))) {
+      return res.status(404).json({ success: false, message: "Task not found" });
+    }
+
+    const [[attachment]] = await pool.query(
+      `
+      SELECT attachment_id, fileName
+      FROM attachments
+      WHERE attachment_id = ?
+        AND task_id = ?
+        AND comment_id IS NULL
+      LIMIT 1
+      `,
+      [attachmentId, taskId],
+    );
+
+    if (!attachment) {
+      return res.status(404).json({ success: false, message: "Attachment not found" });
+    }
+
+    await pool.query("DELETE FROM attachments WHERE attachment_id = ?", [attachmentId]);
+
+    const filePath = path.resolve(__dirname, "../../uploads/files", attachment.fileName);
+    try {
+      await fs.unlink(filePath);
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        console.warn("Cannot delete attachment file:", err.message);
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Loi deleteTaskAttachment:", err);
+    res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 

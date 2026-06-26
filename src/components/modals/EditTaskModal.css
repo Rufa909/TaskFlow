@@ -349,8 +349,21 @@
   cursor: pointer;
 }
 
-.edit-detail-attachment-row {
+.edit-detail-attachments {
   margin: 14px 0 0 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.edit-detail-attachment-row {
+  max-width: min(520px, 100%);
+  min-height: 30px;
+  padding: 4px 6px 4px 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -358,17 +371,42 @@
   font-size: 13px;
 }
 
+.edit-detail-attachment-row a,
+.edit-detail-attachment-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .edit-detail-attachment-row a {
   color: #2563eb;
   text-decoration: none;
 }
 
-.edit-detail-attachment-row button {
+.edit-detail-attachment-row.pending {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.edit-detail-attachment-delete {
+  width: 24px;
+  height: 24px;
   border: 0;
+  border-radius: 5px;
   background: transparent;
-  color: var(--accent-color);
+  color: #777;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.edit-detail-attachment-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
 .edit-detail-task-attach-btn {
@@ -681,8 +719,82 @@
 
 .edit-detail-sidebar .date-picker-popover {
   top: calc(100% + 8px);
-  left: auto;
-  right: 0;
-  width: 540px;
+  left: 0;
+  right: auto;
+  width: 100%;
+  max-width: 100%;
   z-index: 90;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.edit-detail-sidebar .date-picker-header,
+.edit-detail-sidebar .time-section,
+.edit-detail-sidebar .date-picker-footer {
+  flex-shrink: 0;
+}
+
+.edit-detail-sidebar .date-picker-content {
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.edit-detail-sidebar .quick-options {
+  width: 100%;
+  flex: 0 0 auto;
+  border-right: 0;
+  border-bottom: 1px solid #eeeeee;
+  box-sizing: border-box;
+}
+
+.edit-detail-sidebar .quick-options button {
+  min-height: 32px;
+  padding: 6px 8px;
+}
+
+.edit-detail-sidebar .quick-options .left {
+  min-width: 0;
+}
+
+.edit-detail-sidebar .quick-options .left + .day {
+  flex-shrink: 0;
+}
+
+.edit-detail-sidebar .calendar-section {
+  flex: 0 0 auto;
+  padding: 8px 6px 10px;
+  overflow: hidden;
+}
+
+.edit-detail-sidebar .react-datepicker {
+  width: 100%;
+}
+
+.edit-detail-sidebar .react-datepicker__month-container {
+  width: 100%;
+}
+
+.edit-detail-sidebar .react-datepicker__day-name,
+.edit-detail-sidebar .react-datepicker__day,
+.edit-detail-sidebar .react-datepicker__time-name {
+  width: 27px !important;
+  line-height: 27px !important;
+  margin: 1px !important;
+}
+
+.edit-detail-sidebar .time-section {
+  padding: 8px 10px;
+}
+
+.edit-detail-sidebar .date-picker-footer {
+  padding: 8px 10px 10px;
+}
+
+.edit-detail-sidebar .date-picker-footer .submit-btn {
+  width: 100%;
+  min-height: 40px;
 }

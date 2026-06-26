@@ -30,3 +30,16 @@ export function formatLocalDate(value, options) {
   const date = parseLocalDate(value);
   return date ? date.toLocaleDateString(undefined, options) : "";
 }
+
+export function startOfLocalToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+export function isPastLocalDate(value) {
+  const date = parseLocalDate(value);
+  if (!date) return false;
+
+  return date < startOfLocalToday();
+}

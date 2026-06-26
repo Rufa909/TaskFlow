@@ -23,6 +23,7 @@ const {
   deleteSubtask,
   createTaskComment,
   deleteTaskComment,
+  deleteTaskAttachment,
   getTasksByStage,
 } = require("../controllers/taskController");
 
@@ -74,6 +75,7 @@ router.get("/projects/:projectId/task-submissions", authMiddleware, getTaskSubmi
 router.put("/projects/:projectId/task-submissions/:submissionId", authMiddleware, reviewTaskSubmission);
 router.post("/projects/:projectId/tasks/:taskId/review-submission", authMiddleware, reviewTaskSubmission);
 router.get("/projects/:projectId/tasks/:taskId/details", authMiddleware, getTaskDetails);
+router.delete("/projects/:projectId/tasks/:taskId/attachments/:attachmentId", authMiddleware, deleteTaskAttachment);
 router.post("/projects/:projectId/tasks/:taskId/subtasks", authMiddleware, createSubtask);
 router.put("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, updateSubtask);
 router.delete("/projects/:projectId/tasks/:taskId/subtasks/:subtaskId", authMiddleware, deleteSubtask);

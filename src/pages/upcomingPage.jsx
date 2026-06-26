@@ -15,7 +15,7 @@ import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
-import { formatLocalDate, parseLocalDate, toLocalDateTime } from "../utils/dateTime";
+import { formatLocalDate, isPastLocalDate, parseLocalDate, toLocalDateTime } from "../utils/dateTime";
 
 function startOfToday() {
   const date = new Date();
@@ -203,6 +203,10 @@ export default function UpcomingPage() {
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !activeProject) return;
+    if (isPastLocalDate(taskDeadline)) {
+      showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+      return;
+    }
 
     try {
       const formData = new FormData();

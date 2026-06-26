@@ -15,7 +15,7 @@ import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
-import { toLocalDateTime } from "../utils/dateTime";
+import { isPastLocalDate, toLocalDateTime } from "../utils/dateTime";
 
 export default function TodayPage() {
   const { user, logout, updateUser } = useAuth();
@@ -155,6 +155,10 @@ export default function TodayPage() {
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !activeProject) return;
+    if (isPastLocalDate(taskDeadline)) {
+      showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+      return;
+    }
     const projId = activeProject.project_id;
 
     try {

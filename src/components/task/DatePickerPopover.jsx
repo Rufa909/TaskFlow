@@ -3,6 +3,8 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format, addDays, nextMonday } from "date-fns";
 import { useRef } from "react";
+import { isPastLocalDate } from "../../utils/dateTime";
+import { useToast } from "../../context/ToastContext";
 
 export default function DatePickerPopover({
   taskDeadline,
@@ -14,6 +16,25 @@ export default function DatePickerPopover({
   setIsDatePickerOpen,
 }) {
   const timeInputRef = useRef();
+  const { showToast } = useToast();
+
+  const selectDeadline = (date, { close = false } = {}) => {
+    if (!date) {
+      setTaskDeadline(null);
+      setTaskTime("");
+      if (close) setIsDatePickerOpen(false);
+      return;
+    }
+
+    if (isPastLocalDate(date)) {
+      showToast("Date is in the past, please select a future date.", "error");
+      return;
+    }
+
+    setTaskDeadline(date);
+    if (close) setIsDatePickerOpen(false);
+  };
+
   return (
     <div className="date-picker-popover">
       <div className="date-picker-header">
@@ -27,8 +48,7 @@ export default function DatePickerPopover({
         <div className="quick-options">
           <button
             onClick={() => {
-              setTaskDeadline(new Date());
-              setIsDatePickerOpen(false);
+              selectDeadline(new Date(), { close: true });
             }}
           >
             <span className="left">
@@ -40,9 +60,7 @@ export default function DatePickerPopover({
 
           <button
             onClick={() => {
-              setTaskDeadline(addDays(new Date(), 1));
-
-              setIsDatePickerOpen(false);
+              selectDeadline(addDays(new Date(), 1), { close: true });
             }}
           >
             <span className="left">
@@ -58,9 +76,9 @@ export default function DatePickerPopover({
 
               const diff = 6 - target.getDay();
 
-              setTaskDeadline(addDays(target, diff >= 0 ? diff : diff + 7));
-
-              setIsDatePickerOpen(false);
+              selectDeadline(addDays(target, diff >= 0 ? diff : diff + 7), {
+                close: true,
+              });
             }}
           >
             <span className="left">
@@ -72,9 +90,7 @@ export default function DatePickerPopover({
 
           <button
             onClick={() => {
-              setTaskDeadline(nextMonday(new Date()));
-
-              setIsDatePickerOpen(false);
+              selectDeadline(nextMonday(new Date()), { close: true });
             }}
           >
             <span className="left">
@@ -88,10 +104,7 @@ export default function DatePickerPopover({
 
           <button
             onClick={() => {
-              setTaskDeadline(null);
-              setTaskTime("");
-
-              setIsDatePickerOpen(false);
+              selectDeadline(null, { close: true });
             }}
           >
             <span className="left">
@@ -103,7 +116,10 @@ export default function DatePickerPopover({
         <div className="calendar-section">
           <DatePicker
             selected={taskDeadline}
-            onChange={(date) => setTaskDeadline(date)}
+            onChange={(date) => selectDeadline(date)}
+            dayClassName={(date) =>
+              isPastLocalDate(date) ? "date-picker-day-past" : undefined
+            }
             inline
           />
         </div>
@@ -132,7 +148,13 @@ export default function DatePickerPopover({
       <div className="date-picker-footer">
         <button
           className="submit-btn"
-          onClick={() => setIsDatePickerOpen(false)}
+          onClick={() => {
+            if (isPastLocalDate(taskDeadline)) {
+              showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+              return;
+            }
+            setIsDatePickerOpen(false);
+          }}
           style={{ background: "#2c6fd2", color: "#fff", padding: "12px 20px" }}
         >
           Save

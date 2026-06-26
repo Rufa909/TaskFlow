@@ -5,7 +5,7 @@ import DatePickerPopover from "../task/DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api/axiosInstance";
-import { parseLocalDate, toLocalDateTime } from "../../utils/dateTime";
+import { isPastLocalDate, parseLocalDate, toLocalDateTime } from "../../utils/dateTime";
 import "./EditTaskModal.css";
 
 const API_ORIGIN = "http://localhost:5000";
@@ -13,9 +13,9 @@ const TASK_BLUE = "#1e88e5";
 
 const priorities = [
   { value: "urgent", label: "P1", name: "Urgent", color: TASK_BLUE },
-  { value: "high", label: "P1", name: "High", color: TASK_BLUE },
-  { value: "medium", label: "P2", name: "Medium", color: TASK_BLUE },
-  { value: "low", label: "P3", name: "Low", color: TASK_BLUE },
+  { value: "high", label: "P2", name: "High", color: TASK_BLUE },
+  { value: "medium", label: "P3", name: "Medium", color: TASK_BLUE },
+  { value: "low", label: "P4", name: "Low", color: TASK_BLUE },
 ];
 
 function formatTaskDate(value, taskTime) {
@@ -47,6 +47,7 @@ export default function EditTaskModal({
   const [projectMembers, setProjectMembers] = useState([]);
   const [assigneeIds, setAssigneeIds] = useState([]);
   const [attachments, setAttachments] = useState([]);
+  const [taskAttachments, setTaskAttachments] = useState([]);
   const [subtasks, setSubtasks] = useState([]);
   const [comments, setComments] = useState([]);
   const [subtaskDraft, setSubtaskDraft] = useState("");
@@ -87,6 +88,7 @@ export default function EditTaskModal({
             : [],
       );
       setAttachments([]);
+      setTaskAttachments([]);
       setSubtasks([]);
       setComments([]);
       setSubtaskDraft("");
@@ -111,6 +113,7 @@ export default function EditTaskModal({
         setComments(res.data.comments || []);
         setUserRole(res.data.role || "member");
         setProjectName(res.data.project_name || selectedTask.project_name || "");
+        setTaskAttachments(res.data.attachments || []);
         setProjectMembers(res.data.members || []);
         setAssigneeIds((res.data.assignees || []).map((member) => Number(member.user_id)));
       } catch (err) {
@@ -144,6 +147,10 @@ export default function EditTaskModal({
 
   const handleSave = async () => {
     if (!canEditTask || !title.trim() || saving) return;
+    if (isPastLocalDate(deadline)) {
+      showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -194,7 +201,8 @@ export default function EditTaskModal({
       return;
     }
 
-    setAttachments(files);
+    setAttachments((prev) => [...prev, ...files]);
+    event.target.value = "";
   };
 
   const handleCommentAttachmentChange = (event) => {
@@ -211,6 +219,10 @@ export default function EditTaskModal({
   };
 
   const selectedAttachmentFiles = Array.isArray(attachments) ? attachments : [];
+
+  const removeSelectedAttachmentFile = (index) => {
+    setAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  };
 
   const closePropertyPopups = () => {
     setIsDatePickerOpen(false);
@@ -307,6 +319,20 @@ export default function EditTaskModal({
     }
   };
 
+  const deleteTaskAttachment = async (attachmentId) => {
+    try {
+      await api.delete(
+        `/projects/${selectedTask.project_id}/tasks/${selectedTask.task_id}/attachments/${attachmentId}`,
+      );
+      setTaskAttachments((prev) =>
+        prev.filter((item) => item.attachment_id !== attachmentId),
+      );
+      showToast("Đã xóa file đính kèm", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Không thể xóa file đính kèm", "error");
+    }
+  };
+
   return (
     <div className="edit-task-overlay" onClick={() => setSelectedTask(null)}>
       <div className="edit-task-modal todoist-detail-modal" onClick={(e) => e.stopPropagation()}>
@@ -368,29 +394,47 @@ export default function EditTaskModal({
                 />
               </div>
             </div>
-            {(selectedAttachmentFiles.length > 0 || selectedTask.attachment_url) && (
-              <div className="edit-detail-attachment-row">
-                <Icon name="paperclip" size={14} />
-                {selectedTask.attachment_url && selectedAttachmentFiles.length === 0 ? (
-                  <a
-                    href={`${API_ORIGIN}${selectedTask.attachment_url}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {selectedTask.attachment_name || "Attachment"}
-                  </a>
-                ) : (
-                  <span>
-                    {selectedAttachmentFiles.length > 1
-                      ? selectedAttachmentFiles.map((file) => file.name).join(", ")
-                      : selectedAttachmentFiles[0]?.name}
-                  </span>
-                )}
-                {selectedAttachmentFiles.length > 0 && !isMember && (
-                  <button type="button" onClick={() => setAttachments([])}>
-                    Remove
-                  </button>
-                )}
+            {(taskAttachments.length > 0 || selectedAttachmentFiles.length > 0) && (
+              <div className="edit-detail-attachments">
+                {taskAttachments.map((attachment) => (
+                  <div className="edit-detail-attachment-row" key={attachment.attachment_id}>
+                    <Icon name="paperclip" size={14} />
+                    <a
+                      href={`${API_ORIGIN}${attachment.file_url}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {attachment.originalName || "Attachment"}
+                    </a>
+                    {!isMember && (
+                      <button
+                        type="button"
+                        className="edit-detail-attachment-delete"
+                        onClick={() => deleteTaskAttachment(attachment.attachment_id)}
+                        aria-label="Delete attachment"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {selectedAttachmentFiles.map((file, index) => (
+                  <div className="edit-detail-attachment-row pending" key={`${file.name}-${index}`}>
+                    <Icon name="paperclip" size={14} />
+                    <span>{file.name}</span>
+                    {!isMember && (
+                      <button
+                        type="button"
+                        className="edit-detail-attachment-delete"
+                        onClick={() => removeSelectedAttachmentFile(index)}
+                        aria-label="Remove selected file"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
             {!isMember && (
