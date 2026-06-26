@@ -15,6 +15,7 @@ import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
+import { toLocalDateTime } from "../utils/dateTime";
 
 export default function TodayPage() {
   const { user, logout, updateUser } = useAuth();
@@ -162,7 +163,7 @@ export default function TodayPage() {
       formData.append("description", newTaskDesc.trim());
       formData.append(
         "deadline",
-        taskDeadline ? taskDeadline.toISOString() : "",
+        taskDeadline ? toLocalDateTime(taskDeadline, taskTime || "00:00:00") : "",
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);

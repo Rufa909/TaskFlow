@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "../common/Icon";
+import { formatLocalDate } from "../../utils/dateTime";
 import "./TaskList.css";
 
 const API_ORIGIN = "http://localhost:5000";
@@ -345,7 +346,7 @@ export default function TaskList({
                   }}
                 >
                   <Icon name="calendar" size={12} />
-                  {new Date(task.deadline).toLocaleDateString()}
+                  {formatLocalDate(task.deadline)}
                   {task.time && (
                     <span className="task-time">{task.time.slice(0, 5)}</span>
                   )}

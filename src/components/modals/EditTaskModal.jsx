@@ -5,6 +5,7 @@ import DatePickerPopover from "../task/DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api/axiosInstance";
+import { parseLocalDate, toLocalDateTime } from "../../utils/dateTime";
 import "./EditTaskModal.css";
 
 const API_ORIGIN = "http://localhost:5000";
@@ -16,16 +17,6 @@ const priorities = [
   { value: "medium", label: "P2", name: "Medium", color: TASK_BLUE },
   { value: "low", label: "P3", name: "Low", color: TASK_BLUE },
 ];
-
-function toLocalDateTimeInput(value) {
-  if (!value) return "";
-
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}T00:00:00`;
-}
 
 function formatTaskDate(value, taskTime) {
   if (!value) return "Add date";
@@ -74,7 +65,7 @@ export default function EditTaskModal({
     if (selectedTask) {
       setTitle(selectedTask.title || "");
       setDescription(selectedTask.description || "");
-      setDeadline(selectedTask.deadline ? new Date(selectedTask.deadline) : null);
+      setDeadline(selectedTask.deadline ? parseLocalDate(selectedTask.deadline) : null);
       setTime(
         selectedTask.time && selectedTask.time.slice(0, 5) !== "00:00"
           ? selectedTask.time.slice(0, 5)
@@ -159,7 +150,7 @@ export default function EditTaskModal({
       const formData = new FormData();
       formData.append("title", title.trim());
       formData.append("description", description.trim());
-      formData.append("deadline", deadline ? toLocalDateTimeInput(deadline) : "");
+      formData.append("deadline", deadline ? toLocalDateTime(deadline, time || "00:00:00") : "");
       formData.append("time", time || "");
       formData.append("priority", priority);
       formData.append("labels", JSON.stringify(labels));

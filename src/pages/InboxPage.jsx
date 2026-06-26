@@ -14,6 +14,7 @@ import { useTeams } from "../context/TeamsContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import useSocketIo from "../hooks/useSocketIo";
+import { toLocalDateTime } from "../utils/dateTime";
 import "./InboxPage.css";
 
 
@@ -260,7 +261,7 @@ export default function InboxPage() {
       formData.append("description", newTaskDesc.trim());
       formData.append(
         "deadline",
-        taskDeadline ? taskDeadline.toISOString() : "",
+        taskDeadline ? toLocalDateTime(taskDeadline, taskTime || "00:00:00") : "",
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);

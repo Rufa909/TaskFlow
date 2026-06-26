@@ -4,6 +4,7 @@ const path = require('path');
 const http = require('http');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { Server } = require('socket.io');
+const { setIo } = require('./socket');
 
 const workflowRoutes = require('./routes/workflowRoutes');
 const aiRoutes = require("./routes/aiRoutes");
@@ -53,6 +54,7 @@ const io = new Server(httpServer, {
         credentials: true
     }
 });
+setIo(io);
 
 // Room theo projectId (room name bạn tự chọn, ví dụ: project:<projectId>)
 io.on('connection', (socket) => {
@@ -69,8 +71,6 @@ io.on('connection', (socket) => {
         console.log('Socket da ngat ket noi:', socket.id);
     });
 });
-
-module.exports.io = io;
 
 // ─── Global Error Handler
 // Bắt lỗi từ tất cả route, phải có 4 tham số (err, req, res, next)
@@ -90,6 +90,15 @@ app.use((req, res) => {
 })
 // ─── Khởi động server chayj bang socket
 const PORT = process.env.PORT || 5000;
+httpServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} dang duoc su dung. Hay tat server cu hoac doi PORT trong .env.`);
+        process.exit(1);
+    }
+
+    throw err;
+});
+
 httpServer.listen(PORT, () => {
     console.log(`Server (HTTP + Socket.io) is running on port ${PORT}`);
 });

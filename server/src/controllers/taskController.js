@@ -1,5 +1,5 @@
 const pool = require("../config/db");
-const { io } = require("../app");
+const { emitTaskChanged } = require("../socket");
 const nodemailer = require("nodemailer");
 let completionColumnReady;
 let attachmentTableReady;
@@ -486,9 +486,26 @@ function parseTaskLabels(value) {
   }
 }
 
+function formatDateTimeForApi(value) {
+  if (!value) return null;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 function normalizeTaskRows(rows) {
   return rows.map((task) => ({
     ...task,
+    deadline: formatDateTimeForApi(task.deadline),
     labels: parseTaskLabels(task.labels),
   }));
 }
@@ -566,6 +583,22 @@ function parseAssigneeIds(value) {
 
 function hasBodyField(req, field) {
   return Object.prototype.hasOwnProperty.call(req.body || {}, field);
+}
+
+function buildDeadlineDate(deadline, time) {
+  if (!deadline) return null;
+
+  const deadlineDate = new Date(deadline);
+  if (Number.isNaN(deadlineDate.getTime())) return null;
+
+  if (time) {
+    const [hours, minutes] = String(time).split(":");
+    deadlineDate.setHours(Number(hours), Number(minutes), 0, 0);
+  } else {
+    deadlineDate.setHours(0, 0, 0, 0);
+  }
+
+  return deadlineDate;
 }
 
 async function validateAssigneeIds(projectId, assigneeIds) {
@@ -879,10 +912,7 @@ exports.createTask = async (req, res) => {
       });
     }
 
-    let deadlineDate = null;
-    if (deadline) {
-      deadlineDate = new Date(deadline);
-    }
+    const deadlineDate = buildDeadlineDate(deadline, time);
     if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
@@ -992,10 +1022,9 @@ const enrichedTask = (await enrichTaskRows(rows))[0];
 
 // realtime push
 try {
-  io.to(`project:${projectId}`).emit('taskChanged', {
+  emitTaskChanged(projectId, {
     type: 'created',
     task: enrichedTask,
-    projectId: Number(projectId),
   });
 } catch (_) {}
 
@@ -1040,18 +1069,7 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    let deadlineDate = null;
-
-    if (deadline) {
-      deadlineDate = new Date(deadline);
-
-      if (time) {
-        const [hours, minutes] = time.split(":");
-
-        deadlineDate.setHours(parseInt(hours, 10));
-        deadlineDate.setMinutes(parseInt(minutes, 10));
-      }
-    }
+    const deadlineDate = buildDeadlineDate(deadline, time);
 
     if (assigned_to !== undefined) {
       let assigneeIds = parseAssigneeIds(assigned_to);
@@ -1147,10 +1165,9 @@ exports.updateTask = async (req, res) => {
 const enrichedTask = (await enrichTaskRows(rows))[0];
 
 try {
-  io.to(`project:${projectId}`).emit('taskChanged', {
+  emitTaskChanged(projectId, {
     type: 'updated',
     task: enrichedTask,
-    projectId: Number(projectId),
   });
 } catch (_) {}
 
@@ -1401,10 +1418,9 @@ exports.completeTask = async (req, res) => {
 const enrichedTask = (await enrichTaskRows(rows))[0];
 
 try {
-  io.to(`project:${projectId}`).emit('taskChanged', {
+  emitTaskChanged(projectId, {
     type: 'completed',
     task: enrichedTask,
-    projectId: Number(projectId),
   });
 } catch (_) {}
 
@@ -1501,10 +1517,9 @@ exports.deleteTask = async (req, res) => {
       [taskId, projectId, projectId],
     );
 try {
-      io.to(`project:${projectId}`).emit('taskChanged', {
+      emitTaskChanged(projectId, {
         type: 'deleted',
         taskId: Number(taskId),
-        projectId: Number(projectId),
       });
     } catch (_) {}
 
@@ -2576,7 +2591,13 @@ exports.checkOverdueTasks = async () => {
 
   const [tasks] = await pool.query(
     `
-    SELECT t.task_id, t.title, t.deadline, p.name AS project_name,
+    SELECT t.task_id, t.title,
+           CASE
+             WHEN t.time IS NULL OR t.time = '00:00:00'
+               THEN DATE_ADD(DATE(t.deadline), INTERVAL 1 DAY)
+             ELSE t.deadline
+           END AS deadline,
+           p.name AS project_name,
            assigned.user_id AS assigned_user_id,
            assigned.email AS assigned_email,
            leader.user_id AS leader_user_id,
@@ -2590,7 +2611,13 @@ exports.checkOverdueTasks = async () => {
       AND t.completed_at IS NULL
       AND t.assignment_status IN ('none', 'approved')
       AND t.deadline IS NOT NULL
-      AND t.deadline < NOW()
+      AND (
+        CASE
+          WHEN t.time IS NULL OR t.time = '00:00:00'
+            THEN DATE_ADD(DATE(t.deadline), INTERVAL 1 DAY)
+          ELSE t.deadline
+        END
+      ) < NOW()
       AND t.deadline_notified_at IS NULL
       AND t.assigned_to IS NOT NULL
     LIMIT 50

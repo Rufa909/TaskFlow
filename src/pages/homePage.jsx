@@ -21,6 +21,7 @@ import ProjectWorkflowTracker from "../components/project/ProjectWorkflowTracker
 import WorkflowProgressBar from "../components/project/WorkflowProgressBar";
 import CustomizeWorkflowModal from "../components/modals/CustomizeWorkflowModal";
 import StageTaskPanel from "../components/project/StageTaskPanel";
+import { toLocalDateTime } from "../utils/dateTime";
 
 const LABELS_STORAGE_KEY = "taskflow.labels";
 const DEFAULT_LABEL_COLOR = "#ef4444";
@@ -70,6 +71,11 @@ function getSavedLabels() {
 
 function getDateOnly(value) {
   if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -105,9 +111,24 @@ function isDeadlineMatch(deadline, activeDeadlines) {
 
 function isTaskOverdue(task) {
   if (!task.deadline || task.status === "COMPLETED" || task.completed_at) return false;
-  const deadline = new Date(task.deadline);
-  if (Number.isNaN(deadline.getTime())) return false;
-  return deadline < new Date();
+
+  const deadlineDate = getDateOnly(task.deadline);
+  if (!deadlineDate) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const taskTime =
+    task.time && task.time.slice(0, 5) !== "00:00" ? task.time.slice(0, 5) : "";
+
+  if (!taskTime) {
+    return deadlineDate < today;
+  }
+
+  const deadline = new Date(deadlineDate);
+  const [hours, minutes] = taskTime.split(":");
+  deadline.setHours(Number(hours), Number(minutes), 0, 0);
+
+  return deadline < now;
 }
 
 function getCurrentWorkflowStage(stages = []) {
@@ -469,7 +490,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       formData.append("description", newTaskDesc.trim());
       formData.append(
         "deadline",
-        taskDeadline ? taskDeadline.toISOString() : "",
+        taskDeadline ? toLocalDateTime(taskDeadline, taskTime || "00:00:00") : "",
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);

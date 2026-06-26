@@ -15,6 +15,7 @@ import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
 import EditTaskModal from "../components/modals/EditTaskModal";
+import { formatLocalDate, parseLocalDate, toLocalDateTime } from "../utils/dateTime";
 
 function startOfToday() {
   const date = new Date();
@@ -30,14 +31,13 @@ function tomorrow() {
 
 function isUpcomingTask(task) {
   if (!task.deadline) return false;
-  const deadline = new Date(task.deadline);
-  deadline.setHours(0, 0, 0, 0);
+  const deadline = parseLocalDate(task.deadline);
+  if (!deadline) return false;
   return deadline > startOfToday();
 }
 
 function formatGroupDate(dateValue) {
-  const date = new Date(dateValue);
-  return date.toLocaleDateString(undefined, {
+  return formatLocalDate(dateValue, {
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -102,7 +102,7 @@ export default function UpcomingPage() {
         const upcomingTasks = taskResponses
           .flat()
           .filter(isUpcomingTask)
-          .sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
+          .sort((a, b) => parseLocalDate(a.deadline) - parseLocalDate(b.deadline));
 
         setTasks(upcomingTasks);
       } catch (err) {
@@ -118,7 +118,8 @@ export default function UpcomingPage() {
 
   const groupedTasks = useMemo(() => {
     return tasks.reduce((groups, task) => {
-      const key = new Date(task.deadline).toDateString();
+      const key = parseLocalDate(task.deadline)?.toDateString();
+      if (!key) return groups;
       if (!groups[key]) {
         groups[key] = {
           label: formatGroupDate(task.deadline),
@@ -168,7 +169,7 @@ export default function UpcomingPage() {
         prev
           .map((item) => (item.task_id === taskId ? updatedTask : item))
           .filter(isUpcomingTask)
-          .sort((a, b) => new Date(a.deadline) - new Date(b.deadline)),
+          .sort((a, b) => parseLocalDate(a.deadline) - parseLocalDate(b.deadline)),
       );
       showToast("Task updated successfully", "success");
     } catch (err) {
@@ -209,7 +210,7 @@ export default function UpcomingPage() {
       formData.append("description", newTaskDesc.trim());
       formData.append(
         "deadline",
-        taskDeadline ? taskDeadline.toISOString() : "",
+        taskDeadline ? toLocalDateTime(taskDeadline, taskTime || "00:00:00") : "",
       );
       formData.append("time", taskTime || "");
       formData.append("priority", taskPriority);
@@ -231,7 +232,7 @@ export default function UpcomingPage() {
       if (isUpcomingTask(newTask)) {
         setTasks((prev) =>
           [...prev, newTask].sort(
-            (a, b) => new Date(a.deadline) - new Date(b.deadline),
+            (a, b) => parseLocalDate(a.deadline) - parseLocalDate(b.deadline),
           ),
         );
       }
