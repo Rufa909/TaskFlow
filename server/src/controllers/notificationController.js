@@ -2,6 +2,14 @@ const pool = require("../config/db");
 
 exports.getMyNotifications = async (req, res) => {
   try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM notifications WHERE user_id = ?",
+      [req.user.id],
+    );
+
     const [notifications] = await pool.query(
       `
       SELECT
@@ -52,12 +60,18 @@ exports.getMyNotifications = async (req, res) => {
       LEFT JOIN projects tp ON tp.project_id = t.project_id
       WHERE n.user_id = ?
       ORDER BY n.created_at DESC
-      LIMIT 50
+      LIMIT ? OFFSET ?
       `,
-      [req.user.id],
+      [req.user.id, limit, offset],
     );
 
-    res.json({ success: true, notifications });
+    res.json({
+      success: true,
+      notifications,
+      total: Number(countRow?.total || 0),
+      limit,
+      offset,
+    });
   } catch (err) {
     console.error("Loi getMyNotifications:", err);
     res.status(500).json({ success: false, message: "Loi server" });

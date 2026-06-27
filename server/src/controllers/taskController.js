@@ -1395,11 +1395,20 @@ exports.completeTask = async (req, res) => {
         [taskId, projectId],
       );
 
+      const submittedTask = (await enrichTaskRows([{ ...task, status: "SUBMITTED" }]))[0];
+
+      try {
+        emitTaskChanged(projectId, {
+          type: "submitted",
+          task: submittedTask,
+        });
+      } catch (_) {}
+
       return res.json({
         success: true,
         pendingApproval: true,
         message: "Task submitted. Waiting for leader approval.",
-        task: (await enrichTaskRows([{ ...task, status: "SUBMITTED" }]))[0],
+        task: submittedTask,
       });
     }
 
@@ -2353,6 +2362,7 @@ exports.getTaskSubmissions = async (req, res) => {
   try {
     await ensureTaskWorkflowSchema();
     const { projectId } = req.params;
+    const includeHistory = req.query.includeHistory === "true";
     const role = await getProjectRole(projectId, req.user.id);
 
     if (!["owner", "leader"].includes(role)) {
@@ -2376,7 +2386,9 @@ exports.getTaskSubmissions = async (req, res) => {
     );
 
     let visibleSubmissions = submissions;
-    if (role === "leader") {
+    if (includeHistory) {
+      visibleSubmissions = submissions;
+    } else if (role === "leader") {
       visibleSubmissions = submissions.filter(
         (submission) => submission.status === "pending",
       );

@@ -266,7 +266,7 @@
 }
 
 .notification-popover-list {
-  max-height: 416px;
+  max-height: 336px;
   overflow-y: auto;
   padding: 6px;
 }
@@ -330,4 +330,26 @@
   color: var(--text-secondary);
   font-size: 13px;
   text-align: center;
+}
+
+.notification-popover-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+  background: #fff;
+}
+
+.notification-detail-link {
+  border: none;
+  background: transparent;
+  color: var(--accent-color);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.notification-detail-link:hover {
+  text-decoration: underline;
 }

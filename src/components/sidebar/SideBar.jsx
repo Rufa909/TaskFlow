@@ -160,6 +160,7 @@ export default function Sidebar({
 
   const { setIsFiltersOpen } = useFilters();
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
+  const latestNotifications = notifications.slice(0, 5);
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
   const markAllNotificationsRead = async () => {
@@ -222,6 +223,12 @@ export default function Sidebar({
       setIsNotificationsOpen(false);
       navigate(`/?projectId=${projectId}&taskId=${notification.reference_id}`);
     }
+  };
+
+  const handleViewNotificationDetails = () => {
+    closeProfileMenu();
+    setIsNotificationsOpen(false);
+    navigate("/notifications");
   };
 
   // fetch per-project counts and poll for realtime-ish updates
@@ -320,10 +327,10 @@ export default function Sidebar({
               <div className="notification-popover-list">
                 {loadingNotifications ? (
                   <div className="notification-popover-empty">Loading...</div>
-                ) : notifications.length === 0 ? (
-                  <div className="notification-popover-empty">No new notifications</div>
+                ) : latestNotifications.length === 0 ? (
+                  <div className="notification-popover-empty">No notifications</div>
                 ) : (
-                  notifications.map((notification) => (
+                  latestNotifications.map((notification) => (
                     <button
                       key={notification.noti_id}
                       type="button"
@@ -351,6 +358,15 @@ export default function Sidebar({
                     </button>
                   ))
                 )}
+              </div>
+              <div className="notification-popover-footer">
+                <button
+                  type="button"
+                  className="notification-detail-link"
+                  onClick={handleViewNotificationDetails}
+                >
+                  View details
+                </button>
               </div>
             </div>
           )}

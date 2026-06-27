@@ -134,6 +134,7 @@ const sendInvitation = async (req, res) => {
 // Lấy danh sách lời mời của user hiện tại
 const getMyInvitations = async (req, res) => {
   try {
+    const includeHistory = req.query.includeHistory === "true";
     const [invitations] = await pool.query(
       `SELECT ti.invitation_id, ti.project_id, ti.sender_id, ti.status, ti.created_at,
                     p.name AS project_name,
@@ -141,7 +142,8 @@ const getMyInvitations = async (req, res) => {
              FROM team_invitations ti
              JOIN projects p ON ti.project_id = p.project_id
              JOIN users u ON ti.sender_id = u.user_id
-             WHERE ti.receiver_id = ? AND ti.status = 'pending'
+             WHERE ti.receiver_id = ?
+               ${includeHistory ? "" : "AND ti.status = 'pending'"}
                AND p.deleted_at IS NULL
              ORDER BY ti.created_at DESC`,
       [req.user.id],

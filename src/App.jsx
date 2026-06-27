@@ -6,6 +6,7 @@ import HomePage from './pages/homePage';
 import TodayPage from './pages/todayPage';
 import UpcomingPage from './pages/upcomingPage';
 import InboxPage from './pages/InboxPage';
+import NotificationsPage from './pages/NotificationsPage';
 import { FiltersProvider } from './context/FiltersContext';
 import { TeamsProvider } from './context/TeamsContext';
 import { ToastProvider } from './context/ToastContext';
@@ -70,6 +71,14 @@ export default function App() {
                     element={
                       <ProtectedRoute>
                         <InboxPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/notifications"
+                    element={
+                      <ProtectedRoute>
+                        <NotificationsPage />
                       </ProtectedRoute>
                     }
                   />

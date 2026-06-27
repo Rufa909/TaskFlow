@@ -42,6 +42,34 @@ function timeAgo(dateStr) {
   return date.toLocaleDateString();
 }
 
+function approvalStatusLabel(status) {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "leader_approved":
+      return "Leader approved";
+    case "approved":
+      return "Approved";
+    case "rejected":
+      return "Changes requested";
+    default:
+      return status || "Unknown";
+  }
+}
+
+function invitationStatusLabel(status) {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "accepted":
+      return "Accepted";
+    case "declined":
+      return "Declined";
+    default:
+      return status || "Unknown";
+  }
+}
+
 export default function InboxPage() {
   const { user, logout, updateUser } = useAuth();
   const { showToast } = useToast();
@@ -57,12 +85,18 @@ export default function InboxPage() {
   const [reviewingKey, setReviewingKey] = useState("");
   const [changesSubmission, setChangesSubmission] = useState(null);
   const [changesReason, setChangesReason] = useState("");
+  const [approvalDetailsOpen, setApprovalDetailsOpen] = useState(false);
+  const [approvalHistory, setApprovalHistory] = useState([]);
+  const [loadingApprovalHistory, setLoadingApprovalHistory] = useState(false);
 
   // Invitation states
   const [invitations, setInvitations] = useState([]);
   const [loadingInvitations, setLoadingInvitations] = useState(true);
   const [respondingId, setRespondingId] = useState(null);
   const [fadingIds, setFadingIds] = useState(new Set());
+  const [invitationDetailsOpen, setInvitationDetailsOpen] = useState(false);
+  const [invitationHistory, setInvitationHistory] = useState([]);
+  const [loadingInvitationHistory, setLoadingInvitationHistory] = useState(false);
 
   // Sidebar states
   const [projects, setProjects] = useState([]);
@@ -185,6 +219,61 @@ export default function InboxPage() {
     };
     fetchInvitations();
   }, []);
+
+  const loadApprovalHistory = async () => {
+    setLoadingApprovalHistory(true);
+    try {
+      const submissionResults = await Promise.all(
+        reviewableProjects.map((project) =>
+          api
+            .get(`/projects/${project.project_id}/task-submissions`, {
+              params: { includeHistory: true },
+            })
+            .then((res) =>
+              (res.data.submissions || []).map((item) => ({
+                ...item,
+                project_name: project.name,
+              })),
+            )
+            .catch(() => []),
+        ),
+      );
+
+      setApprovalHistory(submissionResults.flat());
+    } finally {
+      setLoadingApprovalHistory(false);
+    }
+  };
+
+  const loadInvitationHistory = async () => {
+    setLoadingInvitationHistory(true);
+    try {
+      const res = await api.get("/teams/invitations", {
+        params: { includeHistory: true },
+      });
+      setInvitationHistory(res.data.invitations || []);
+    } catch (err) {
+      console.error("Cannot load invitation history", err);
+    } finally {
+      setLoadingInvitationHistory(false);
+    }
+  };
+
+  const toggleApprovalDetails = () => {
+    const nextOpen = !approvalDetailsOpen;
+    setApprovalDetailsOpen(nextOpen);
+    if (nextOpen) {
+      loadApprovalHistory();
+    }
+  };
+
+  const toggleInvitationDetails = () => {
+    const nextOpen = !invitationDetailsOpen;
+    setInvitationDetailsOpen(nextOpen);
+    if (nextOpen) {
+      loadInvitationHistory();
+    }
+  };
 
   const handleDeleteTask = async (taskId) => {
     const task = tasks.find((t) => t.task_id === taskId);
@@ -376,6 +465,9 @@ export default function InboxPage() {
           return next;
         });
         refreshInvitationCount();
+        if (invitationDetailsOpen) {
+          loadInvitationHistory();
+        }
       }, 450);
     } catch (err) {
       console.error("Cannot respond to invitation", err);
@@ -419,6 +511,9 @@ export default function InboxPage() {
       );
       if (action === "reject") {
         closeChangesModal();
+      }
+      if (approvalDetailsOpen) {
+        loadApprovalHistory();
       }
       showToast(action === "approve" ? "Task approved" : "Submission rejected", "success");
     } catch (err) {
@@ -489,15 +584,24 @@ export default function InboxPage() {
 
           <div className="inbox-approvals-section">
             <div className="inbox-invitations-title">
-              <span className="title-icon">
-                <Icon name="check" size={16} />
-              </span>
-              Approvals
-              {taskSubmissions.length > 0 && (
-                <span className="invitation-count-badge">
-                  {taskSubmissions.length}
+              <span className="inbox-title-main">
+                <span className="title-icon">
+                  <Icon name="check" size={16} />
                 </span>
-              )}
+                <span>Approvals</span>
+                {taskSubmissions.length > 0 && (
+                  <span className="invitation-count-badge">
+                    {taskSubmissions.length}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="inbox-detail-toggle"
+                onClick={toggleApprovalDetails}
+              >
+                {approvalDetailsOpen ? "Hide details" : "View details"}
+              </button>
             </div>
 
             {loadingApprovals ? (
@@ -547,21 +651,65 @@ export default function InboxPage() {
               </>
             )}
 
+            {approvalDetailsOpen && (
+              <div className="inbox-detail-panel">
+                {loadingApprovalHistory ? (
+                  <div className="inbox-detail-empty">Loading approval history...</div>
+                ) : approvalHistory.length === 0 ? (
+                  <div className="inbox-detail-empty">No approval history</div>
+                ) : (
+                  approvalHistory.map((submission) => (
+                    <div
+                      className="inbox-detail-card"
+                      key={`approval-history-${submission.submission_id}`}
+                    >
+                      <div className="inbox-detail-main">
+                        <div className="inbox-detail-title">
+                          {submission.status === "leader_approved"
+                            ? `Owner approval for "${submission.title}"`
+                            : `Review submitted task "${submission.title}"`}
+                        </div>
+                        <div className="inbox-detail-meta">
+                          {submission.project_name} - submitted by {submission.submitted_by_username}
+                          {submission.created_at && ` - ${timeAgo(submission.created_at)}`}
+                        </div>
+                        {submission.note && (
+                          <div className="inbox-detail-note">{submission.note}</div>
+                        )}
+                      </div>
+                      <span className={`inbox-status-badge status-${submission.status}`}>
+                        {approvalStatusLabel(submission.status)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
             <div className="inbox-section-divider" />
           </div>
 
           {/* ---- Invitations Section ---- */}
           <div className="inbox-invitations-section">
             <div className="inbox-invitations-title">
-              <span className="title-icon">
-                <Icon name="mail" size={16} />
-              </span>
-              Team Invitations
-              {invitations.length > 0 && (
-                <span className="invitation-count-badge">
-                  {invitations.length}
+              <span className="inbox-title-main">
+                <span className="title-icon">
+                  <Icon name="mail" size={16} />
                 </span>
-              )}
+                <span>Team Invitations</span>
+                {invitations.length > 0 && (
+                  <span className="invitation-count-badge">
+                    {invitations.length}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="inbox-detail-toggle"
+                onClick={toggleInvitationDetails}
+              >
+                {invitationDetailsOpen ? "Hide details" : "View details"}
+              </button>
             </div>
 
             {loadingInvitations ? (
@@ -642,6 +790,41 @@ export default function InboxPage() {
                   </div>
                 </div>
               ))
+            )}
+
+            {invitationDetailsOpen && (
+              <div className="inbox-detail-panel">
+                {loadingInvitationHistory ? (
+                  <div className="inbox-detail-empty">Loading invitation history...</div>
+                ) : invitationHistory.length === 0 ? (
+                  <div className="inbox-detail-empty">No invitation history</div>
+                ) : (
+                  invitationHistory.map((inv) => (
+                    <div
+                      className="inbox-detail-card"
+                      key={`invitation-history-${inv.invitation_id}`}
+                    >
+                      <div className="inbox-detail-main">
+                        <div className="inbox-detail-title">
+                          {inv.sender_username || "Unknown"}
+                          {inv.sender_email && (
+                            <span className="inbox-detail-inline">
+                              {inv.sender_email}
+                            </span>
+                          )}
+                        </div>
+                        <div className="inbox-detail-meta">
+                          {inv.project_name || "Project"}
+                          {inv.created_at && ` - ${timeAgo(inv.created_at)}`}
+                        </div>
+                      </div>
+                      <span className={`inbox-status-badge status-${inv.status}`}>
+                        {invitationStatusLabel(inv.status)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
             )}
 
             <div className="inbox-section-divider" />

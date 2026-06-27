@@ -126,6 +126,7 @@
 .inbox-invitations-title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   font-size: 15px;
   font-weight: 700;
@@ -133,6 +134,13 @@
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1.5px solid var(--border-color, #f0f0f0);
+}
+
+.inbox-title-main {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
 }
 
 .inbox-invitations-title .title-icon {
@@ -160,6 +168,116 @@
   font-weight: 700;
   margin-left: 4px;
   box-shadow: 0 2px 6px rgba(229, 57, 53, 0.3);
+}
+
+.inbox-detail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--accent-color, #1e88e5);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.inbox-detail-toggle:hover {
+  text-decoration: underline;
+}
+
+.inbox-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.inbox-detail-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #f0f0f0);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.inbox-detail-main {
+  min-width: 0;
+}
+
+.inbox-detail-title {
+  color: var(--text-main, #202020);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.inbox-detail-inline {
+  margin-left: 8px;
+  color: var(--text-secondary, #808080);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.inbox-detail-meta,
+.inbox-detail-note {
+  margin-top: 4px;
+  color: var(--text-secondary, #808080);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.inbox-detail-note {
+  color: #b45309;
+}
+
+.inbox-detail-empty {
+  padding: 18px 12px;
+  color: var(--text-secondary, #808080);
+  font-size: 13px;
+  text-align: center;
+  border: 1px dashed var(--border-color, #f0f0f0);
+  border-radius: 8px;
+}
+
+.inbox-status-badge {
+  flex-shrink: 0;
+  min-width: 78px;
+  text-align: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.inbox-status-badge.status-pending,
+.inbox-status-badge.status-leader_approved {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.inbox-status-badge.status-approved,
+.inbox-status-badge.status-accepted {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.inbox-status-badge.status-rejected,
+.inbox-status-badge.status-declined {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 /* --- Invitation card ---------------------- */
