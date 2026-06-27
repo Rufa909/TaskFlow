@@ -195,6 +195,10 @@
   margin-bottom: 10px;
 }
 
+.inbox-preview-panel {
+  margin-bottom: 14px;
+}
+
 .inbox-detail-card {
   display: flex;
   align-items: center;

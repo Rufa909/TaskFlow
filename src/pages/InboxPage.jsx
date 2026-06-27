@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import api from "../api/axiosInstance";
@@ -75,6 +76,7 @@ export default function InboxPage() {
   const { showToast } = useToast();
   const { confirm } = useConfirm();
   const { language, setLanguage } = useLanguage();
+  const navigate = useNavigate();
 
   const t = (key) => getTranslation(language, key);
 
@@ -132,6 +134,8 @@ export default function InboxPage() {
       project.user_role === "leader",
   );
   const canReviewApprovals = reviewableProjects.length > 0;
+  const approvalPreview = approvalHistory.slice(0, 2);
+  const invitationPreview = invitationHistory.slice(0, 2);
 
   // Fetch projects
   useEffect(() => {
@@ -260,20 +264,26 @@ export default function InboxPage() {
   };
 
   const toggleApprovalDetails = () => {
-    const nextOpen = !approvalDetailsOpen;
-    setApprovalDetailsOpen(nextOpen);
-    if (nextOpen) {
-      loadApprovalHistory();
-    }
+    navigate("/inbox/approvals");
   };
 
   const toggleInvitationDetails = () => {
-    const nextOpen = !invitationDetailsOpen;
-    setInvitationDetailsOpen(nextOpen);
-    if (nextOpen) {
+    navigate("/inbox/invitations");
+  };
+
+  useEffect(() => {
+    if (!loadingApprovals && taskSubmissions.length === 0 && canReviewApprovals) {
+      loadApprovalHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingApprovals, taskSubmissions.length, canReviewApprovals]);
+
+  useEffect(() => {
+    if (!loadingInvitations && invitations.length === 0) {
       loadInvitationHistory();
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingInvitations, invitations.length]);
 
   const handleDeleteTask = async (taskId) => {
     const task = tasks.find((t) => t.task_id === taskId);
@@ -600,7 +610,7 @@ export default function InboxPage() {
                 className="inbox-detail-toggle"
                 onClick={toggleApprovalDetails}
               >
-                {approvalDetailsOpen ? "Hide details" : "View details"}
+              View details
               </button>
             </div>
 
@@ -610,9 +620,42 @@ export default function InboxPage() {
                 <span>Loading approvals...</span>
               </div>
             ) : taskSubmissions.length === 0 ? (
-              <div className="inv-empty-state">
-                <div className="inv-empty-text">No pending approvals</div>
-              </div>
+              approvalPreview.length > 0 ? (
+                <div className="inbox-detail-panel inbox-preview-panel">
+                  {approvalPreview.map((submission) => (
+                    <div
+                      className="inbox-detail-card"
+                      key={`approval-preview-${submission.submission_id}`}
+                    >
+                      <div className="inbox-detail-main">
+                        <div className="inbox-detail-title">
+                          {submission.status === "leader_approved"
+                            ? `Owner approval for "${submission.title}"`
+                            : `Review submitted task "${submission.title}"`}
+                        </div>
+                        <div className="inbox-detail-meta">
+                          {submission.project_name} - submitted by {submission.submitted_by_username}
+                          {submission.created_at && ` - ${timeAgo(submission.created_at)}`}
+                        </div>
+                        {submission.note && (
+                          <div className="inbox-detail-note">{submission.note}</div>
+                        )}
+                      </div>
+                      <span className={`inbox-status-badge status-${submission.status}`}>
+                        {approvalStatusLabel(submission.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="inv-empty-state">
+                  <div className="inv-empty-text">
+                    {loadingApprovalHistory
+                      ? "Loading approval history..."
+                      : "No approval history"}
+                  </div>
+                </div>
+              )
             ) : (
               <>
                 {taskSubmissions.map((submission) => (
@@ -651,41 +694,6 @@ export default function InboxPage() {
               </>
             )}
 
-            {approvalDetailsOpen && (
-              <div className="inbox-detail-panel">
-                {loadingApprovalHistory ? (
-                  <div className="inbox-detail-empty">Loading approval history...</div>
-                ) : approvalHistory.length === 0 ? (
-                  <div className="inbox-detail-empty">No approval history</div>
-                ) : (
-                  approvalHistory.map((submission) => (
-                    <div
-                      className="inbox-detail-card"
-                      key={`approval-history-${submission.submission_id}`}
-                    >
-                      <div className="inbox-detail-main">
-                        <div className="inbox-detail-title">
-                          {submission.status === "leader_approved"
-                            ? `Owner approval for "${submission.title}"`
-                            : `Review submitted task "${submission.title}"`}
-                        </div>
-                        <div className="inbox-detail-meta">
-                          {submission.project_name} - submitted by {submission.submitted_by_username}
-                          {submission.created_at && ` - ${timeAgo(submission.created_at)}`}
-                        </div>
-                        {submission.note && (
-                          <div className="inbox-detail-note">{submission.note}</div>
-                        )}
-                      </div>
-                      <span className={`inbox-status-badge status-${submission.status}`}>
-                        {approvalStatusLabel(submission.status)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
             <div className="inbox-section-divider" />
           </div>
 
@@ -708,7 +716,7 @@ export default function InboxPage() {
                 className="inbox-detail-toggle"
                 onClick={toggleInvitationDetails}
               >
-                {invitationDetailsOpen ? "Hide details" : "View details"}
+              View details
               </button>
             </div>
 
@@ -718,9 +726,42 @@ export default function InboxPage() {
                 <span>Loading invitations...</span>
               </div>
             ) : invitations.length === 0 ? (
-              <div className="inv-empty-state">
-                <div className="inv-empty-text">No pending invitations</div>
-              </div>
+              invitationPreview.length > 0 ? (
+                <div className="inbox-detail-panel inbox-preview-panel">
+                  {invitationPreview.map((inv) => (
+                    <div
+                      className="inbox-detail-card"
+                      key={`invitation-preview-${inv.invitation_id}`}
+                    >
+                      <div className="inbox-detail-main">
+                        <div className="inbox-detail-title">
+                          {inv.sender_username || "Unknown"}
+                          {inv.sender_email && (
+                            <span className="inbox-detail-inline">
+                              {inv.sender_email}
+                            </span>
+                          )}
+                        </div>
+                        <div className="inbox-detail-meta">
+                          {inv.project_name || "Project"}
+                          {inv.created_at && ` - ${timeAgo(inv.created_at)}`}
+                        </div>
+                      </div>
+                      <span className={`inbox-status-badge status-${inv.status}`}>
+                        {invitationStatusLabel(inv.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="inv-empty-state">
+                  <div className="inv-empty-text">
+                    {loadingInvitationHistory
+                      ? "Loading invitation history..."
+                      : "No invitation history"}
+                  </div>
+                </div>
+              )
             ) : (
               invitations.map((inv) => (
                 <div
@@ -790,41 +831,6 @@ export default function InboxPage() {
                   </div>
                 </div>
               ))
-            )}
-
-            {invitationDetailsOpen && (
-              <div className="inbox-detail-panel">
-                {loadingInvitationHistory ? (
-                  <div className="inbox-detail-empty">Loading invitation history...</div>
-                ) : invitationHistory.length === 0 ? (
-                  <div className="inbox-detail-empty">No invitation history</div>
-                ) : (
-                  invitationHistory.map((inv) => (
-                    <div
-                      className="inbox-detail-card"
-                      key={`invitation-history-${inv.invitation_id}`}
-                    >
-                      <div className="inbox-detail-main">
-                        <div className="inbox-detail-title">
-                          {inv.sender_username || "Unknown"}
-                          {inv.sender_email && (
-                            <span className="inbox-detail-inline">
-                              {inv.sender_email}
-                            </span>
-                          )}
-                        </div>
-                        <div className="inbox-detail-meta">
-                          {inv.project_name || "Project"}
-                          {inv.created_at && ` - ${timeAgo(inv.created_at)}`}
-                        </div>
-                      </div>
-                      <span className={`inbox-status-badge status-${inv.status}`}>
-                        {invitationStatusLabel(inv.status)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
             )}
 
             <div className="inbox-section-divider" />

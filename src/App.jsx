@@ -6,6 +6,7 @@ import HomePage from './pages/homePage';
 import TodayPage from './pages/todayPage';
 import UpcomingPage from './pages/upcomingPage';
 import InboxPage from './pages/InboxPage';
+import InboxDetailPage from './pages/InboxDetailPage';
 import NotificationsPage from './pages/NotificationsPage';
 import { FiltersProvider } from './context/FiltersContext';
 import { TeamsProvider } from './context/TeamsContext';
@@ -71,6 +72,14 @@ export default function App() {
                     element={
                       <ProtectedRoute>
                         <InboxPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/inbox/:type"
+                    element={
+                      <ProtectedRoute>
+                        <InboxDetailPage />
                       </ProtectedRoute>
                     }
                   />

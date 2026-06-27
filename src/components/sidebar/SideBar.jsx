@@ -74,6 +74,8 @@ export default function Sidebar({
   const location = useLocation();
   const [counts, setCounts] = useState({ inbox: 0, today: 0 });
   const [notifications, setNotifications] = useState([]);
+  const [approvalNotifications, setApprovalNotifications] = useState([]);
+  const [invitationNotifications, setInvitationNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef(null);
@@ -158,9 +160,108 @@ export default function Sidebar({
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchApprovalNotifications = async () => {
+      const reviewableProjects = (projects || []).filter(
+        (project) =>
+          Number(project.owner_id) === Number(user?.id) ||
+          project.user_role === "leader",
+      );
+
+      if (reviewableProjects.length === 0) {
+        if (mounted) setApprovalNotifications([]);
+        return;
+      }
+
+      try {
+        const submissionResults = await Promise.all(
+          reviewableProjects.map((project) =>
+            api
+              .get(`/projects/${project.project_id}/task-submissions`)
+              .then((res) =>
+                (res.data.submissions || [])
+                  .filter((item) => ["pending", "leader_approved"].includes(item.status))
+                  .map((item) => ({
+                    kind: "approval",
+                    noti_id: `approval-${project.project_id}-${item.submission_id}`,
+                    is_read: 0,
+                    title:
+                      item.status === "leader_approved"
+                        ? `Owner approval for "${item.title}"`
+                        : `Review submitted task "${item.title}"`,
+                    task_project_name: project.name,
+                    created_at: item.created_at,
+                  })),
+              )
+              .catch(() => []),
+          ),
+        );
+
+        if (mounted) {
+          setApprovalNotifications(
+            submissionResults
+              .flat()
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+          );
+        }
+      } catch (err) {
+        console.error("Cannot load approval notifications", err);
+      }
+    };
+
+    fetchApprovalNotifications();
+    const id = setInterval(fetchApprovalNotifications, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [projects, user?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchInvitationNotifications = async () => {
+      try {
+        const res = await api.get("/teams/invitations");
+        const pendingInvitations = (res.data.invitations || []).map((inv) => ({
+          kind: "invitation",
+          noti_id: `invitation-${inv.invitation_id}`,
+          is_read: 0,
+          title: `Team invitation from ${inv.sender_username || "Unknown"}`,
+          project_name: inv.project_name,
+          created_at: inv.created_at,
+        }));
+
+        if (mounted) {
+          setInvitationNotifications(pendingInvitations);
+        }
+      } catch (err) {
+        console.error("Cannot load invitation notifications", err);
+      }
+    };
+
+    fetchInvitationNotifications();
+    const id = setInterval(fetchInvitationNotifications, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const { setIsFiltersOpen } = useFilters();
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
-  const latestNotifications = notifications.slice(0, 5);
+  const pendingInboxNotificationCount =
+    approvalNotifications.length + invitationNotifications.length;
+  const notificationBadgeCount = unreadNotificationCount + pendingInboxNotificationCount;
+  const latestNotifications = [
+    ...approvalNotifications,
+    ...invitationNotifications,
+    ...notifications,
+  ]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 5);
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
   const markAllNotificationsRead = async () => {
@@ -196,6 +297,12 @@ export default function Sidebar({
   }, [location.pathname, unreadNotificationCount]);
 
   const handleNotificationClick = async (notification) => {
+    if (notification.kind === "approval" || notification.kind === "invitation") {
+      setIsNotificationsOpen(false);
+      navigate("/inbox");
+      return;
+    }
+
     if (!notification.is_read) {
       try {
         await api.put(`/notifications/${notification.noti_id}/read`);
@@ -297,9 +404,9 @@ export default function Sidebar({
             }}
           >
             <Icon name="bell" size={18} />
-            {unreadNotificationCount > 0 && (
+            {notificationBadgeCount > 0 && (
               <span className="notification-bell-badge">
-                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                {notificationBadgeCount > 9 ? "9+" : notificationBadgeCount}
               </span>
             )}
           </button>
@@ -307,7 +414,7 @@ export default function Sidebar({
             <div className="notification-popover">
               <div className="notification-popover-header">
                 <span>Notifications</span>
-                {unreadNotificationCount > 0 && (
+                {notificationBadgeCount > 0 && (
                   <span className="notification-popover-actions">
                     <button
                       type="button"
@@ -318,7 +425,7 @@ export default function Sidebar({
                       Read all
                     </button>
                     <span className="notification-popover-count">
-                      {unreadNotificationCount}
+                      {notificationBadgeCount}
                     </span>
                   </span>
                 )}
@@ -411,9 +518,9 @@ export default function Sidebar({
             <Icon name="inbox" size={18} />
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("inbox")}</span>
-          {unreadNotificationCount > 0 && (
+          {notificationBadgeCount > 0 && (
             <span className="count inbox-notification-count">
-              {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+              {notificationBadgeCount > 9 ? "9+" : notificationBadgeCount}
             </span>
           )}
         </Link>
