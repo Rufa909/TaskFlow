@@ -34,7 +34,10 @@ exports.getMyNotifications = async (req, res) => {
           WHEN n.type = 'assignment_request' THEN CONCAT('Task assignment waiting for approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'assignment_pending' THEN CONCAT('Task pending owner approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'assignment_rejected' THEN CONCAT('Task assignment rejected: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'task_submitted' AND (t.completed_at IS NOT NULL OR t.status = 'COMPLETED') THEN CONCAT('Task approved: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'task_submitted' AND t.status IN ('LEADER_APPROVED', 'OWNER_APPROVED') THEN CONCAT('Task reviewed: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'task_submitted' THEN CONCAT('Task submitted for review: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'leader_approved_task' AND (t.completed_at IS NOT NULL OR t.status = 'COMPLETED') THEN CONCAT('Task approved: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'leader_approved_task' THEN CONCAT('Task waiting for owner approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'task_changes_requested' THEN CONCAT('Changes requested: ', COALESCE(t.title, 'Task'))
           ELSE 'New notification'
@@ -48,64 +51,6 @@ exports.getMyNotifications = async (req, res) => {
        AND t.task_id = n.reference_id
       LEFT JOIN projects tp ON tp.project_id = t.project_id
       WHERE n.user_id = ?
-        AND (
-          n.type NOT IN ('task_submitted', 'leader_approved_task')
-          OR (
-            n.type = 'task_submitted'
-            AND EXISTS (
-              SELECT 1
-              FROM task_submissions pending_submission
-              WHERE pending_submission.task_id = n.reference_id
-                AND pending_submission.status = 'pending'
-            )
-            AND (
-              EXISTS (
-                SELECT 1
-                FROM tasks submitted_task
-                JOIN project_members reviewer
-                  ON reviewer.project_id = submitted_task.project_id
-                 AND reviewer.role = 'leader'
-                 AND reviewer.user_id = n.user_id
-                WHERE submitted_task.task_id = n.reference_id
-              )
-              OR (
-                NOT EXISTS (
-                  SELECT 1
-                  FROM tasks submitted_task
-                  JOIN project_members project_leader
-                    ON project_leader.project_id = submitted_task.project_id
-                   AND project_leader.role = 'leader'
-                  WHERE submitted_task.task_id = n.reference_id
-                )
-                AND EXISTS (
-                  SELECT 1
-                  FROM tasks submitted_task
-                  JOIN projects submitted_project
-                    ON submitted_project.project_id = submitted_task.project_id
-                   AND submitted_project.owner_id = n.user_id
-                  WHERE submitted_task.task_id = n.reference_id
-                )
-              )
-            )
-          )
-          OR (
-            n.type = 'leader_approved_task'
-            AND EXISTS (
-              SELECT 1
-              FROM task_submissions owner_submission
-              WHERE owner_submission.task_id = n.reference_id
-                AND owner_submission.status = 'leader_approved'
-            )
-            AND EXISTS (
-              SELECT 1
-              FROM tasks approved_task
-              JOIN projects approved_project
-                ON approved_project.project_id = approved_task.project_id
-               AND approved_project.owner_id = n.user_id
-              WHERE approved_task.task_id = n.reference_id
-            )
-          )
-        )
       ORDER BY n.created_at DESC
       LIMIT 50
       `,

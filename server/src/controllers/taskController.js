@@ -2493,7 +2493,8 @@ exports.reviewTaskSubmission = async (req, res) => {
       );
       await pool.query(
         `
-        DELETE FROM notifications
+        UPDATE notifications
+        SET is_read = 1
         WHERE reference_id = ?
           AND type IN ('task_submitted', 'leader_approved_task')
         `,
@@ -2541,7 +2542,8 @@ exports.reviewTaskSubmission = async (req, res) => {
       );
       await pool.query(
         `
-        DELETE FROM notifications
+        UPDATE notifications
+        SET is_read = 1
         WHERE reference_id = ?
           AND type = 'task_submitted'
         `,
@@ -2601,7 +2603,8 @@ exports.reviewTaskSubmission = async (req, res) => {
         );
         await pool.query(
           `
-          DELETE FROM notifications
+          UPDATE notifications
+          SET is_read = 1
           WHERE reference_id = ?
             AND type IN ('task_submitted', 'leader_approved_task')
           `,
@@ -2627,7 +2630,8 @@ exports.reviewTaskSubmission = async (req, res) => {
         );
         await pool.query(
           `
-          DELETE FROM notifications
+          UPDATE notifications
+          SET is_read = 1
           WHERE reference_id = ?
             AND type IN ('task_submitted', 'leader_approved_task')
           `,

@@ -55,6 +55,8 @@ export default function InboxPage() {
   const [taskSubmissions, setTaskSubmissions] = useState([]);
   const [loadingApprovals, setLoadingApprovals] = useState(true);
   const [reviewingKey, setReviewingKey] = useState("");
+  const [changesSubmission, setChangesSubmission] = useState(null);
+  const [changesReason, setChangesReason] = useState("");
 
   // Invitation states
   const [invitations, setInvitations] = useState([]);
@@ -382,14 +384,15 @@ export default function InboxPage() {
     }
   };
 
-  const handleReviewSubmission = async (submission, action) => {
-    let reason = "";
-    if (action === "reject") {
-      reason = window.prompt("Nhap ly do can sua task nay:") || "";
-      if (!reason.trim()) {
-        showToast("Please enter a reason for changes", "error");
-        return;
-      }
+  const closeChangesModal = () => {
+    setChangesSubmission(null);
+    setChangesReason("");
+  };
+
+  const handleReviewSubmission = async (submission, action, reason = "") => {
+    if (action === "reject" && !reason.trim()) {
+      showToast("Please enter a reason for changes", "error");
+      return;
     }
 
     const key = `submission-${submission.submission_id}`;
@@ -414,6 +417,9 @@ export default function InboxPage() {
       setTaskSubmissions((prev) =>
         prev.filter((item) => item.submission_id !== submission.submission_id),
       );
+      if (action === "reject") {
+        closeChangesModal();
+      }
       showToast(action === "approve" ? "Task approved" : "Submission rejected", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot review submission", "error");
@@ -528,7 +534,10 @@ export default function InboxPage() {
                       <button
                         className="inv-decline-btn"
                         disabled={reviewingKey === `submission-${submission.submission_id}`}
-                        onClick={() => handleReviewSubmission(submission, "reject")}
+                        onClick={() => {
+                          setChangesSubmission(submission);
+                          setChangesReason("");
+                        }}
                       >
                         Reject
                       </button>
@@ -730,6 +739,62 @@ export default function InboxPage() {
         handleUpdateTask={handleUpdateTask}
         handleCompleteTask={handleCompleteTask}
       />
+
+      {changesSubmission && (
+        <div className="task-changes-overlay" onClick={closeChangesModal}>
+          <div
+            className="task-changes-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="task-changes-header">
+              <h3>Request changes</h3>
+              <button
+                type="button"
+                className="task-changes-close"
+                aria-label="Close"
+                onClick={closeChangesModal}
+              >
+                <Icon name="x" size={16} />
+              </button>
+            </div>
+            <div className="task-changes-body">
+              <div className="task-changes-task">{changesSubmission.title}</div>
+              <textarea
+                value={changesReason}
+                onChange={(e) => setChangesReason(e.target.value)}
+                placeholder="Nhap ly do can sua..."
+                autoFocus
+              />
+            </div>
+            <div className="task-changes-footer">
+              <button
+                type="button"
+                className="task-changes-secondary"
+                onClick={closeChangesModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="task-changes-submit"
+                disabled={
+                  !changesReason.trim() ||
+                  reviewingKey === `submission-${changesSubmission.submission_id}`
+                }
+                onClick={() =>
+                  handleReviewSubmission(
+                    changesSubmission,
+                    "reject",
+                    changesReason.trim(),
+                  )
+                }
+              >
+                Send changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
