@@ -89,7 +89,12 @@ export default function Sidebar({
     getSavedSidebarCollapsed,
   );
   const sidebarCollapsed = isSidebarCollapsed ?? localSidebarCollapsed;
+  const closeProfileMenu = () => {
+    setIsProfileMenuOpen(false);
+  };
+
   const toggleSidebar = () => {
+    closeProfileMenu();
     const nextCollapsed = !sidebarCollapsed;
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(nextCollapsed));
 
@@ -261,6 +266,7 @@ export default function Sidebar({
             title="Notifications"
             onClick={(e) => {
               e.stopPropagation();
+              closeProfileMenu();
               setIsNotificationsOpen((prev) => !prev);
             }}
           >
@@ -343,6 +349,7 @@ export default function Sidebar({
         <button
           className="nav-item add-task"
           onClick={() => {
+            closeProfileMenu();
             setActiveView("project");
             if (location.pathname !== "/" || location.search) navigate("/");
             setIsAddingTask(true);
@@ -353,7 +360,7 @@ export default function Sidebar({
           </span>{" "}
           {t("addTask")}
         </button>
-        <button className="nav-item">
+        <button className="nav-item" onClick={closeProfileMenu}>
           <span className="icon">
             <Icon name="search" size={18} />
           </span>{" "}
@@ -363,6 +370,7 @@ export default function Sidebar({
           to="/inbox"
           className={`nav-item ${location.pathname === "/inbox" ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex" }}
+          onClick={closeProfileMenu}
         >
           <span className="icon">
             <Icon name="inbox" size={18} />
@@ -376,6 +384,7 @@ export default function Sidebar({
           to="/today"
           className={`nav-item ${location.pathname === "/today" ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex" }}
+          onClick={closeProfileMenu}
         >
           <span className="icon">
             <Icon name="calendar" size={18} />
@@ -387,6 +396,7 @@ export default function Sidebar({
           to="/upcoming"
           className={`nav-item ${location.pathname === "/upcoming" ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex" }}
+          onClick={closeProfileMenu}
         >
           <span className="icon">
             <Icon name="upcoming" size={18} />
@@ -396,6 +406,7 @@ export default function Sidebar({
         <button
           className={`nav-item filters-btn ${activeView === "filtersLabels" ? "active" : ""}`}
           onClick={() => {
+            closeProfileMenu();
             setActiveView("filtersLabels");
             setIsAddingTask(false);
             navigate("/?view=filtersLabels");
@@ -410,6 +421,7 @@ export default function Sidebar({
         <button
           className={`nav-item ${activeView === "reporting" ? "active" : ""}`}
           onClick={() => {
+            closeProfileMenu();
             setActiveView("reporting");
             setIsAddingTask(false);
             navigate("/?view=reporting");
@@ -427,7 +439,10 @@ export default function Sidebar({
           <span>{t("myProjects")}</span>
           <div className="projects-header-actions">
             <button
-              onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
+              onClick={() => {
+                closeProfileMenu();
+                setIsProjectMenuOpen(!isProjectMenuOpen);
+              }}
               title={t("addProject")}
             >
               <Icon name="plus" size={16} />
@@ -441,6 +456,7 @@ export default function Sidebar({
                 <div
                   className="project-dropdown-item"
                   onClick={() => {
+                    closeProfileMenu();
                     setIsProjectMenuOpen(false);
                     setIsAddProjectModalOpen(true);
                   }}
@@ -468,6 +484,7 @@ export default function Sidebar({
                     : ""
                 }`}
                 onClick={() => {
+                  closeProfileMenu();
                   setActiveView("project");
                   setActiveProject(proj);
                   setIsAddingTask(false);
@@ -488,6 +505,7 @@ export default function Sidebar({
                   className="edit-project-btn"
                   onClick={(e) => {
                     e.stopPropagation();
+                    closeProfileMenu();
                     if (typeof onRequestEditProject === "function") onRequestEditProject(proj);
                   }}
                   title="Edit project"
@@ -496,7 +514,10 @@ export default function Sidebar({
                 </div>
                 <div
                   className="delete-project-btn"
-                  onClick={(e) => handleDeleteProject(e, proj.project_id)}
+                  onClick={(e) => {
+                    closeProfileMenu();
+                    handleDeleteProject(e, proj.project_id);
+                  }}
                   title="Delete project"
                 >
                   <Icon name="trash" size={14} />
@@ -537,7 +558,7 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button className="nav-item">
+        <button className="nav-item" onClick={closeProfileMenu}>
           <span className="icon">
             <Icon name="help" size={18} />
           </span>{" "}
