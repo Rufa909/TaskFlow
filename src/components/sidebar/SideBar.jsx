@@ -78,7 +78,6 @@ export default function Sidebar({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef(null);
   const {
-    invitationCount,
     openTeamModal,
     setActiveProject: setContextActiveProject,
   } = useTeams();
@@ -163,8 +162,7 @@ export default function Sidebar({
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
-  const handleMarkAllNotificationsRead = async (e) => {
-    e.stopPropagation();
+  const markAllNotificationsRead = async () => {
     if (unreadNotificationCount === 0 || isMarkingAllRead) return;
 
     setIsMarkingAllRead(true);
@@ -177,6 +175,24 @@ export default function Sidebar({
       setIsMarkingAllRead(false);
     }
   };
+
+  const handleMarkAllNotificationsRead = async (e) => {
+    e.stopPropagation();
+    await markAllNotificationsRead();
+  };
+
+  const handleInboxClick = () => {
+    closeProfileMenu();
+    setIsNotificationsOpen(false);
+    markAllNotificationsRead();
+  };
+
+  useEffect(() => {
+    if (location.pathname === "/inbox") {
+      markAllNotificationsRead();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, unreadNotificationCount]);
 
   const handleNotificationClick = async (notification) => {
     if (!notification.is_read) {
@@ -373,14 +389,16 @@ export default function Sidebar({
           to="/inbox"
           className={`nav-item ${location.pathname === "/inbox" ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex" }}
-          onClick={closeProfileMenu}
+          onClick={handleInboxClick}
         >
           <span className="icon">
             <Icon name="inbox" size={18} />
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("inbox")}</span>
-          {(counts.inbox + (invitationCount || 0)) > 0 && (
-            <span className="count">{counts.inbox + (invitationCount || 0)}</span>
+          {unreadNotificationCount > 0 && (
+            <span className="count inbox-notification-count">
+              {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+            </span>
           )}
         </Link>
         <Link
