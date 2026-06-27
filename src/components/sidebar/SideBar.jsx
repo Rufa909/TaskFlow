@@ -77,7 +77,11 @@ export default function Sidebar({
   const [loadingNotifications, setLoadingNotifications] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef(null);
-  const { setActiveProject: setContextActiveProject } = useTeams();
+  const {
+    invitationCount,
+    openTeamModal,
+    setActiveProject: setContextActiveProject,
+  } = useTeams();
 
   useEffect(() => {
     if (activeProject) {
@@ -156,7 +160,6 @@ export default function Sidebar({
   }, []);
 
   const { setIsFiltersOpen } = useFilters();
-  const { invitationCount } = useTeams();
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
 
@@ -501,6 +504,17 @@ export default function Sidebar({
                 {projectCounts[proj.project_id] > 0 && (
                   <span className="project-count">{projectCounts[proj.project_id]}</span>
                 )}
+                <div
+                  className="team-project-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeProfileMenu();
+                    openTeamModal(proj);
+                  }}
+                  title="View and add members"
+                >
+                  <Icon name="teamAdd" size={14} />
+                </div>
                 <div
                   className="edit-project-btn"
                   onClick={(e) => {
