@@ -842,7 +842,6 @@ export default function InboxPage() {
           ) : tasks.length === 0 ? (
             <>
               <div className="inbox-no-tasks-state">
-                <div className="inbox-empty-icon">✨</div>
                 <h3>Inbox Zero!</h3>
                 <p>Great job! You've completed all your inbox tasks.</p>
                 <button

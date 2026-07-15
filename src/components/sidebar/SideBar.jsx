@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import Icon from "../common/Icon";
 import ProfileDropdown from "./ProfileDropdown";
@@ -34,6 +34,10 @@ function timeAgo(dateStr) {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
+}
+
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 export default function Sidebar({
@@ -78,7 +82,14 @@ export default function Sidebar({
   const [invitationNotifications, setInvitationNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [searchTasks, setSearchTasks] = useState([]);
+  const [loadingSearchTasks, setLoadingSearchTasks] = useState(false);
+  const [searchTasksLoaded, setSearchTasksLoaded] = useState(false);
   const notificationsRef = useRef(null);
+  const searchRef = useRef(null);
+  const searchInputRef = useRef(null);
   const {
     openTeamModal,
     setActiveProject: setContextActiveProject,
@@ -119,11 +130,43 @@ export default function Sidebar({
       if (notificationsRef.current && !notificationsRef.current.contains(e.target)) {
         setIsNotificationsOpen(false);
       }
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setIsSearchOpen(false);
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    searchInputRef.current?.focus();
+
+    if (searchTasksLoaded) return;
+
+    let mounted = true;
+    const fetchSearchTasks = async () => {
+      setLoadingSearchTasks(true);
+      try {
+        const res = await api.get("/tasks");
+        if (mounted) {
+          setSearchTasks(res.data.tasks || []);
+          setSearchTasksLoaded(true);
+        }
+      } catch (err) {
+        console.error("Cannot load search tasks", err);
+      } finally {
+        if (mounted) setLoadingSearchTasks(false);
+      }
+    };
+
+    fetchSearchTasks();
+    return () => {
+      mounted = false;
+    };
+  }, [isSearchOpen, searchTasksLoaded]);
 
   useEffect(() => {
     const fetchCounts = async () => {
@@ -263,6 +306,39 @@ export default function Sidebar({
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5);
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
+  const normalizedSearchKeyword = normalizeSearchText(searchKeyword);
+  const searchSuggestions = useMemo(() => {
+    if (!normalizedSearchKeyword) {
+      return { projects: [], tasks: [] };
+    }
+
+    const matchedProjects = (projects || [])
+      .filter((project) =>
+        normalizeSearchText(project.name).includes(normalizedSearchKeyword),
+      )
+      .slice(0, 6);
+
+    const matchedTasks = searchTasks
+      .filter((task) => {
+        const labels = Array.isArray(task.labels) ? task.labels.join(" ") : "";
+        const searchable = [
+          task.title,
+          task.description,
+          task.project_name,
+          task.priority,
+          task.status,
+          labels,
+        ].join(" ");
+
+        return normalizeSearchText(searchable).includes(normalizedSearchKeyword);
+      })
+      .slice(0, 8);
+
+    return { projects: matchedProjects, tasks: matchedTasks };
+  }, [normalizedSearchKeyword, projects, searchTasks]);
+
+  const searchResultCount =
+    searchSuggestions.projects.length + searchSuggestions.tasks.length;
 
   const markAllNotificationsRead = async () => {
     if (unreadNotificationCount === 0 || isMarkingAllRead) return;
@@ -287,6 +363,34 @@ export default function Sidebar({
     closeProfileMenu();
     setIsNotificationsOpen(false);
     markAllNotificationsRead();
+  };
+
+  const openSearch = () => {
+    closeProfileMenu();
+    setIsNotificationsOpen(false);
+    setIsSearchOpen(true);
+  };
+
+  const handleSearchProjectClick = (project) => {
+    closeProfileMenu();
+    setActiveView("project");
+    setActiveProject(project);
+    setIsAddingTask(false);
+    setIsSearchOpen(false);
+    navigate(`/?projectId=${project.project_id}`);
+  };
+
+  const handleSearchTaskClick = (task) => {
+    const targetProject = (projects || []).find(
+      (project) => Number(project.project_id) === Number(task.project_id),
+    );
+
+    closeProfileMenu();
+    if (targetProject) setActiveProject(targetProject);
+    setActiveView("project");
+    setIsAddingTask(false);
+    setIsSearchOpen(false);
+    navigate(`/?projectId=${task.project_id}&taskId=${task.task_id}`);
   };
 
   useEffect(() => {
@@ -502,12 +606,119 @@ export default function Sidebar({
           </span>{" "}
           {t("addTask")}
         </button>
-        <button className="nav-item" onClick={closeProfileMenu}>
-          <span className="icon">
-            <Icon name="search" size={18} />
-          </span>{" "}
-          {t("search")}
-        </button>
+        <div className="sidebar-search-wrap" ref={searchRef}>
+          <button
+            className={`nav-item ${isSearchOpen ? "active" : ""}`}
+            onClick={openSearch}
+          >
+            <span className="icon">
+              <Icon name="search" size={18} />
+            </span>{" "}
+            {t("search")}
+          </button>
+
+          {isSearchOpen && (
+            <div className="search-popover">
+              <div className="search-input-row">
+                <Icon name="search" size={16} />
+                <input
+                  ref={searchInputRef}
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setIsSearchOpen(false);
+                  }}
+                  placeholder="Search projects or tasks"
+                />
+                {searchKeyword && (
+                  <button
+                    type="button"
+                    className="search-clear-btn"
+                    title="Clear search"
+                    onClick={() => setSearchKeyword("")}
+                  >
+                    <Icon name="x" size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div className="search-suggestion-meta">
+                {normalizedSearchKeyword
+                  ? `${searchResultCount} suggestion${searchResultCount !== 1 ? "s" : ""} for "${searchKeyword.trim()}"`
+                  : "Type a keyword to see matching projects and tasks"}
+              </div>
+
+              {normalizedSearchKeyword ? (
+                <div className="search-suggestion-list">
+                  <div className="search-section">
+                    <div className="search-section-title">
+                      <span>Projects</span>
+                      <span>{searchSuggestions.projects.length}</span>
+                    </div>
+                    {searchSuggestions.projects.length > 0 ? (
+                      searchSuggestions.projects.map((project) => (
+                        <button
+                          key={project.project_id}
+                          type="button"
+                          className="search-result-item"
+                          onClick={() => handleSearchProjectClick(project)}
+                        >
+                          <span className="search-result-icon project">
+                            <Icon name="hash" size={15} />
+                          </span>
+                          <span className="search-result-main">
+                            <span className="search-result-title">{project.name}</span>
+                            <span className="search-result-subtitle">
+                              {project.user_role || "project"}
+                            </span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="search-empty-line">No project matches.</div>
+                    )}
+                  </div>
+
+                  <div className="search-section">
+                    <div className="search-section-title">
+                      <span>Tasks</span>
+                      <span>{searchSuggestions.tasks.length}</span>
+                    </div>
+                    {loadingSearchTasks ? (
+                      <div className="search-empty-line">Loading tasks...</div>
+                    ) : searchSuggestions.tasks.length > 0 ? (
+                      searchSuggestions.tasks.map((task) => (
+                        <button
+                          key={task.task_id}
+                          type="button"
+                          className="search-result-item"
+                          onClick={() => handleSearchTaskClick(task)}
+                        >
+                          <span className="search-result-icon task">
+                            <Icon name="check" size={14} />
+                          </span>
+                          <span className="search-result-main">
+                            <span className="search-result-title">{task.title}</span>
+                            <span className="search-result-subtitle">
+                              {task.project_name || "Task"}
+                              {task.priority ? ` - ${task.priority}` : ""}
+                            </span>
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="search-empty-line">No task matches.</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="search-empty-state">
+                  Projects and tasks are shown in separate suggestion groups.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <Link
           to="/inbox"
           className={`nav-item ${location.pathname === "/inbox" ? "active" : ""}`}
