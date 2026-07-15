@@ -8,6 +8,7 @@ import UpcomingPage from './pages/upcomingPage';
 import InboxPage from './pages/InboxPage';
 import InboxDetailPage from './pages/InboxDetailPage';
 import NotificationsPage from './pages/NotificationsPage';
+import ChatPage from './pages/ChatPage';
 import { FiltersProvider } from './context/FiltersContext';
 import { TeamsProvider } from './context/TeamsContext';
 import { ToastProvider } from './context/ToastContext';
@@ -21,7 +22,7 @@ function AuthenticatedAIChatBox() {
   const { user } = useAuth();
   const location = useLocation();
 
-  if (!user || location.pathname === '/auth') {
+  if (!user || location.pathname === '/auth' || location.pathname === '/chat') {
     return null;
   }
 
@@ -88,6 +89,14 @@ export default function App() {
                     element={
                       <ProtectedRoute>
                         <NotificationsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/chat"
+                    element={
+                      <ProtectedRoute>
+                        <ChatPage />
                       </ProtectedRoute>
                     }
                   />

@@ -5,6 +5,7 @@ const SOCKET_URL = "http://localhost:5000";
 
 export default function useSocketIo({
   onTaskChanged,
+  onProjectMessage,
   projectIds = [],
   enabled = true,
 } = {}) {
@@ -38,13 +39,20 @@ export default function useSocketIo({
       }
     });
 
+    socket.on("projectMessage", (payload) => {
+      if (typeof onProjectMessage === "function") {
+        onProjectMessage(payload);
+      }
+    });
+
     return () => {
       socket.removeAllListeners("taskChanged");
+      socket.removeAllListeners("projectMessage");
       socket.disconnect();
       socketRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, normalizedProjectIds.join(","), onTaskChanged]);
+  }, [enabled, normalizedProjectIds.join(","), onTaskChanged, onProjectMessage]);
 
   useEffect(() => {
     const socket = socketRef.current;

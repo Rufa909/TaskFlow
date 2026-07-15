@@ -17,8 +17,18 @@ function emitTaskChanged(projectId, payload) {
   });
 }
 
+function emitProjectMessage(projectId, message) {
+  if (!ioInstance || !projectId) return;
+
+  ioInstance.to(`project:${projectId}`).emit("projectMessage", {
+    projectId: Number(projectId),
+    message,
+  });
+}
+
 module.exports = {
   setIo,
   getIo,
   emitTaskChanged,
+  emitProjectMessage,
 };

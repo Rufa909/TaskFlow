@@ -525,6 +525,17 @@ export default function Sidebar({
           )}
         </Link>
         <Link
+          to="/chat"
+          className={`nav-item ${location.pathname === "/chat" ? "active" : ""}`}
+          style={{ textDecoration: "none", display: "flex" }}
+          onClick={closeProfileMenu}
+        >
+          <span className="icon">
+            <Icon name="chat" size={18} />
+          </span>{" "}
+          <span style={{ flex: 1, textAlign: "left" }}>{t("chat")}</span>
+        </Link>
+        <Link
           to="/today"
           className={`nav-item ${location.pathname === "/today" ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex" }}
