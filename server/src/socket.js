@@ -17,11 +17,12 @@ function emitTaskChanged(projectId, payload) {
   });
 }
 
-function emitProjectMessage(projectId, message) {
+function emitProjectMessage(projectId, message, conversationId = null) {
   if (!ioInstance || !projectId) return;
 
   ioInstance.to(`project:${projectId}`).emit("projectMessage", {
     projectId: Number(projectId),
+    conversationId: conversationId || message?.conversation_id || `project-${projectId}`,
     message,
   });
 }
