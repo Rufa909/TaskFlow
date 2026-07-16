@@ -17,9 +17,13 @@ const allowedTypes = [
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
+  "text/markdown",
   "text/csv",
+  "application/json",
+  "application/octet-stream",
   "image/png",
   "image/jpeg",
+  "image/svg+xml",
 ];
 
 const storage = multer.diskStorage({

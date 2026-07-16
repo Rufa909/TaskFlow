@@ -1809,6 +1809,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
           setIsStagePanelOpen(false);
           setSelectedStage(null);
         }}
+        projectId={activeProject?.project_id}
         stage={selectedStage}
         tasks={stageTasks}
         loading={loadingStageTasks}
@@ -1818,6 +1819,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         currentUserRole={currentProjectRole}
         currentUserId={user?.id}
         setSelectedTask={setSelectedTask}
+        onWorkflowUpdated={handleWorkflowStagesChange}
       />
     </div>
   );

@@ -48,6 +48,7 @@ exports.getMyNotifications = async (req, res) => {
           WHEN n.type = 'leader_approved_task' AND (t.completed_at IS NOT NULL OR t.status = 'COMPLETED') THEN CONCAT('Task approved: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'leader_approved_task' THEN CONCAT('Task waiting for owner approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'task_changes_requested' THEN CONCAT('Changes requested: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'workflow_handover_ready' THEN 'Workflow handover package is ready'
           ELSE 'New notification'
         END AS title
       FROM notifications n

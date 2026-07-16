@@ -26,9 +26,19 @@ function emitProjectMessage(projectId, message) {
   });
 }
 
+function emitWorkflowChanged(projectId, payload) {
+  if (!ioInstance || !projectId) return;
+
+  ioInstance.to(`project:${projectId}`).emit("workflowChanged", {
+    ...payload,
+    projectId: Number(projectId),
+  });
+}
+
 module.exports = {
   setIo,
   getIo,
   emitTaskChanged,
   emitProjectMessage,
+  emitWorkflowChanged,
 };

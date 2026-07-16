@@ -50,8 +50,8 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
   const handleMoveNext = async (stageId) => {
     setIsSubmitting(true);
     try {
-      await axios.post(`${API_URL}/api/projects/${projectId}/stages/next`,
-        { stageId },
+      await axios.post(`${API_URL}/api/projects/${projectId}/stages/${stageId}/complete`,
+        {},
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
 
@@ -63,7 +63,12 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
       if (res.data.isOwner !== undefined) setIsOwnerState(res.data.isOwner);
       setError(null);
     } catch (err) {
-      setError('Lỗi khi chuyển sang giai đoạn tiếp theo: ' + (err.response?.data?.message || err.message));
+      const missing = err.response?.data?.missing || [];
+      setError(
+        missing.length > 0
+          ? `Không thể chuyển stage. Thiếu: ${missing.join(', ')}`
+          : 'Lỗi khi chuyển sang giai đoạn tiếp theo: ' + (err.response?.data?.message || err.message)
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -74,8 +79,8 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
     setShowCompleteModal(false);
     setIsSubmitting(true);
     try {
-      await axios.post(`${API_URL}/api/projects/${projectId}/stages/next`,
-        { stageId: pendingCompleteStageId },
+      await axios.post(`${API_URL}/api/projects/${projectId}/stages/${pendingCompleteStageId}/complete`,
+        {},
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
 
@@ -87,7 +92,12 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
       if (res.data.isOwner !== undefined) setIsOwnerState(res.data.isOwner);
       setError(null);
     } catch (err) {
-      setError('Lỗi khi hoàn thành dự án: ' + (err.response?.data?.message || err.message));
+      const missing = err.response?.data?.missing || [];
+      setError(
+        missing.length > 0
+          ? `Không thể hoàn thành dự án. Thiếu: ${missing.join(', ')}`
+          : 'Lỗi khi hoàn thành dự án: ' + (err.response?.data?.message || err.message)
+      );
     } finally {
       setIsSubmitting(false);
       setPendingCompleteStageId(null);
