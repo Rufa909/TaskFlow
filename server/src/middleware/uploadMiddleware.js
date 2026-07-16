@@ -23,6 +23,8 @@ const allowedTypes = [
   "application/octet-stream",
   "image/png",
   "image/jpeg",
+  "image/gif",
+  "image/webp",
   "image/svg+xml",
 ];
 

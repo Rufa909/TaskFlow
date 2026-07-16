@@ -5,6 +5,23 @@ const PROJECT_ROLES = ["leader", "member", "ba", "developer", "qa", "devops", "v
 const GROUP_ROLES = ["admin", "member"];
 let initPromise = null;
 
+async function ensureColumns(tableName, columns) {
+  const [existing] = await pool.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?`,
+    [tableName],
+  );
+  const existingNames = new Set(existing.map((column) => column.COLUMN_NAME));
+
+  for (const column of columns) {
+    if (!existingNames.has(column.name)) {
+      await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${column.definition}`);
+    }
+  }
+}
+
 function ensureProjectChatTables() {
   if (!initPromise) {
     initPromise = pool.query(`
@@ -60,7 +77,20 @@ function ensureProjectChatTables() {
         CONSTRAINT fk_project_chat_messages_sender
           FOREIGN KEY (sender_id) REFERENCES users(user_id) ON DELETE CASCADE
       )
-    `));
+    `)).then(() => Promise.all([
+      ensureColumns("project_messages", [
+        { name: "attachment_url", definition: "attachment_url VARCHAR(500) NULL" },
+        { name: "attachment_name", definition: "attachment_name VARCHAR(255) NULL" },
+        { name: "attachment_type", definition: "attachment_type VARCHAR(120) NULL" },
+        { name: "attachment_size", definition: "attachment_size INT NULL" },
+      ]),
+      ensureColumns("project_chat_messages", [
+        { name: "attachment_url", definition: "attachment_url VARCHAR(500) NULL" },
+        { name: "attachment_name", definition: "attachment_name VARCHAR(255) NULL" },
+        { name: "attachment_type", definition: "attachment_type VARCHAR(120) NULL" },
+        { name: "attachment_size", definition: "attachment_size INT NULL" },
+      ]),
+    ]));
   }
 
   return initPromise;
@@ -116,6 +146,10 @@ function normalizeMessage(row, conversationId = null) {
     sender_username: row.sender_username,
     sender_email: row.sender_email,
     sender_photo: row.sender_photo,
+    attachment_url: row.attachment_url || null,
+    attachment_name: row.attachment_name || null,
+    attachment_type: row.attachment_type || null,
+    attachment_size: row.attachment_size || null,
   };
 }
 
@@ -141,6 +175,7 @@ async function assertConversationAccess(conversationId, projectId, userId) {
 async function fetchConversationMessageById(messageId) {
   const [rows] = await pool.query(
     `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
+            m.attachment_url, m.attachment_name, m.attachment_type, m.attachment_size,
             c.project_id,
             u.username AS sender_username,
             u.email AS sender_email,
@@ -159,6 +194,7 @@ async function fetchConversationMessageById(messageId) {
 async function fetchProjectMessageById(messageId, conversationId) {
   const [rows] = await pool.query(
     `SELECT pm.message_id, pm.project_id, pm.sender_id, pm.content, pm.created_at,
+            pm.attachment_url, pm.attachment_name, pm.attachment_type, pm.attachment_size,
             u.username AS sender_username,
             u.email AS sender_email,
             u.user_photo AS sender_photo
@@ -245,6 +281,7 @@ const getProjectMessages = async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT pm.message_id, pm.project_id, pm.sender_id, pm.content, pm.created_at,
+              pm.attachment_url, pm.attachment_name, pm.attachment_type, pm.attachment_size,
               u.username AS sender_username,
               u.email AS sender_email,
               u.user_photo AS sender_photo
@@ -284,6 +321,7 @@ const getConversationMessages = async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
+              m.attachment_url, m.attachment_name, m.attachment_type, m.attachment_size,
               u.username AS sender_username,
               u.email AS sender_email,
               u.user_photo AS sender_photo
@@ -309,9 +347,15 @@ const createProjectMessage = async (req, res) => {
     const projectId = Number(req.params.projectId);
     const content = String(req.body.content || "").trim();
     const conversationId = req.body.conversation_id || `project-${projectId}`;
+    const attachment = req.file ? {
+      url: `/uploads/files/${req.file.filename}`,
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size,
+    } : null;
 
-    if (!content) {
-      return res.status(400).json({ success: false, message: "Message content is required" });
+    if (!content && !attachment) {
+      return res.status(400).json({ success: false, message: "Message content or attachment is required" });
     }
 
     const project = await getAccessibleProject(projectId, req.user.id);
@@ -321,8 +365,18 @@ const createProjectMessage = async (req, res) => {
 
     if (String(conversationId) === `project-${projectId}`) {
       const [result] = await pool.query(
-        "INSERT INTO project_messages (project_id, sender_id, content) VALUES (?, ?, ?)",
-        [projectId, req.user.id, content],
+        `INSERT INTO project_messages
+         (project_id, sender_id, content, attachment_url, attachment_name, attachment_type, attachment_size)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          projectId,
+          req.user.id,
+          content,
+          attachment?.url || null,
+          attachment?.name || null,
+          attachment?.type || null,
+          attachment?.size || null,
+        ],
       );
       const message = await fetchProjectMessageById(result.insertId, conversationId);
       emitProjectMessage(projectId, message, conversationId);
@@ -335,8 +389,18 @@ const createProjectMessage = async (req, res) => {
     }
 
     const [result] = await pool.query(
-      "INSERT INTO project_chat_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)",
-      [conversation.conversation_id, req.user.id, content],
+      `INSERT INTO project_chat_messages
+       (conversation_id, sender_id, content, attachment_url, attachment_name, attachment_type, attachment_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        conversation.conversation_id,
+        req.user.id,
+        content,
+        attachment?.url || null,
+        attachment?.name || null,
+        attachment?.type || null,
+        attachment?.size || null,
+      ],
     );
     const message = await fetchConversationMessageById(result.insertId);
     emitProjectMessage(projectId, message, conversation.conversation_id);

@@ -19,6 +19,23 @@ function avatarUrl(photo) {
   return photo.startsWith("http") || photo.startsWith("data:") ? photo : `${API_URL}${photo}`;
 }
 
+function assetUrl(url) {
+  if (!url) return "";
+  return url.startsWith("http") || url.startsWith("data:") ? url : `${API_URL}${url}`;
+}
+
+function isImageType(type = "") {
+  return type.startsWith("image/");
+}
+
+function formatFileSize(size) {
+  const value = Number(size);
+  if (!value) return "";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function formatMessageTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -68,6 +85,7 @@ export default function ChatPage() {
   const [loadingChat, setLoadingChat] = useState(false);
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState("");
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [canManageProject, setCanManageProject] = useState(false);
@@ -76,10 +94,12 @@ export default function ChatPage() {
   const [savingMember, setSavingMember] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState([]);
-  const [groupAddUserId, setGroupAddUserId] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [chatPanelView, setChatPanelView] = useState("overview");
 
   const messagesEndRef = useRef(null);
+  const attachmentInputRef = useRef(null);
   const activeProjectId = activeProject?.project_id;
   const activeConversationId = conversationKey(activeConversation);
   const socketProjectIds = useMemo(() => (activeProjectId ? [activeProjectId] : []), [activeProjectId]);
@@ -106,16 +126,21 @@ export default function ChatPage() {
     return activeConversation.name || activeProject?.name || "Project Chat";
   }, [activeConversation, activeProject?.name, memberById, user?.id]);
 
+  const getDirectConversationMember = useCallback(
+    (conversation) => (conversation.participants || [])
+      .map((id) => memberById.get(Number(id)))
+      .find((member) => Number(member?.user_id) !== Number(user?.id)),
+    [memberById, user?.id],
+  );
+
   const getConversationLabel = useCallback(
     (conversation) => {
       if (conversation.type === "project") return activeProject?.name || "Project Chat";
-      if (conversation.type === "group") return conversation.name || "Group chat";
-      const other = (conversation.participants || [])
-        .map((id) => memberById.get(Number(id)))
-        .find((member) => Number(member?.user_id) !== Number(user?.id));
+      if (conversation.type === "group") return `Group: ${conversation.name || "Group chat"}`;
+      const other = getDirectConversationMember(conversation);
       return displayName(other) || "Direct chat";
     },
-    [activeProject?.name, memberById, user?.id],
+    [activeProject?.name, getDirectConversationMember],
   );
 
   const groupParticipantIds = useMemo(
@@ -126,10 +151,20 @@ export default function ChatPage() {
     () => selectableMembers.filter((member) => !groupParticipantIds.has(Number(member.user_id))),
     [groupParticipantIds, selectableMembers],
   );
-  const activeGroupMembers = useMemo(
-    () => selectableMembers.filter((member) => groupParticipantIds.has(Number(member.user_id))),
-    [groupParticipantIds, selectableMembers],
-  );
+
+  const activeChatMembers = useMemo(() => {
+    if (!activeConversation) return [];
+    if (activeConversation.type === "project") return members;
+    return (activeConversation.participants || [])
+      .map((id) => memberById.get(Number(id)))
+      .filter(Boolean);
+  }, [activeConversation, memberById, members]);
+
+  const addableChatMembers = useMemo(() => {
+    if (!activeConversation) return [];
+    if (activeConversation.type === "group") return membersOutsideActiveGroup;
+    return [];
+  }, [activeConversation, membersOutsideActiveGroup]);
 
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
@@ -182,6 +217,8 @@ export default function ChatPage() {
     setActiveConversation(null);
     setMessages([]);
     setGroupMemberIds([]);
+    setGroupName("");
+    setIsCreateGroupOpen(false);
     if (activeProjectId) loadProjectChat(activeProjectId);
   }, [activeProjectId, loadProjectChat]);
 
@@ -220,6 +257,13 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loadingMessages]);
+
+  useEffect(() => {
+    setChatPanelView("overview");
+    setAddMemberEmail("");
+    setSelectedAttachment(null);
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+  }, [activeConversationId]);
 
   const handleProjectMessage = useCallback(
     (payload) => {
@@ -287,24 +331,42 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
-    if (!activeProjectId || !activeConversation || !messageText.trim() || sendingMessage) return;
+    if (!activeProjectId || !activeConversation || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
 
     const content = messageText.trim();
+    const attachment = selectedAttachment;
     setMessageText("");
+    setSelectedAttachment(null);
+    if (attachmentInputRef.current) attachmentInputRef.current.value = "";
     setSendingMessage(true);
 
     try {
-      await api.post(`/projects/${activeProjectId}/messages`, {
-        content,
-        conversation_id: activeConversationId,
-      });
+      if (attachment) {
+        const formData = new FormData();
+        formData.append("content", content);
+        formData.append("conversation_id", activeConversationId);
+        formData.append("attachment", attachment);
+        await api.post(`/projects/${activeProjectId}/messages`, formData);
+      } else {
+        await api.post(`/projects/${activeProjectId}/messages`, {
+          content,
+          conversation_id: activeConversationId,
+        });
+      }
     } catch (err) {
       console.error("Cannot send message", err);
       showToast(err.response?.data?.message || "Cannot send message", "error");
       setMessageText(content);
+      setSelectedAttachment(attachment);
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  const handleAttachmentChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setSelectedAttachment(file);
   };
 
   const openDirectChat = async (memberId) => {
@@ -341,6 +403,7 @@ export default function ChatPage() {
       });
       setGroupName("");
       setGroupMemberIds([]);
+      setIsCreateGroupOpen(false);
       await loadProjectChat(activeProjectId);
       setActiveConversation(res.data.conversation);
       showToast("Group created", "success");
@@ -370,29 +433,16 @@ export default function ChatPage() {
     }
   };
 
-  const handleAddGroupMember = async () => {
-    if (!activeProjectId || !activeConversationId || !groupAddUserId) return;
+  const handleAddGroupMember = async (userId) => {
+    if (!activeProjectId || !activeConversationId || !userId) return;
     try {
       await api.post(`/projects/${activeProjectId}/conversations/${activeConversationId}/members`, {
-        user_id: Number(groupAddUserId),
+        user_id: Number(userId),
       });
-      setGroupAddUserId("");
       await loadProjectChat(activeProjectId);
       showToast("Added to group", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot add group member", "error");
-    }
-  };
-
-  const handlePromoteGroupMember = async (memberId) => {
-    if (!activeProjectId || !activeConversationId) return;
-    try {
-      await api.put(`/projects/${activeProjectId}/conversations/${activeConversationId}/members/${memberId}/role`, {
-        role: "admin",
-      });
-      showToast("Group member promoted", "success");
-    } catch (err) {
-      showToast(err.response?.data?.message || "Cannot promote group member", "error");
     }
   };
 
@@ -472,11 +522,48 @@ export default function ChatPage() {
             </div>
 
             <div className="chat-thread-panel">
-              <div className="chat-panel-title">Chats</div>
+              <div className="chat-panel-title-row">
+                <div className="chat-panel-title">Chats</div>
+                <button
+                  type="button"
+                  className={`chat-create-toggle ${isCreateGroupOpen ? "active" : ""}`}
+                  onClick={() => setIsCreateGroupOpen((open) => !open)}
+                  disabled={!activeProject}
+                >
+                  <Icon name="teamAdd" size={14} />
+                  <span>Create group</span>
+                </button>
+              </div>
+              {isCreateGroupOpen && (
+                <form className="chat-create-group-form" onSubmit={handleCreateGroup}>
+                  <input type="text" placeholder="Group name" value={groupName} onChange={(event) => setGroupName(event.target.value)} />
+                  <div className="chat-group-member-picker compact">
+                    {selectableMembers.map((member) => (
+                      <button
+                        key={member.user_id}
+                        type="button"
+                        className={`chat-picker-member ${groupMemberIds.includes(member.user_id) ? "selected" : ""}`}
+                        onClick={() => toggleGroupMember(member.user_id)}
+                      >
+                        <span className="chat-picker-dot" aria-hidden="true" />
+                        <span className="chat-avatar small">
+                          {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
+                        </span>
+                        <span className="chat-picker-name">{displayName(member)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="chat-create-actions">
+                    <button type="button" className="secondary" onClick={() => setIsCreateGroupOpen(false)}>Cancel</button>
+                    <button type="submit" disabled={creatingGroup || !groupName.trim() || groupMemberIds.length === 0}>Create group</button>
+                  </div>
+                </form>
+              )}
               {loadingChat ? (
                 <div className="chat-empty">Loading chats...</div>
               ) : conversations.map((conversation) => {
                 const isDirect = conversation.type === "direct";
+                const directMember = isDirect ? getDirectConversationMember(conversation) : null;
                 return (
                   <button
                     key={conversationKey(conversation)}
@@ -484,7 +571,13 @@ export default function ChatPage() {
                     className={`chat-thread-row ${activeConversationId === conversationKey(conversation) ? "active" : ""}`}
                     onClick={() => setActiveConversation(conversation)}
                   >
-                    <Icon name={isDirect ? "user" : conversation.type === "group" ? "teamAdd" : "hash"} size={15} />
+                    {isDirect ? (
+                      <span className="chat-thread-avatar">
+                        {directMember?.user_photo ? <img src={avatarUrl(directMember.user_photo)} alt="" /> : displayName(directMember).charAt(0).toUpperCase()}
+                      </span>
+                    ) : (
+                      <Icon name={conversation.type === "group" ? "users" : "hash"} size={15} />
+                    )}
                     <span>{getConversationLabel(conversation)}</span>
                   </button>
                 );
@@ -532,7 +625,24 @@ export default function ChatPage() {
                           <span>{mine ? "You" : message.sender_username || "User"}</span>
                           <span>{formatMessageTime(message.created_at)}</span>
                         </div>
-                        <div className={`chat-message ${mine ? "mine" : ""}`}>{message.content}</div>
+                        <div className={`chat-message ${mine ? "mine" : ""}`}>
+                          {message.content && <div className="chat-message-text">{message.content}</div>}
+                          {message.attachment_url && (
+                            isImageType(message.attachment_type || "") ? (
+                              <a className="chat-image-attachment" href={assetUrl(message.attachment_url)} target="_blank" rel="noreferrer">
+                                <img src={assetUrl(message.attachment_url)} alt={message.attachment_name || "Attachment"} />
+                              </a>
+                            ) : (
+                              <a className="chat-file-attachment" href={assetUrl(message.attachment_url)} target="_blank" rel="noreferrer">
+                                <Icon name="paperclip" size={16} />
+                                <span>
+                                  <strong>{message.attachment_name || "Attachment"}</strong>
+                                  <small>{formatFileSize(message.attachment_size)}</small>
+                                </span>
+                              </a>
+                            )
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -542,87 +652,151 @@ export default function ChatPage() {
             </div>
 
             <form className="chat-input-bar" onSubmit={handleSendMessage}>
-              <input
-                type="text"
-                placeholder={activeConversation ? `Message ${activeConversationTitle}...` : "Select a chat..."}
-                value={messageText}
-                onChange={(event) => setMessageText(event.target.value)}
-                disabled={!activeConversation || sendingMessage}
-              />
-              <button type="submit" disabled={!activeConversation || sendingMessage || !messageText.trim()}>
-                Send
-              </button>
+              {selectedAttachment && (
+                <div className="chat-selected-attachment">
+                  <Icon name="paperclip" size={14} />
+                  <span>{selectedAttachment.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAttachment(null);
+                      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+                    }}
+                    aria-label="Remove attachment"
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              )}
+              <div className="chat-input-row">
+                <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  className="chat-file-input"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.json"
+                  onChange={handleAttachmentChange}
+                  disabled={!activeConversation || sendingMessage}
+                />
+                <button
+                  type="button"
+                  className="chat-attach-btn"
+                  title="Attach file"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  disabled={!activeConversation || sendingMessage}
+                >
+                  <Icon name="paperclip" size={18} />
+                </button>
+                <input
+                  type="text"
+                  placeholder={activeConversation ? `Message ${activeConversationTitle}...` : "Select a chat..."}
+                  value={messageText}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  disabled={!activeConversation || sendingMessage}
+                />
+                <button type="submit" disabled={!activeConversation || sendingMessage || (!messageText.trim() && !selectedAttachment)}>
+                  Send
+                </button>
+              </div>
             </form>
           </section>
 
           <aside className="chat-side-panel">
-            <section className="chat-tool-section">
-              <div className="chat-panel-title">Members</div>
-              <div className="chat-member-list">
-                {members.map((member) => (
-                  <div className="chat-member-row" key={member.user_id}>
-                    <span className="chat-avatar small">
-                      {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
+            <section className="chat-info-section">
+              {chatPanelView !== "overview" && (
+                <button type="button" className="chat-panel-back" onClick={() => setChatPanelView("overview")}>
+                  <Icon name="chevronRight" size={14} />
+                  <span>Back</span>
+                </button>
+              )}
+
+              {chatPanelView === "overview" && (
+                <>
+                  <div className="chat-info-heading">
+                    <span className="chat-info-icon">
+                      <Icon name={activeConversation?.type === "direct" ? "user" : activeConversation?.type === "group" ? "users" : "hash"} size={18} />
                     </span>
-                    <span className="chat-member-main">
-                      <span>{displayName(member)}</span>
-                      <span>{member.role}</span>
-                    </span>
-                    {Number(member.user_id) !== Number(user?.id) && (
-                      <button type="button" className="chat-icon-btn" title="Direct chat" onClick={() => openDirectChat(member.user_id)}>
-                        <Icon name="chat" size={14} />
-                      </button>
-                    )}
+                    <div>
+                      <div className="chat-panel-title">Chat name</div>
+                      <h2>{activeConversationTitle}</h2>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </section>
 
-            {canManageProject && (
-              <form className="chat-tool-section" onSubmit={handleAddMember}>
-                <div className="chat-panel-title">Add project member</div>
-                <input type="email" placeholder="member@email.com" value={addMemberEmail} onChange={(event) => setAddMemberEmail(event.target.value)} />
-                <button type="submit" disabled={savingMember || !addMemberEmail.trim()}>Add member</button>
-              </form>
-            )}
+                  <button type="button" className="chat-info-nav-row" onClick={() => setChatPanelView("members")}>
+                    <span>
+                      <strong>Members</strong>
+                      <small>{activeChatMembers.length} people in this chat</small>
+                    </span>
+                    <Icon name="chevronRight" size={16} />
+                  </button>
 
-            <form className="chat-tool-section" onSubmit={handleCreateGroup}>
-              <div className="chat-panel-title">Create group</div>
-              <input type="text" placeholder="Group name" value={groupName} onChange={(event) => setGroupName(event.target.value)} />
-              <div className="chat-check-list">
-                {selectableMembers.map((member) => (
-                  <label key={member.user_id}>
-                    <input
-                      type="checkbox"
-                      checked={groupMemberIds.includes(member.user_id)}
-                      onChange={() => toggleGroupMember(member.user_id)}
-                    />
-                    <span>{displayName(member)}</span>
-                  </label>
-                ))}
-              </div>
-              <button type="submit" disabled={creatingGroup || !groupName.trim() || groupMemberIds.length === 0}>Create group</button>
-            </form>
-
-            {activeConversation?.type === "group" && (
-              <section className="chat-tool-section">
-                <div className="chat-panel-title">Group controls</div>
-                <div className="chat-inline-action">
-                  <select value={groupAddUserId} onChange={(event) => setGroupAddUserId(event.target.value)}>
-                    <option value="">Add member</option>
-                    {membersOutsideActiveGroup.map((member) => <option key={member.user_id} value={member.user_id}>{displayName(member)}</option>)}
-                  </select>
-                  <button type="button" onClick={handleAddGroupMember} disabled={!groupAddUserId}>Add</button>
-                </div>
-                <div className="chat-check-list">
-                  {activeGroupMembers.map((member) => (
-                    <button key={member.user_id} type="button" className="chat-promote-btn" onClick={() => handlePromoteGroupMember(member.user_id)}>
-                      Promote {displayName(member)}
+                  {(activeConversation?.type === "group" || (activeConversation?.type === "project" && canManageProject)) && (
+                    <button type="button" className="chat-info-nav-row" onClick={() => setChatPanelView("add")}>
+                      <span>
+                        <strong>Add member</strong>
+                        <small>{activeConversation?.type === "group" ? "Add project members to this group" : "Add a new project member"}</small>
+                      </span>
+                      <Icon name="chevronRight" size={16} />
                     </button>
-                  ))}
-                </div>
-              </section>
-            )}
+                  )}
+                </>
+              )}
+
+              {chatPanelView === "members" && (
+                <>
+                  <div className="chat-panel-title">Members</div>
+                  <div className="chat-member-list">
+                    {activeChatMembers.map((member) => (
+                      <div className="chat-member-row" key={member.user_id}>
+                        <span className="chat-avatar small">
+                          {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
+                        </span>
+                        <span className="chat-member-main">
+                          <span>{displayName(member)}</span>
+                          <span>{member.role}</span>
+                        </span>
+                        {Number(member.user_id) !== Number(user?.id) && (
+                          <button type="button" className="chat-icon-btn" title="Direct chat" onClick={() => openDirectChat(member.user_id)}>
+                            <Icon name="chat" size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {chatPanelView === "add" && activeConversation?.type === "project" && canManageProject && (
+                <form className="chat-add-member-form" onSubmit={handleAddMember}>
+                  <div className="chat-panel-title">Add member</div>
+                  <input type="email" placeholder="member@email.com" value={addMemberEmail} onChange={(event) => setAddMemberEmail(event.target.value)} />
+                  <button type="submit" disabled={savingMember || !addMemberEmail.trim()}>Add member</button>
+                </form>
+              )}
+
+              {chatPanelView === "add" && activeConversation?.type === "group" && (
+                <>
+                  <div className="chat-panel-title">Add member</div>
+                  <div className="chat-member-list">
+                    {addableChatMembers.length === 0 ? (
+                      <div className="chat-empty">All project members are already in this group.</div>
+                    ) : addableChatMembers.map((member) => (
+                      <div className="chat-member-row" key={member.user_id}>
+                        <span className="chat-avatar small">
+                          {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
+                        </span>
+                        <span className="chat-member-main">
+                          <span>{displayName(member)}</span>
+                          <span>{member.role}</span>
+                        </span>
+                        <button type="button" className="chat-add-btn" onClick={() => handleAddGroupMember(member.user_id)}>
+                          Add
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </section>
           </aside>
         </section>
       </main>
