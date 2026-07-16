@@ -8,6 +8,9 @@ let attachmentTableReady;
 let labelsColumnReady;
 let workflowSchemaReady;
 let taskDetailSchemaReady;
+const PROJECT_MEMBER_ROLE_ENUM = "ENUM('owner','leader','member','ba','developer','qa','devops','viewer')";
+const TASK_ASSIGNABLE_ROLES = ["member", "ba", "developer", "qa", "devops"];
+const TASK_MANAGER_ROLES = ["owner", "leader", "ba", "developer", "qa", "devops"];
 
 function getMailTransporter() {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -38,10 +41,10 @@ async function ensureTaskWorkflowSchema() {
 
       if (
         memberRoleColumns.length > 0 &&
-        !String(memberRoleColumns[0].COLUMN_TYPE).includes("leader")
+        !String(memberRoleColumns[0].COLUMN_TYPE).includes("developer")
       ) {
         await pool.query(
-          "ALTER TABLE project_members MODIFY COLUMN role ENUM('owner','leader','member') DEFAULT 'member'",
+          `ALTER TABLE project_members MODIFY COLUMN role ${PROJECT_MEMBER_ROLE_ENUM} DEFAULT 'member'`,
         );
       }
 
@@ -619,7 +622,7 @@ function isPastDeadlineDate(deadlineDate) {
 
 async function validateAssigneeIds(projectId, assigneeIds) {
   for (const userId of assigneeIds) {
-    if ((await getProjectRole(projectId, userId)) !== "member") {
+    if (!TASK_ASSIGNABLE_ROLES.includes(await getProjectRole(projectId, userId))) {
       const error = new Error("Tasks can only be assigned to members");
       error.statusCode = 400;
       throw error;
@@ -897,10 +900,10 @@ exports.createTask = async (req, res) => {
         message: "You are not a project member",
       });
     }
-    if (role === "member") {
+    if (!TASK_MANAGER_ROLES.includes(role)) {
       return res.status(403).json({
         success: false,
-        message: "Only owner/leader can create tasks in this team project",
+        message: "Only project contributors can create tasks in this team project",
       });
     }
 
@@ -1077,7 +1080,7 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    if (role === "member") {
+    if (!TASK_MANAGER_ROLES.includes(role)) {
       return res.status(403).json({
         success: false,
         message: "Members cannot edit tasks",
@@ -1534,7 +1537,7 @@ exports.deleteTask = async (req, res) => {
         message: "You are not a project member",
       });
     }
-    if (role === "member") {
+    if (!TASK_MANAGER_ROLES.includes(role)) {
       return res.status(403).json({
         success: false,
         message: "Members cannot delete tasks",
@@ -1637,7 +1640,7 @@ exports.getTaskDetails = async (req, res) => {
       FROM project_members pm
       JOIN users u ON u.user_id = pm.user_id
       WHERE pm.project_id = ?
-        AND pm.role = 'member'
+        AND pm.role IN ('member','ba','developer','qa','devops')
       ORDER BY u.username ASC
       `,
       [projectId],
@@ -2122,7 +2125,7 @@ exports.requestTaskAssignment = async (req, res) => {
     }
 
     const assigneeRole = await getProjectRole(projectId, assigned_to);
-    if (assigneeRole !== "member") {
+    if (!TASK_ASSIGNABLE_ROLES.includes(assigneeRole)) {
       return res.status(400).json({
         success: false,
         message: "Tasks can only be assigned to members",

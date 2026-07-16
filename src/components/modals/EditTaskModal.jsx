@@ -8,6 +8,8 @@ import api from "../../api/axiosInstance";
 import { isPastLocalDate, parseLocalDate, toLocalDateTime } from "../../utils/dateTime";
 import "./EditTaskModal.css";
 
+const TASK_EDITOR_ROLES = ["owner", "leader", "ba", "developer", "qa", "devops"];
+
 const API_ORIGIN = "http://localhost:5000";
 const TASK_BLUE = "#1e88e5";
 
@@ -55,7 +57,7 @@ export default function EditTaskModal({
   const [isAddingSubtask, setIsAddingSubtask] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [userRole, setUserRole] = useState(null);
-  const canEditTask = ["owner", "leader"].includes(userRole);
+  const canEditTask = TASK_EDITOR_ROLES.includes(userRole);
   const isMember = !canEditTask;
   const [commentAttachments, setCommentAttachments] = useState([]);
 

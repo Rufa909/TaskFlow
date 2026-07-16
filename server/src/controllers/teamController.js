@@ -1,5 +1,36 @@
 const pool = require("../config/db");
 
+const PROJECT_MEMBER_ROLES = ["leader", "member", "ba", "developer", "qa", "devops", "viewer"];
+const PROJECT_MEMBER_ROLE_ENUM = "ENUM('owner','leader','member','ba','developer','qa','devops','viewer')";
+let projectMemberRoleSchemaReady;
+
+async function ensureProjectMemberRoleSchema() {
+  if (!projectMemberRoleSchemaReady) {
+    projectMemberRoleSchemaReady = (async () => {
+      const [columns] = await pool.query(
+        `
+        SELECT COLUMN_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'project_members'
+          AND COLUMN_NAME = 'role'
+        `,
+      );
+
+      if (
+        columns.length > 0 &&
+        !String(columns[0].COLUMN_TYPE).includes("developer")
+      ) {
+        await pool.query(
+          `ALTER TABLE project_members MODIFY COLUMN role ${PROJECT_MEMBER_ROLE_ENUM} DEFAULT 'member'`,
+        );
+      }
+    })();
+  }
+
+  return projectMemberRoleSchemaReady;
+}
+
 // Tìm user theo email (không trả về chính mình)
 const searchUserByEmail = async (req, res) => {
   try {
@@ -233,6 +264,7 @@ const respondInvitation = async (req, res) => {
 // Lấy danh sách thành viên của project (bao gồm cả owner)
 const getProjectMembers = async (req, res) => {
   try {
+    await ensureProjectMemberRoleSchema();
     const { id } = req.params;
 
     // Lấy members từ project_members
@@ -271,13 +303,14 @@ const getProjectMembers = async (req, res) => {
 
 const updateProjectMemberRole = async (req, res) => {
   try {
+    await ensureProjectMemberRoleSchema();
     const { id, userId } = req.params;
     const { role } = req.body;
 
-    if (!["leader", "member"].includes(role)) {
+    if (!PROJECT_MEMBER_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: "Role phai la leader hoac member",
+        message: "Role khong hop le",
       });
     }
 

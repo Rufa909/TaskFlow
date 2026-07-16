@@ -19,6 +19,7 @@ Run this SQL against the TaskFlow MySQL database when you want to apply the sche
 
 ```bash
 mysql -u <user> -p <database> < server/migrations/20260716_workflow_handover.sql
+mysql -u <user> -p <database> < server/migrations/20260716_project_member_roles.sql
 ```
 
 The backend also creates these tables automatically on workflow API usage:

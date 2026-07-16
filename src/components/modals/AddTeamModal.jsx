@@ -7,6 +7,15 @@ import Icon from "../common/Icon";
 import "./AddTeamModal.css";
 
 const API_URL = "http://localhost:5000";
+const PROJECT_ROLE_OPTIONS = [
+  { value: "member", label: "Member" },
+  { value: "leader", label: "Leader" },
+  { value: "ba", label: "BA" },
+  { value: "developer", label: "Developer" },
+  { value: "qa", label: "QA" },
+  { value: "devops", label: "DevOps" },
+  { value: "viewer", label: "Viewer" },
+];
 
 function avatarUrl(photo) {
   if (!photo) return "";
@@ -337,8 +346,11 @@ export default function AddTeamModal() {
                       onChange={(e) => handleRoleChange(member, e.target.value)}
                       title="Change role"
                     >
-                      <option value="member">Member</option>
-                      <option value="leader">Leader</option>
+                      {PROJECT_ROLE_OPTIONS.map((role) => (
+                        <option key={role.value} value={role.value}>
+                          {role.label}
+                        </option>
+                      ))}
                     </select>
                   ) : member.role ? (
                     <span className="atm-member-role">{member.role}</span>

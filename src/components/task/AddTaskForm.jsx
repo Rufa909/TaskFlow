@@ -7,6 +7,9 @@ import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api/axiosInstance";
 
+const TASK_ASSIGNABLE_ROLES = ["member", "ba", "developer", "qa", "devops"];
+const TASK_CREATOR_ROLES = ["owner", "leader", "ba", "developer", "qa", "devops"];
+
 export default function AddTaskForm({
   newTaskTitle,
   setNewTaskTitle,
@@ -98,9 +101,9 @@ const selectedPriority =
   const isOwner = Number(activeProject?.owner_id) === Number(user?.id);
   const userRole = isOwner ? "owner" : (currentMember?.role || "member");
   const canAssignTask = ["owner", "leader"].includes(userRole);
-  const isMember = userRole === "member";
-  const assignableMembers = projectMembers.filter(
-    (member) => member.role === "member",
+  const canCreateTask = TASK_CREATOR_ROLES.includes(userRole);
+  const assignableMembers = projectMembers.filter((member) =>
+    TASK_ASSIGNABLE_ROLES.includes(member.role),
   );
   const selectedAssigneeIds = Array.isArray(taskAssignee)
     ? taskAssignee.map(Number)
@@ -444,8 +447,8 @@ const selectedPriority =
           <button
             className="submit-btn"
             onClick={handleAddTask}
-            disabled={!newTaskTitle.trim() || isMember}
-            title={isMember ? "Members cannot create tasks in this project" : ""}
+            disabled={!newTaskTitle.trim() || !canCreateTask}
+            title={!canCreateTask ? "Your role cannot create tasks in this project" : ""}
           >
             Add task
           </button>
