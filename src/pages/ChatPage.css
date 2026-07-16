@@ -302,11 +302,6 @@
   gap: 8px;
 }
 
-.chat-member-row select {
-  grid-column: 2 / 4;
-  height: 34px;
-}
-
 .chat-member-main {
   min-width: 0;
   display: flex;

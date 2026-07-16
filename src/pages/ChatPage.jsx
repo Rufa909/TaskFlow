@@ -14,8 +14,6 @@ import useSocketIo from "../hooks/useSocketIo";
 import "./ChatPage.css";
 
 const API_URL = "http://localhost:5000";
-const PROJECT_ROLES = ["member", "leader", "ba", "developer", "qa", "devops", "viewer"];
-
 function avatarUrl(photo) {
   if (!photo) return "";
   return photo.startsWith("http") || photo.startsWith("data:") ? photo : `${API_URL}${photo}`;
@@ -75,7 +73,6 @@ export default function ChatPage() {
   const [canManageProject, setCanManageProject] = useState(false);
 
   const [addMemberEmail, setAddMemberEmail] = useState("");
-  const [addMemberRole, setAddMemberRole] = useState("member");
   const [savingMember, setSavingMember] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState([]);
@@ -97,7 +94,6 @@ export default function ChatPage() {
     () => members.filter((member) => Number(member.user_id) !== Number(user?.id)),
     [members, user?.id],
   );
-  const canPromoteProjectMembers = activeProject?.user_role === "owner";
 
   const activeConversationTitle = useMemo(() => {
     if (!activeConversation) return "Project Chat";
@@ -362,7 +358,7 @@ export default function ChatPage() {
     try {
       await api.post(`/projects/${activeProjectId}/members`, {
         email: addMemberEmail.trim(),
-        role: addMemberRole,
+        role: "member",
       });
       setAddMemberEmail("");
       await loadProjectChat(activeProjectId);
@@ -371,17 +367,6 @@ export default function ChatPage() {
       showToast(err.response?.data?.message || "Cannot add member", "error");
     } finally {
       setSavingMember(false);
-    }
-  };
-
-  const handleProjectRoleChange = async (memberId, role) => {
-    if (!activeProjectId) return;
-    try {
-      await api.put(`/teams/projects/${activeProjectId}/members/${memberId}/role`, { role });
-      await loadProjectChat(activeProjectId);
-      showToast("Role updated", "success");
-    } catch (err) {
-      showToast(err.response?.data?.message || "Cannot update role", "error");
     }
   };
 
@@ -588,11 +573,6 @@ export default function ChatPage() {
                         <Icon name="chat" size={14} />
                       </button>
                     )}
-                    {canPromoteProjectMembers && member.role !== "owner" && (
-                      <select value={member.role || "member"} onChange={(event) => handleProjectRoleChange(member.user_id, event.target.value)}>
-                        {PROJECT_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
-                      </select>
-                    )}
                   </div>
                 ))}
               </div>
@@ -602,9 +582,6 @@ export default function ChatPage() {
               <form className="chat-tool-section" onSubmit={handleAddMember}>
                 <div className="chat-panel-title">Add project member</div>
                 <input type="email" placeholder="member@email.com" value={addMemberEmail} onChange={(event) => setAddMemberEmail(event.target.value)} />
-                <select value={addMemberRole} onChange={(event) => setAddMemberRole(event.target.value)}>
-                  {PROJECT_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
-                </select>
                 <button type="submit" disabled={savingMember || !addMemberEmail.trim()}>Add member</button>
               </form>
             )}
