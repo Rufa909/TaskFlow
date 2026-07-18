@@ -1,21 +1,52 @@
 const pool = require('../config/db');
 const ProjectStage = require('../models/ProjectStage');
 
+let removedMembersTableReady;
+
+async function ensureRemovedMembersTable() {
+    if (!removedMembersTableReady) {
+        removedMembersTableReady = pool.query(`
+            CREATE TABLE IF NOT EXISTS project_removed_members (
+                project_id INT NOT NULL,
+                user_id INT NOT NULL,
+                removed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (project_id, user_id),
+                INDEX idx_project_removed_members_user (user_id),
+                CONSTRAINT fk_project_removed_members_project
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+                CONSTRAINT fk_project_removed_members_user
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+            )
+        `);
+    }
+
+    return removedMembersTableReady;
+}
+
 // GET /api/projects → lấy tất cả project của user đang đăng nhập
 exports.getProjects = async (req, res) => {
     try {
+        await ensureRemovedMembersTable();
         let [rows] = await pool.query(
             `SELECT DISTINCT p.*,
                     CASE
                         WHEN p.owner_id = ? THEN 'owner'
-                        ELSE pm.role
-                    END AS user_role
+                        WHEN pm.user_id IS NOT NULL THEN pm.role
+                        WHEN prm.user_id IS NOT NULL THEN 'removed'
+                        ELSE NULL
+                    END AS user_role,
+                    prm.removed_at AS project_removed_at
              FROM projects p
-             LEFT JOIN project_members pm ON p.project_id = pm.project_id
-             WHERE (p.owner_id = ? OR pm.user_id = ?)
+             LEFT JOIN project_members pm
+               ON p.project_id = pm.project_id
+              AND pm.user_id = ?
+             LEFT JOIN project_removed_members prm
+               ON prm.project_id = p.project_id
+              AND prm.user_id = ?
+              WHERE (p.owner_id = ? OR pm.user_id IS NOT NULL OR prm.user_id IS NOT NULL)
                AND p.deleted_at IS NULL
              ORDER BY p.created_at ASC`,
-            [req.user.id, req.user.id, req.user.id]
+            [req.user.id, req.user.id, req.user.id, req.user.id]
         );
         // Nếu user chưa có project nào → tự động tạo "Project1"
         if (rows.length === 0) {

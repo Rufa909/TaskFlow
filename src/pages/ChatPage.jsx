@@ -57,6 +57,10 @@ function conversationKey(conversation) {
   return String(conversation?.conversation_id || "");
 }
 
+function groupRoleLabel(role) {
+  return role === "admin" ? "Admin" : "Member";
+}
+
 export default function ChatPage() {
   const { user, logout, updateUser } = useAuth();
   const { language, setLanguage } = useLanguage();
@@ -80,6 +84,7 @@ export default function ChatPage() {
   );
 
   const [members, setMembers] = useState([]);
+  const [chatUsers, setChatUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [loadingChat, setLoadingChat] = useState(false);
@@ -90,25 +95,47 @@ export default function ChatPage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [canManageProject, setCanManageProject] = useState(false);
 
-  const [addMemberEmail, setAddMemberEmail] = useState("");
   const [savingMember, setSavingMember] = useState(false);
+  const [projectMemberCandidates, setProjectMemberCandidates] = useState([]);
+  const [selectedProjectMemberIds, setSelectedProjectMemberIds] = useState([]);
+  const [loadingProjectMemberCandidates, setLoadingProjectMemberCandidates] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [groupAddMemberIds, setGroupAddMemberIds] = useState([]);
+  const [groupMemberCandidates, setGroupMemberCandidates] = useState([]);
+  const [loadingGroupMemberCandidates, setLoadingGroupMemberCandidates] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [addingGroupMembers, setAddingGroupMembers] = useState(false);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [chatPanelView, setChatPanelView] = useState("overview");
+  const [openMemberMenuId, setOpenMemberMenuId] = useState(null);
 
   const messagesEndRef = useRef(null);
   const attachmentInputRef = useRef(null);
   const activeProjectId = activeProject?.project_id;
   const activeConversationId = conversationKey(activeConversation);
   const socketProjectIds = useMemo(() => (activeProjectId ? [activeProjectId] : []), [activeProjectId]);
+  const isRemovedFromActiveChat = Boolean(
+    activeConversation?.removed_at
+      || (activeConversation?.type === "project" && activeProject?.user_role === "removed"),
+  );
+  const isDisbandedActiveGroup = Boolean(
+    activeConversation?.type === "group" && activeConversation?.disbanded_at,
+  );
+  const isChatLocked = isRemovedFromActiveChat || isDisbandedActiveGroup;
+  const removedChatMessage = activeConversation?.type === "group"
+    ? "You have been removed from this group."
+    : "You have been removed from this project.";
+  const disbandedChatMessage = "Admin has disbanded this group.";
 
   const memberById = useMemo(() => {
     const map = new Map();
     for (const member of members) map.set(Number(member.user_id), member);
+    for (const member of chatUsers) {
+      if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
+    }
     return map;
-  }, [members]);
+  }, [chatUsers, members]);
 
   const selectableMembers = useMemo(
     () => members.filter((member) => Number(member.user_id) !== Number(user?.id)),
@@ -143,15 +170,6 @@ export default function ChatPage() {
     [activeProject?.name, getDirectConversationMember],
   );
 
-  const groupParticipantIds = useMemo(
-    () => new Set((activeConversation?.participants || []).map(Number)),
-    [activeConversation?.participants],
-  );
-  const membersOutsideActiveGroup = useMemo(
-    () => selectableMembers.filter((member) => !groupParticipantIds.has(Number(member.user_id))),
-    [groupParticipantIds, selectableMembers],
-  );
-
   const activeChatMembers = useMemo(() => {
     if (!activeConversation) return [];
     if (activeConversation.type === "project") return members;
@@ -162,9 +180,32 @@ export default function ChatPage() {
 
   const addableChatMembers = useMemo(() => {
     if (!activeConversation) return [];
-    if (activeConversation.type === "group") return membersOutsideActiveGroup;
+    if (activeConversation.type === "group") return groupMemberCandidates;
     return [];
-  }, [activeConversation, membersOutsideActiveGroup]);
+  }, [activeConversation, groupMemberCandidates]);
+
+  const canManageActiveGroup = useMemo(() => {
+    if (activeConversation?.type !== "group") return false;
+    if (activeConversation.removed_at) return false;
+    if (activeConversation.disbanded_at) return false;
+    const participantRole = activeConversation.participant_role
+      || activeConversation.participant_roles?.[String(user?.id)]
+      || activeConversation.participant_roles?.[Number(user?.id)];
+
+    return participantRole === "admin" || Number(activeConversation.created_by) === Number(user?.id);
+  }, [activeConversation, user?.id]);
+
+  const getChatMemberRoleLabel = useCallback(
+    (member) => {
+      if (activeConversation?.type !== "group") return member?.role || "member";
+      const participantRole = activeConversation.participant_roles?.[String(member?.user_id)]
+        || activeConversation.participant_roles?.[Number(member?.user_id)]
+        || (Number(activeConversation.created_by) === Number(member?.user_id) ? "admin" : "member");
+
+      return groupRoleLabel(participantRole);
+    },
+    [activeConversation],
+  );
 
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
@@ -187,9 +228,16 @@ export default function ChatPage() {
     try {
       const res = await api.get(`/projects/${projectId}/chat`);
       const nextMembers = res.data.members || [];
+      const nextChatUsers = res.data.chat_users || [];
       const nextConversations = res.data.conversations || [];
       setMembers(nextMembers);
+      setChatUsers(nextChatUsers);
       setCanManageProject(Boolean(res.data.can_manage_project));
+      setActiveProject((current) => (
+        current && Number(current.project_id) === Number(projectId)
+          ? { ...current, ...(res.data.project || {}) }
+          : current
+      ));
       setConversations(nextConversations);
       setActiveConversation((current) => {
         const currentKey = conversationKey(current);
@@ -199,6 +247,7 @@ export default function ChatPage() {
       console.error("Cannot load project chat", err);
       showToast("Cannot load project chat", "error");
       setMembers([]);
+      setChatUsers([]);
       setConversations([]);
       setActiveConversation(null);
       setCanManageProject(false);
@@ -213,10 +262,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     setMembers([]);
+    setChatUsers([]);
     setConversations([]);
     setActiveConversation(null);
     setMessages([]);
     setGroupMemberIds([]);
+    setGroupAddMemberIds([]);
     setGroupName("");
     setIsCreateGroupOpen(false);
     if (activeProjectId) loadProjectChat(activeProjectId);
@@ -260,10 +311,81 @@ export default function ChatPage() {
 
   useEffect(() => {
     setChatPanelView("overview");
-    setAddMemberEmail("");
+    setProjectMemberCandidates([]);
+    setSelectedProjectMemberIds([]);
+    setGroupAddMemberIds([]);
+    setGroupMemberCandidates([]);
+    setOpenMemberMenuId(null);
     setSelectedAttachment(null);
     if (attachmentInputRef.current) attachmentInputRef.current.value = "";
   }, [activeConversationId]);
+
+  useEffect(() => {
+    setOpenMemberMenuId(null);
+    if (chatPanelView !== "add") setSelectedProjectMemberIds([]);
+    if (chatPanelView !== "add") setGroupAddMemberIds([]);
+    if (chatPanelView !== "add") setGroupMemberCandidates([]);
+  }, [chatPanelView]);
+
+  useEffect(() => {
+    if (chatPanelView !== "add" || activeConversation?.type !== "project" || !canManageProject || !activeProjectId) {
+      return;
+    }
+
+    let mounted = true;
+    async function loadProjectMemberCandidates() {
+      setLoadingProjectMemberCandidates(true);
+      try {
+        const res = await api.get(`/projects/${activeProjectId}/member-candidates`);
+        if (mounted) setProjectMemberCandidates(res.data.users || []);
+      } catch (err) {
+        if (mounted) {
+          setProjectMemberCandidates([]);
+          showToast(err.response?.data?.message || "Cannot load member candidates", "error");
+        }
+      } finally {
+        if (mounted) setLoadingProjectMemberCandidates(false);
+      }
+    }
+
+    loadProjectMemberCandidates();
+    return () => {
+      mounted = false;
+    };
+  }, [activeConversation?.type, activeProjectId, canManageProject, chatPanelView, showToast]);
+
+  useEffect(() => {
+    if (
+      chatPanelView !== "add"
+      || activeConversation?.type !== "group"
+      || !canManageActiveGroup
+      || !activeProjectId
+      || !activeConversationId
+    ) {
+      return;
+    }
+
+    let mounted = true;
+    async function loadGroupMemberCandidates() {
+      setLoadingGroupMemberCandidates(true);
+      try {
+        const res = await api.get(`/projects/${activeProjectId}/conversations/${activeConversationId}/member-candidates`);
+        if (mounted) setGroupMemberCandidates(res.data.users || []);
+      } catch (err) {
+        if (mounted) {
+          setGroupMemberCandidates([]);
+          showToast(err.response?.data?.message || "Cannot load group member candidates", "error");
+        }
+      } finally {
+        if (mounted) setLoadingGroupMemberCandidates(false);
+      }
+    }
+
+    loadGroupMemberCandidates();
+    return () => {
+      mounted = false;
+    };
+  }, [activeConversation?.type, activeConversationId, activeProjectId, canManageActiveGroup, chatPanelView, showToast]);
 
   const handleProjectMessage = useCallback(
     (payload) => {
@@ -331,7 +453,7 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
-    if (!activeProjectId || !activeConversation || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
+    if (!activeProjectId || !activeConversation || isChatLocked || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
 
     const content = messageText.trim();
     const attachment = selectedAttachment;
@@ -414,16 +536,20 @@ export default function ChatPage() {
     }
   };
 
-  const handleAddMember = async (event) => {
-    event.preventDefault();
-    if (!activeProjectId || !addMemberEmail.trim()) return;
+  const handleAddSelectedProjectMembers = async () => {
+    if (!activeProjectId || selectedProjectMemberIds.length === 0 || savingMember) return;
     setSavingMember(true);
     try {
-      await api.post(`/projects/${activeProjectId}/members`, {
-        email: addMemberEmail.trim(),
-        role: "member",
-      });
-      setAddMemberEmail("");
+      await Promise.all(selectedProjectMemberIds.map((userId) => (
+        api.post(`/projects/${activeProjectId}/members`, {
+          user_id: Number(userId),
+          role: "member",
+        })
+      )));
+      setSelectedProjectMemberIds([]);
+      setProjectMemberCandidates((prev) => (
+        prev.filter((member) => !selectedProjectMemberIds.includes(Number(member.user_id)))
+      ));
       await loadProjectChat(activeProjectId);
       showToast("Member added", "success");
     } catch (err) {
@@ -433,21 +559,119 @@ export default function ChatPage() {
     }
   };
 
-  const handleAddGroupMember = async (userId) => {
-    if (!activeProjectId || !activeConversationId || !userId) return;
+  const handleAddSelectedGroupMembers = async () => {
+    if (!activeProjectId || !activeConversationId || groupAddMemberIds.length === 0 || addingGroupMembers) return;
+    setAddingGroupMembers(true);
     try {
-      await api.post(`/projects/${activeProjectId}/conversations/${activeConversationId}/members`, {
-        user_id: Number(userId),
-      });
+      await Promise.all(groupAddMemberIds.map((userId) => (
+        api.post(`/projects/${activeProjectId}/conversations/${activeConversationId}/members`, {
+          user_id: Number(userId),
+        })
+      )));
+      setGroupAddMemberIds([]);
+      setGroupMemberCandidates((prev) => (
+        prev.filter((member) => !groupAddMemberIds.includes(Number(member.user_id)))
+      ));
       await loadProjectChat(activeProjectId);
       showToast("Added to group", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot add group member", "error");
+    } finally {
+      setAddingGroupMembers(false);
     }
+  };
+
+  const handleRemoveGroupMember = async (member) => {
+    if (!activeProjectId || !activeConversationId || !member?.user_id) return;
+    const confirmed = await confirm(`Remove ${displayName(member)} from this group chat?`, {
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/projects/${activeProjectId}/conversations/${activeConversationId}/members/${member.user_id}`);
+      await loadProjectChat(activeProjectId);
+      showToast("Removed from group chat", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot remove group member", "error");
+    }
+  };
+
+  const handleRemoveProjectMember = async (member) => {
+    if (!activeProjectId || !member?.user_id) return;
+    const confirmed = await confirm(`Remove ${displayName(member)} from this project chat?`, {
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/projects/${activeProjectId}/members/${member.user_id}`);
+      await loadProjectChat(activeProjectId);
+      showToast("Removed from project chat", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot remove project chat member", "error");
+    }
+  };
+
+  const handleRemoveChatMember = (member) => {
+    if (activeConversation?.type === "project") {
+      handleRemoveProjectMember(member);
+      return;
+    }
+
+    handleRemoveGroupMember(member);
+  };
+
+  const handleDisbandGroup = async () => {
+    if (!activeProjectId || !activeConversationId || activeConversation?.type !== "group") return;
+    const confirmed = await confirm("Disband this group?", {
+      confirmLabel: "Disband",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await api.patch(`/projects/${activeProjectId}/conversations/${activeConversationId}/disband`);
+      setMessages([]);
+      await loadProjectChat(activeProjectId);
+      showToast("Group disbanded", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot disband group", "error");
+    }
+  };
+
+  const handleChatMemberClick = (member) => {
+    if (!member?.user_id || Number(member.user_id) === Number(user?.id)) return;
+
+    if (
+      (activeConversation?.type === "group" && canManageActiveGroup)
+      || (activeConversation?.type === "project" && canManageProject)
+    ) {
+      setOpenMemberMenuId((current) => (
+        Number(current) === Number(member.user_id) ? null : Number(member.user_id)
+      ));
+      return;
+    }
+
+    openDirectChat(member.user_id);
   };
 
   const toggleGroupMember = (memberId) => {
     setGroupMemberIds((prev) => (
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    ));
+  };
+
+  const toggleGroupAddMember = (memberId) => {
+    setGroupAddMemberIds((prev) => (
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    ));
+  };
+
+  const toggleProjectAddMember = (memberId) => {
+    setSelectedProjectMemberIds((prev) => (
       prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
     ));
   };
@@ -604,6 +828,8 @@ export default function ChatPage() {
                 <div className="chat-empty chat-empty-large">Select a project first.</div>
               ) : loadingMessages ? (
                 <div className="chat-empty chat-empty-large">Loading messages...</div>
+              ) : isDisbandedActiveGroup ? (
+                <div className="chat-removed-notice">{disbandedChatMessage}</div>
               ) : messages.length === 0 ? (
                 <div className="chat-empty chat-empty-large">No messages yet. Start the conversation.</div>
               ) : (
@@ -648,6 +874,11 @@ export default function ChatPage() {
                   );
                 })
               )}
+              {isRemovedFromActiveChat && !isDisbandedActiveGroup && (
+                <div className="chat-removed-notice">
+                  {removedChatMessage}
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -675,25 +906,25 @@ export default function ChatPage() {
                   className="chat-file-input"
                   accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.json"
                   onChange={handleAttachmentChange}
-                  disabled={!activeConversation || sendingMessage}
+                  disabled={!activeConversation || isChatLocked || sendingMessage}
                 />
                 <button
                   type="button"
                   className="chat-attach-btn"
                   title="Attach file"
                   onClick={() => attachmentInputRef.current?.click()}
-                  disabled={!activeConversation || sendingMessage}
+                  disabled={!activeConversation || isChatLocked || sendingMessage}
                 >
                   <Icon name="paperclip" size={18} />
                 </button>
                 <input
                   type="text"
-                  placeholder={activeConversation ? `Message ${activeConversationTitle}...` : "Select a chat..."}
+                  placeholder={isDisbandedActiveGroup ? disbandedChatMessage : isRemovedFromActiveChat ? removedChatMessage : activeConversation ? `Message ${activeConversationTitle}...` : "Select a chat..."}
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
-                  disabled={!activeConversation || sendingMessage}
+                  disabled={!activeConversation || isChatLocked || sendingMessage}
                 />
-                <button type="submit" disabled={!activeConversation || sendingMessage || (!messageText.trim() && !selectedAttachment)}>
+                <button type="submit" disabled={!activeConversation || isChatLocked || sendingMessage || (!messageText.trim() && !selectedAttachment)}>
                   Send
                 </button>
               </div>
@@ -716,8 +947,8 @@ export default function ChatPage() {
                       <Icon name={activeConversation?.type === "direct" ? "user" : activeConversation?.type === "group" ? "users" : "hash"} size={18} />
                     </span>
                     <div>
-                      <div className="chat-panel-title">Chat name</div>
-                      <h2>{activeConversationTitle}</h2>
+                      <div className="chat-panel-title">Conversation details</div>
+                      <h3>{activeConversationTitle}</h3>
                     </div>
                   </div>
 
@@ -729,13 +960,22 @@ export default function ChatPage() {
                     <Icon name="chevronRight" size={16} />
                   </button>
 
-                  {(activeConversation?.type === "group" || (activeConversation?.type === "project" && canManageProject)) && (
+                  {((activeConversation?.type === "group" && canManageActiveGroup) || (activeConversation?.type === "project" && canManageProject)) && (
                     <button type="button" className="chat-info-nav-row" onClick={() => setChatPanelView("add")}>
                       <span>
                         <strong>Add member</strong>
                         <small>{activeConversation?.type === "group" ? "Add project members to this group" : "Add a new project member"}</small>
                       </span>
                       <Icon name="chevronRight" size={16} />
+                    </button>
+                  )}
+
+                  {activeConversation?.type === "group" && canManageActiveGroup && (
+                    <button type="button" className="chat-disband-row" onClick={handleDisbandGroup}>
+                      <span>
+                        <strong>Disband group</strong>
+                      </span>
+                      <Icon name="x" size={16} />
                     </button>
                   )}
                 </>
@@ -745,55 +985,150 @@ export default function ChatPage() {
                 <>
                   <div className="chat-panel-title">Members</div>
                   <div className="chat-member-list">
-                    {activeChatMembers.map((member) => (
-                      <div className="chat-member-row" key={member.user_id}>
-                        <span className="chat-avatar small">
-                          {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
-                        </span>
-                        <span className="chat-member-main">
-                          <span>{displayName(member)}</span>
-                          <span>{member.role}</span>
-                        </span>
-                        {Number(member.user_id) !== Number(user?.id) && (
-                          <button type="button" className="chat-icon-btn" title="Direct chat" onClick={() => openDirectChat(member.user_id)}>
-                            <Icon name="chat" size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {activeChatMembers.map((member) => {
+                      const isCurrentUser = Number(member.user_id) === Number(user?.id);
+                      const canOpenMemberActions = !isCurrentUser && (
+                        (activeConversation?.type === "group" && canManageActiveGroup)
+                        || (activeConversation?.type === "project" && canManageProject)
+                      );
+                      const canRemoveMember = canOpenMemberActions && (
+                        activeConversation?.type === "group"
+                        || (activeConversation?.type === "project" && member.role !== "owner")
+                      );
+                      const isMemberMenuOpen = Number(openMemberMenuId) === Number(member.user_id);
+
+                      return (
+                        <div
+                          className={`chat-member-row ${!isCurrentUser ? "interactive" : ""}`}
+                          key={member.user_id}
+                          role={!isCurrentUser ? "button" : undefined}
+                          tabIndex={!isCurrentUser ? 0 : undefined}
+                          onClick={() => handleChatMemberClick(member)}
+                          onKeyDown={(event) => {
+                            if (isCurrentUser || !["Enter", " "].includes(event.key)) return;
+                            event.preventDefault();
+                            handleChatMemberClick(member);
+                          }}
+                        >
+                          <span className="chat-avatar small">
+                            {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
+                          </span>
+                          <span className="chat-member-main">
+                            <span>{displayName(member)}</span>
+                            <span>{getChatMemberRoleLabel(member)}</span>
+                          </span>
+                          {canOpenMemberActions && (
+                            <div className={`chat-member-menu ${isMemberMenuOpen ? "open" : ""}`} onClick={(event) => event.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenMemberMenuId(null);
+                                  openDirectChat(member.user_id);
+                                }}
+                              >
+                                <Icon name="chat" size={14} />
+                                <span>Direct chat</span>
+                              </button>
+                              {canRemoveMember && (
+                                <button
+                                  type="button"
+                                  className="danger"
+                                  onClick={() => {
+                                    setOpenMemberMenuId(null);
+                                    handleRemoveChatMember(member);
+                                  }}
+                                >
+                                  <Icon name="x" size={14} />
+                                  <span>Remove member</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {canOpenMemberActions && (
+                            <span className="chat-member-more" aria-hidden="true">
+                              <Icon name="chevronRight" size={14} />
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
 
               {chatPanelView === "add" && activeConversation?.type === "project" && canManageProject && (
-                <form className="chat-add-member-form" onSubmit={handleAddMember}>
+                <div className="chat-add-member-form">
                   <div className="chat-panel-title">Add member</div>
-                  <input type="email" placeholder="member@email.com" value={addMemberEmail} onChange={(event) => setAddMemberEmail(event.target.value)} />
-                  <button type="submit" disabled={savingMember || !addMemberEmail.trim()}>Add member</button>
-                </form>
+                  {loadingProjectMemberCandidates ? (
+                    <div className="chat-empty">Loading members...</div>
+                  ) : projectMemberCandidates.length === 0 ? (
+                    <div className="chat-empty">No users available to add.</div>
+                  ) : (
+                    <div className="chat-group-member-picker compact">
+                      {projectMemberCandidates.map((member) => (
+                        <button
+                          key={member.user_id}
+                          type="button"
+                          className={`chat-picker-member ${selectedProjectMemberIds.includes(member.user_id) ? "selected" : ""}`}
+                          onClick={() => toggleProjectAddMember(member.user_id)}
+                        >
+                          <span className="chat-picker-dot" aria-hidden="true" />
+                          <span className="chat-avatar small">
+                            {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
+                          </span>
+                          <span className="chat-picker-name">{displayName(member)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {projectMemberCandidates.length > 0 && (
+                    <button
+                      type="button"
+                      className="chat-add-btn wide"
+                      disabled={savingMember || selectedProjectMemberIds.length === 0}
+                      onClick={handleAddSelectedProjectMembers}
+                    >
+                      Add member
+                    </button>
+                  )}
+                </div>
               )}
 
-              {chatPanelView === "add" && activeConversation?.type === "group" && (
+              {chatPanelView === "add" && activeConversation?.type === "group" && canManageActiveGroup && (
                 <>
                   <div className="chat-panel-title">Add member</div>
-                  <div className="chat-member-list">
-                    {addableChatMembers.length === 0 ? (
+                  <div className="chat-group-member-picker compact">
+                    {loadingGroupMemberCandidates ? (
+                      <div className="chat-empty">Loading members...</div>
+                    ) : addableChatMembers.length === 0 ? (
                       <div className="chat-empty">All project members are already in this group.</div>
                     ) : addableChatMembers.map((member) => (
-                      <div className="chat-member-row" key={member.user_id}>
+                      <button
+                        key={member.user_id}
+                        type="button"
+                        className={`chat-picker-member ${groupAddMemberIds.includes(member.user_id) ? "selected" : ""}`}
+                        onClick={() => toggleGroupAddMember(member.user_id)}
+                      >
+                        <span className="chat-picker-dot" aria-hidden="true" />
                         <span className="chat-avatar small">
                           {member.user_photo ? <img src={avatarUrl(member.user_photo)} alt="" /> : displayName(member).charAt(0).toUpperCase()}
                         </span>
-                        <span className="chat-member-main">
-                          <span>{displayName(member)}</span>
-                          <span>{member.role}</span>
+                        <span className="chat-picker-name">
+                          {displayName(member)}
                         </span>
-                        <button type="button" className="chat-add-btn" onClick={() => handleAddGroupMember(member.user_id)}>
-                          Add
-                        </button>
-                      </div>
+                      </button>
                     ))}
                   </div>
+                  {addableChatMembers.length > 0 && (
+                    <button
+                      type="button"
+                      className="chat-add-btn wide"
+                      disabled={addingGroupMembers || groupAddMemberIds.length === 0}
+                      onClick={handleAddSelectedGroupMembers}
+                    >
+                      Add member
+                    </button>
+                  )}
                 </>
               )}
             </section>

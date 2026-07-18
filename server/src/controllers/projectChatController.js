@@ -78,6 +78,19 @@ function ensureProjectChatTables() {
           FOREIGN KEY (sender_id) REFERENCES users(user_id) ON DELETE CASCADE
       )
     `)).then(() => Promise.all([
+      pool.query(`
+        CREATE TABLE IF NOT EXISTS project_removed_members (
+          project_id INT NOT NULL,
+          user_id INT NOT NULL,
+          removed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (project_id, user_id),
+          INDEX idx_project_removed_members_user (user_id),
+          CONSTRAINT fk_project_removed_members_project
+            FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+          CONSTRAINT fk_project_removed_members_user
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        )
+      `),
       ensureColumns("project_messages", [
         { name: "attachment_url", definition: "attachment_url VARCHAR(500) NULL" },
         { name: "attachment_name", definition: "attachment_name VARCHAR(255) NULL" },
@@ -90,6 +103,12 @@ function ensureProjectChatTables() {
         { name: "attachment_type", definition: "attachment_type VARCHAR(120) NULL" },
         { name: "attachment_size", definition: "attachment_size INT NULL" },
       ]),
+      ensureColumns("project_chat_conversations", [
+        { name: "disbanded_at", definition: "disbanded_at TIMESTAMP NULL" },
+      ]),
+      ensureColumns("project_chat_participants", [
+        { name: "removed_at", definition: "removed_at TIMESTAMP NULL" },
+      ]),
     ]));
   }
 
@@ -99,16 +118,25 @@ function ensureProjectChatTables() {
 async function getAccessibleProject(projectId, userId) {
   const [rows] = await pool.query(
     `SELECT p.project_id, p.name, p.owner_id,
-            CASE WHEN p.owner_id = ? THEN 'owner' ELSE pm.role END AS user_role
+            CASE
+              WHEN p.owner_id = ? THEN 'owner'
+              WHEN pm.user_id IS NOT NULL THEN pm.role
+              WHEN prm.user_id IS NOT NULL THEN 'removed'
+              ELSE NULL
+            END AS user_role,
+            prm.removed_at AS project_removed_at
      FROM projects p
      LEFT JOIN project_members pm
        ON pm.project_id = p.project_id
       AND pm.user_id = ?
+     LEFT JOIN project_removed_members prm
+       ON prm.project_id = p.project_id
+      AND prm.user_id = ?
      WHERE p.project_id = ?
        AND p.deleted_at IS NULL
-       AND (p.owner_id = ? OR pm.user_id IS NOT NULL)
+       AND (p.owner_id = ? OR pm.user_id IS NOT NULL OR prm.user_id IS NOT NULL)
      LIMIT 1`,
-    [userId, userId, projectId, userId],
+    [userId, userId, userId, projectId, userId],
   );
 
   return rows[0] || null;
@@ -159,7 +187,7 @@ function canManageProject(role) {
 
 async function assertConversationAccess(conversationId, projectId, userId) {
   const [rows] = await pool.query(
-    `SELECT c.*, p.role AS participant_role
+    `SELECT c.*, p.role AS participant_role, p.removed_at AS removed_at
      FROM project_chat_conversations c
      JOIN project_chat_participants p ON p.conversation_id = c.conversation_id
      WHERE c.conversation_id = ?
@@ -216,6 +244,7 @@ function projectConversation(project) {
     name: project.name,
     member_count: null,
     last_message_at: null,
+    removed_at: project.project_removed_at || null,
   };
 }
 
@@ -231,33 +260,63 @@ const getProjectChatOverview = async (req, res) => {
 
     const members = await getProjectMembersRows(projectId);
     const [conversations] = await pool.query(
-      `SELECT c.conversation_id, c.project_id, c.type, c.name, c.created_by, c.created_at,
+      `SELECT c.conversation_id, c.project_id, c.type, c.name, c.created_by, c.created_at, c.disbanded_at,
+              MAX(cp.role) AS participant_role,
+              MAX(cp.removed_at) AS removed_at,
               COUNT(cp2.user_id) AS member_count,
-              GROUP_CONCAT(cp2.user_id) AS participant_ids,
+              GROUP_CONCAT(DISTINCT cp2.user_id) AS participant_ids,
+              GROUP_CONCAT(DISTINCT CONCAT(cp2.user_id, ':', cp2.role)) AS participant_roles,
               MAX(m.created_at) AS last_message_at
        FROM project_chat_conversations c
        JOIN project_chat_participants cp ON cp.conversation_id = c.conversation_id
-       LEFT JOIN project_chat_participants cp2 ON cp2.conversation_id = c.conversation_id
+       LEFT JOIN project_chat_participants cp2
+         ON cp2.conversation_id = c.conversation_id
+        AND cp2.removed_at IS NULL
        LEFT JOIN project_chat_messages m ON m.conversation_id = c.conversation_id
        WHERE c.project_id = ? AND cp.user_id = ?
        GROUP BY c.conversation_id
        ORDER BY COALESCE(MAX(m.created_at), c.created_at) DESC`,
       [projectId, req.user.id],
     );
+    const [chatUsers] = await pool.query(
+      `SELECT DISTINCT u.user_id, u.username, u.email, u.user_photo
+       FROM project_chat_conversations c
+       JOIN project_chat_participants me
+         ON me.conversation_id = c.conversation_id
+        AND me.user_id = ?
+       JOIN project_chat_participants cp
+         ON cp.conversation_id = c.conversation_id
+       JOIN users u ON u.user_id = cp.user_id
+       WHERE c.project_id = ?`,
+      [req.user.id, projectId],
+    );
 
     res.json({
       success: true,
       project,
       members,
+      chat_users: chatUsers,
       conversations: [
         projectConversation(project),
-        ...conversations.map((conversation) => ({
-          ...conversation,
-          participants: String(conversation.participant_ids || "")
+        ...conversations.map((conversation) => {
+          const participantRoles = {};
+          String(conversation.participant_roles || "")
             .split(",")
-            .map(Number)
-            .filter(Boolean),
-        })),
+            .filter(Boolean)
+            .forEach((entry) => {
+              const [userId, role] = entry.split(":");
+              if (userId && role) participantRoles[userId] = role;
+            });
+
+          return {
+            ...conversation,
+            participants: String(conversation.participant_ids || "")
+              .split(",")
+              .map(Number)
+              .filter(Boolean),
+            participant_roles: participantRoles,
+          };
+        }),
       ],
       can_manage_project: canManageProject(project.user_role),
     });
@@ -318,6 +377,9 @@ const getConversationMessages = async (req, res) => {
     if (!conversation) {
       return res.status(404).json({ success: false, message: "Conversation not found or access denied" });
     }
+    if (conversation.disbanded_at) {
+      return res.json({ success: true, conversation, messages: [] });
+    }
 
     const [rows] = await pool.query(
       `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
@@ -363,6 +425,10 @@ const createProjectMessage = async (req, res) => {
       return res.status(404).json({ success: false, message: "Project not found or access denied" });
     }
 
+    if (project.user_role === "removed") {
+      return res.status(403).json({ success: false, message: "You were removed from this project" });
+    }
+
     if (String(conversationId) === `project-${projectId}`) {
       const [result] = await pool.query(
         `INSERT INTO project_messages
@@ -386,6 +452,12 @@ const createProjectMessage = async (req, res) => {
     const conversation = await assertConversationAccess(Number(conversationId), projectId, req.user.id);
     if (!conversation) {
       return res.status(404).json({ success: false, message: "Conversation not found or access denied" });
+    }
+    if (conversation.removed_at) {
+      return res.status(403).json({ success: false, message: "You were removed from this group" });
+    }
+    if (conversation.disbanded_at) {
+      return res.status(403).json({ success: false, message: "This group has been disbanded" });
     }
 
     const [result] = await pool.query(
@@ -477,6 +549,12 @@ const createConversation = async (req, res) => {
         project_id: projectId,
         type,
         name: type === "group" ? name : null,
+        created_by: req.user.id,
+        participant_role: "admin",
+        participant_roles: participants.reduce((roles, userId) => ({
+          ...roles,
+          [userId]: Number(userId) === Number(req.user.id) ? "admin" : "member",
+        }), {}),
         member_count: participants.length,
         participants,
       },
@@ -495,22 +573,25 @@ const addProjectMember = async (req, res) => {
     await ensureProjectChatTables();
     const projectId = Number(req.params.projectId);
     const email = String(req.body.email || "").trim().toLowerCase();
+    const userId = Number(req.body.user_id);
     const role = req.body.role || "member";
     const project = await getAccessibleProject(projectId, req.user.id);
 
     if (!project || !canManageProject(project.user_role)) {
       return res.status(403).json({ success: false, message: "Only owner or leader can add members" });
     }
-    if (!email) {
-      return res.status(400).json({ success: false, message: "Email is required" });
+    if (!email && !userId) {
+      return res.status(400).json({ success: false, message: "Email or user_id is required" });
     }
     if (!PROJECT_ROLES.includes(role)) {
       return res.status(400).json({ success: false, message: "Role is invalid" });
     }
 
     const [users] = await pool.query(
-      "SELECT user_id, username, email, user_photo FROM users WHERE LOWER(email) = ? LIMIT 1",
-      [email],
+      userId
+        ? "SELECT user_id, username, email, user_photo FROM users WHERE user_id = ? LIMIT 1"
+        : "SELECT user_id, username, email, user_photo FROM users WHERE LOWER(email) = ? LIMIT 1",
+      [userId || email],
     );
     if (users.length === 0) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -535,11 +616,94 @@ const addProjectMember = async (req, res) => {
         [projectId, users[0].user_id, role],
       );
     }
+    await pool.query(
+      "DELETE FROM project_removed_members WHERE project_id = ? AND user_id = ?",
+      [projectId, users[0].user_id],
+    );
 
     res.status(201).json({ success: true, member: { ...users[0], role } });
   } catch (err) {
     console.error("Cannot add project member:", err);
     res.status(500).json({ success: false, message: "Cannot add member" });
+  }
+};
+
+const getProjectMemberCandidates = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const projectId = Number(req.params.projectId);
+    const project = await getAccessibleProject(projectId, req.user.id);
+
+    if (!project || !canManageProject(project.user_role)) {
+      return res.status(403).json({ success: false, message: "Only owner or leader can view member candidates" });
+    }
+
+    const [users] = await pool.query(
+      `SELECT u.user_id, u.username, u.email, u.user_photo
+       FROM users u
+       LEFT JOIN project_removed_members prm
+         ON prm.project_id = ?
+        AND prm.user_id = u.user_id
+       WHERE u.user_id <> ?
+         AND u.user_id <> ?
+         AND (
+           prm.user_id IS NOT NULL
+           OR NOT EXISTS (
+             SELECT 1
+             FROM project_members pm
+             WHERE pm.project_id = ?
+               AND pm.user_id = u.user_id
+           )
+         )
+       ORDER BY u.username ASC, u.email ASC
+       LIMIT 100`,
+      [projectId, req.user.id, project.owner_id, projectId],
+    );
+
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error("Cannot load project member candidates:", err);
+    res.status(500).json({ success: false, message: "Cannot load member candidates" });
+  }
+};
+
+const removeProjectMember = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const projectId = Number(req.params.projectId);
+    const userId = Number(req.params.userId);
+    const project = await getAccessibleProject(projectId, req.user.id);
+
+    if (!project || !canManageProject(project.user_role)) {
+      return res.status(403).json({ success: false, message: "Only owner or leader can remove members" });
+    }
+    if (Number(userId) === Number(req.user.id)) {
+      return res.status(400).json({ success: false, message: "You cannot remove yourself from the project" });
+    }
+    if (Number(userId) === Number(project.owner_id)) {
+      return res.status(400).json({ success: false, message: "Project owner cannot be removed" });
+    }
+
+    const [targetMembers] = await pool.query(
+      "SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ? LIMIT 1",
+      [projectId, userId],
+    );
+
+    if (targetMembers.length === 0) {
+      return res.status(404).json({ success: false, message: "Project member not found" });
+    }
+
+    await pool.query(
+      `INSERT INTO project_removed_members (project_id, user_id, removed_at)
+       VALUES (?, ?, NOW())
+       ON DUPLICATE KEY UPDATE removed_at = VALUES(removed_at)`,
+      [projectId, userId],
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Cannot remove project member:", err);
+    res.status(500).json({ success: false, message: "Cannot remove project member" });
   }
 };
 
@@ -551,7 +715,7 @@ const addConversationMember = async (req, res) => {
     const userId = Number(req.body.user_id);
     const conversation = await assertConversationAccess(conversationId, projectId, req.user.id);
 
-    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin") {
+    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin" || conversation.removed_at || conversation.disbanded_at) {
       return res.status(403).json({ success: false, message: "Only group admin can add members" });
     }
 
@@ -561,7 +725,9 @@ const addConversationMember = async (req, res) => {
     }
 
     await pool.query(
-      "INSERT IGNORE INTO project_chat_participants (conversation_id, user_id, role) VALUES (?, ?, 'member')",
+      `INSERT INTO project_chat_participants (conversation_id, user_id, role, removed_at)
+       VALUES (?, ?, 'member', NULL)
+       ON DUPLICATE KEY UPDATE removed_at = NULL, role = 'member'`,
       [conversationId, userId],
     );
 
@@ -569,6 +735,92 @@ const addConversationMember = async (req, res) => {
   } catch (err) {
     console.error("Cannot add conversation member:", err);
     res.status(500).json({ success: false, message: "Cannot add group member" });
+  }
+};
+
+const getConversationMemberCandidates = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const projectId = Number(req.params.projectId);
+    const conversationId = Number(req.params.conversationId);
+    const conversation = await assertConversationAccess(conversationId, projectId, req.user.id);
+
+    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin" || conversation.removed_at || conversation.disbanded_at) {
+      return res.status(403).json({ success: false, message: "Only group admin can view member candidates" });
+    }
+
+    const members = await getProjectMembersRows(projectId);
+    const [activeParticipants] = await pool.query(
+      "SELECT user_id FROM project_chat_participants WHERE conversation_id = ? AND removed_at IS NULL",
+      [conversationId],
+    );
+    const activeParticipantIds = new Set(activeParticipants.map((member) => Number(member.user_id)));
+    const users = members.filter((member) => (
+      Number(member.user_id) !== Number(req.user.id)
+      && !activeParticipantIds.has(Number(member.user_id))
+    ));
+
+    res.json({ success: true, users });
+  } catch (err) {
+    console.error("Cannot load conversation member candidates:", err);
+    res.status(500).json({ success: false, message: "Cannot load group member candidates" });
+  }
+};
+
+const removeConversationMember = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const projectId = Number(req.params.projectId);
+    const conversationId = Number(req.params.conversationId);
+    const userId = Number(req.params.userId);
+    const conversation = await assertConversationAccess(conversationId, projectId, req.user.id);
+
+    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin" || conversation.removed_at || conversation.disbanded_at) {
+      return res.status(403).json({ success: false, message: "Only group admin can remove members" });
+    }
+    if (Number(userId) === Number(req.user.id)) {
+      return res.status(400).json({ success: false, message: "Group owner cannot remove themselves" });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE project_chat_participants SET removed_at = NOW() WHERE conversation_id = ? AND user_id = ? AND removed_at IS NULL",
+      [conversationId, userId],
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Group member not found" });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Cannot remove conversation member:", err);
+    res.status(500).json({ success: false, message: "Cannot remove group member" });
+  }
+};
+
+const disbandConversation = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const projectId = Number(req.params.projectId);
+    const conversationId = Number(req.params.conversationId);
+    const conversation = await assertConversationAccess(conversationId, projectId, req.user.id);
+
+    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin" || conversation.removed_at) {
+      return res.status(403).json({ success: false, message: "Only group admin can disband this group" });
+    }
+    if (conversation.disbanded_at) {
+      return res.json({ success: true });
+    }
+
+    await pool.query(
+      "UPDATE project_chat_conversations SET disbanded_at = NOW() WHERE conversation_id = ? AND project_id = ?",
+      [conversationId, projectId],
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Cannot disband conversation:", err);
+    res.status(500).json({ success: false, message: "Cannot disband group" });
   }
 };
 
@@ -581,7 +833,7 @@ const updateConversationMemberRole = async (req, res) => {
     const role = req.body.role;
     const conversation = await assertConversationAccess(conversationId, projectId, req.user.id);
 
-    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin") {
+    if (!conversation || conversation.type !== "group" || conversation.participant_role !== "admin" || conversation.removed_at || conversation.disbanded_at) {
       return res.status(403).json({ success: false, message: "Only group admin can promote members" });
     }
     if (!GROUP_ROLES.includes(role)) {
@@ -611,6 +863,11 @@ module.exports = {
   createProjectMessage,
   createConversation,
   addProjectMember,
+  getProjectMemberCandidates,
+  removeProjectMember,
   addConversationMember,
+  getConversationMemberCandidates,
+  removeConversationMember,
+  disbandConversation,
   updateConversationMemberRole,
 };
