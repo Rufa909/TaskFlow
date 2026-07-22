@@ -92,8 +92,17 @@ export default function AIChatBox() {
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [aiProvider, setAiProvider] = useState(null);
   const [isComposing, setIsComposing] = useState(false);
+  // session_id nhóm các lượt chat cùng phiên; một phiên mới khi user xóa chat
+  const [sessionId, setSessionId] = useState(() =>
+    typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36),
+  );
+  // RAG: tài liệu đã upload
+  const [documents, setDocuments] = useState([]);
+  const [isDocPanelOpen, setIsDocPanelOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const selectedTaskIdSet = useMemo(
     () => new Set(selectedTaskIds.map(String)),
@@ -123,9 +132,11 @@ export default function AIChatBox() {
     const loadData = async () => {
       setIsLoadingTasks(true);
       try {
-        const [tasksRes, projectsRes] = await Promise.allSettled([
+        const [tasksRes, projectsRes, historyRes, docsRes] = await Promise.allSettled([
           api.get("/tasks"),
           api.get("/projects"),
+          api.get("/ai/history"),
+          api.get("/ai/documents"),  // RAG: load danh sách tài liệu
         ]);
 
         if (tasksRes.status === "fulfilled") {
@@ -133,6 +144,24 @@ export default function AIChatBox() {
         }
         if (projectsRes.status === "fulfilled") {
           setProjects(projectsRes.value.data.projects || projectsRes.value.data || []);
+        }
+        if (historyRes.status === "fulfilled") {
+          const { history, sessionId: dbSessionId } = historyRes.value.data;
+          if (Array.isArray(history) && history.length > 0) {
+            // Khôi phục lịch sử chat cũ từ DB
+            setMessages(
+              history.map((h) => ({
+                text: h.content,
+                sender: h.role === "user" ? "user" : "bot",
+                time: new Date(h.created_at),
+                provider: h.provider,
+              })),
+            );
+            if (dbSessionId) setSessionId(dbSessionId);
+          }
+        }
+        if (docsRes.status === "fulfilled") {
+          setDocuments(docsRes.value.data.documents || []);
         }
       } catch (err) {
         console.error(err);
@@ -164,6 +193,16 @@ export default function AIChatBox() {
       const text = inputValue.trim();
       if (!text || isLoading) return;
 
+      // Build history TRƯEỚC khi thêm tin nhắn hiện tại vào state
+      // để Ollama có ngữ cảnh các lượt trước (multi-turn memory)
+      const chatHistory = messages
+        .filter((m) => m.sender === "user" || m.sender === "bot")
+        .slice(-20)
+        .map((m) => ({
+          role: m.sender === "user" ? "user" : "assistant",
+          content: m.text,
+        }));
+
       setMessages((prev) => [...prev, { text, sender: "user", time: new Date() }]);
       setInputValue("");
       setIsLoading(true);
@@ -172,6 +211,8 @@ export default function AIChatBox() {
         const response = await api.post("/ai/chat", {
           message: text,
           selectedTaskIds,
+          sessionId,
+          chatHistory,
         });
         const data = response.data;
 
@@ -201,7 +242,7 @@ export default function AIChatBox() {
         setIsLoading(false);
       }
     },
-    [inputValue, isLoading, selectedTaskIds],
+    [inputValue, isLoading, selectedTaskIds, messages, sessionId],
   );
 
   const handleKeyDown = useCallback(
@@ -216,7 +257,58 @@ export default function AIChatBox() {
     [handleSend, isComposing],
   );
 
+  // RAG: upload tài liệu lên server để index
+  const handleFileUpload = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await api.post("/ai/documents/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      // Refresh danh sách tài liệu
+      const docsRes = await api.get("/ai/documents");
+      setDocuments(docsRes.data.documents || []);
+      setMessages((prev) => [
+        ...prev,
+        { text: res.data.message || `✅ Đã upload "${file.name}"`, sender: "bot", time: new Date() },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: `❌ Upload thất bại: ${err.response?.data?.error || err.message}`,
+          sender: "bot",
+          time: new Date(),
+          isError: true,
+        },
+      ]);
+    } finally {
+      setIsUploading(false);
+      event.target.value = ""; // reset input để upload lại cùng file
+    }
+  }, []);
+
+  const handleDeleteDoc = useCallback(async (fileName) => {
+    try {
+      await api.delete(`/ai/documents/${encodeURIComponent(fileName)}`);
+      setDocuments((prev) => prev.filter((d) => d.file_name !== fileName));
+    } catch (err) {
+      console.error("Delete doc error:", err);
+    }
+  }, []);
+
   const clearMessages = useCallback(() => {
+    // Tạo session mới để lịch sử cũ không ảnh hưởng phiên chat mới
+    const newSessionId =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now().toString(36);
+    setSessionId(newSessionId);
+    // Xóa lịch sử trên DB (non-blocking)
+    api.delete("/ai/history").catch((err) => console.error("Failed to clear AI history:", err));
     setMessages([
       {
         text: "Cuộc trò chuyện đã được xóa. Tôi vẫn có thể truy cập dữ liệu task và project của bạn. Hỏi tôi bất cứ điều gì!",
@@ -289,6 +381,11 @@ export default function AIChatBox() {
                   {highPriorityCount} ưu tiên cao
                 </span>
               )}
+              {documents.length > 0 && (
+                <span className="ai-context-item ai-context-docs">
+                  📎 {documents.length} tài liệu
+                </span>
+              )}
             </div>
           )}
 
@@ -350,6 +447,79 @@ export default function AIChatBox() {
             )}
           </div>
 
+          {/* RAG: Panel quản lý tài liệu */}
+          <div className="ai-task-picker">
+            <button
+              type="button"
+              className="ai-task-picker-toggle"
+              onClick={() => setIsDocPanelOpen((v) => !v)}
+            >
+              <span>
+                {documents.length > 0
+                  ? `📎 ${documents.length} tài liệu đã upload`
+                  : "📎 Upload tài liệu cho AI (PDF, MD, TXT)"}
+              </span>
+              <span className="picker-arrow" aria-hidden="true">
+                {isDocPanelOpen ? "▲" : "▼"}
+              </span>
+            </button>
+
+            {isDocPanelOpen && (
+              <div className="ai-task-picker-panel">
+                <div className="ai-task-picker-actions">
+                  <span className="ai-task-count">
+                    {documents.length === 0 ? "Chưa có tài liệu nào" : `${documents.length} tài liệu`}
+                  </span>
+                  <button
+                    type="button"
+                    className="ai-clear-btn"
+                    disabled={isUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {isUploading ? "Đang xử lý..." : "+ Upload"}
+                  </button>
+                </div>
+
+                <div className="ai-task-list">
+                  {documents.length === 0 && (
+                    <div className="ai-task-empty">
+                      Upload PDF, Markdown hoặc TXT để AI đọc và trả lời dựa trên tài liệu của bạn.
+                    </div>
+                  )}
+                  {documents.map((doc) => (
+                    <div key={doc.file_name} className="ai-task-option" style={{ cursor: "default" }}>
+                      <span className="ai-task-option-main">
+                        <span className="ai-task-title">{doc.file_name}</span>
+                        <span className="ai-task-meta">
+                          <span>{doc.file_type?.toUpperCase()}</span>
+                          <span>{doc.chunk_count} đoạn</span>
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="ai-clear-btn"
+                        style={{ color: "#e53e3e" }}
+                        onClick={() => handleDeleteDoc(doc.file_name)}
+                        aria-label={`Xóa ${doc.file_name}`}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Hidden file input cho RAG upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.md,.txt"
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+
           {selectedTasks.length > 0 && (
             <div className="ai-selected-chips">
               {selectedTasks.slice(0, 3).map((task) => (
@@ -369,6 +539,7 @@ export default function AIChatBox() {
               )}
             </div>
           )}
+
 
           <div className="ai-chatbox-messages">
             {messages.map((msg, index) => (
@@ -412,6 +583,16 @@ export default function AIChatBox() {
           </div>
 
           <form className="ai-chatbox-input-area" onSubmit={handleSend}>
+            <button
+              type="button"
+              className="ai-upload-btn"
+              title={isUploading ? "Đang xử lý..." : "Upload tài liệu cho AI"}
+              disabled={isUploading}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Upload tài liệu"
+            >
+              {isUploading ? <span className="send-spinner" /> : "📎"}
+            </button>
             <textarea
               ref={inputRef}
               placeholder="Hỏi AI về task, deadline, project của bạn..."

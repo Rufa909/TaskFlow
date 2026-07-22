@@ -694,3 +694,37 @@
     max-height: 80vh;
   }
 }
+
+/* ─── RAG: Upload button & doc context ─────────────────────── */
+.ai-upload-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ai-upload-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #1e88e5;
+}
+
+.ai-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-context-docs {
+  background: #f0fdf4;
+  color: #16a34a;
+  border-color: #bbf7d0;
+}
+

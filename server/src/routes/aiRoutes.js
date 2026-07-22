@@ -2,6 +2,7 @@ const express = require("express");
 const axios = require("axios");
 const pool = require("../config/db");
 const authMiddleware = require("../middleware/authMiddleware");
+const { retrieveRelevantChunks } = require("./aiDocumentRoutes");
 
 const router = express.Router();
 
@@ -11,6 +12,7 @@ const PREFERRED_OLLAMA_MODELS = ["qwen2.5:3b", "qwen2.5:7b", "llama3.2:latest", 
 const DEFAULT_LLAMA_TIMEOUT_MS = 30000;
 const DEFAULT_LLAMA_MAX_TOKENS = 220;
 const TASKFLOW_SCOPE_KEYWORDS = [
+  // ── TaskFlow core ──────────────────────────────────────
   "task",
   "subtask",
   "project",
@@ -25,6 +27,7 @@ const TASKFLOW_SCOPE_KEYWORDS = [
   "member",
   "team",
   "taskflow",
+  // ── Tiếng Việt (TaskFlow) ───────────────────────────────
   "cong viec",
   "viec",
   "du an",
@@ -50,6 +53,80 @@ const TASKFLOW_SCOPE_KEYWORDS = [
   "tai khoan",
   "ung dung",
   "web",
+  // ── Software Development (English) ───────────────────────
+  "bug",
+  "debug",
+  "fix",
+  "error",
+  "exception",
+  "code",
+  "coding",
+  "git",
+  "branch",
+  "merge",
+  "commit",
+  "pull request",
+  "pr",
+  "sprint",
+  "agile",
+  "scrum",
+  "kanban",
+  "api",
+  "rest",
+  "endpoint",
+  "test",
+  "testing",
+  "deploy",
+  "deployment",
+  "devops",
+  "ci",
+  "cd",
+  "refactor",
+  "review",
+  "feature",
+  "requirement",
+  "design pattern",
+  "architecture",
+  "frontend",
+  "backend",
+  "fullstack",
+  "database",
+  "query",
+  "stack trace",
+  "module",
+  "component",
+  "function",
+  "method",
+  "class",
+  "interface",
+  "dependency",
+  "package",
+  "library",
+  "framework",
+  "performance",
+  "optimize",
+  "document",
+  // ── Phát triển phần mềm (tiếng Việt) ─────────────────────
+  "lap trinh",
+  "phan mem",
+  "phat trien",
+  "sua loi",
+  "loi",
+  "kiem thu",
+  "trieu khai",
+  "thiet ke",
+  "yeu cau",
+  "tai lieu",
+  "kien truc",
+  "giao dien",
+  "chuc nang",
+  "module",
+  "thu vien",
+  "toi uu",
+  "hieu nang",
+  "bao mat",
+  "xac thuc",
+  "phan quyen",
 ];
 const TASKFLOW_SMALL_TALK_PATTERNS = [
   /^xin chao\b/,
@@ -108,7 +185,10 @@ function buildOutOfScopeReply() {
     intent: "out_of_scope",
     provider: "taskflow-guard",
     reply:
-      "Mình chỉ hỗ trợ các nội dung trong phạm vi TaskFlow: task, project, deadline, ưu tiên công việc, workflow, thành viên, thông báo và dữ liệu đang có trong web. Bạn hãy hỏi lại theo một nội dung liên quan đến công việc trong TaskFlow nhé.",
+      "Mình hỗ trợ 2 mảng chính:\n" +
+      "1️⃣ **TaskFlow**: task, project, deadline, ưu tiên, workflow, thành viên, thông báo.\n" +
+      "2️⃣ **Phát triển phần mềm**: bug, debug, git, sprint, agile, API, testing, deploy, design pattern, code review.\n\n" +
+      "Bạn hãy hỏi lại theo nội dung liên quan đến công việc hoặc kỹ thuật phần mềm nhé.",
   };
 }
 
@@ -410,7 +490,7 @@ async function getTaskFlowContext(userId, selectedTaskIds) {
   };
 }
 
-function buildSystemPrompt(context) {
+function buildSystemPrompt(context, insights = null) {
   const now = new Date(context.currentDate);
   const dateStr = now.toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
@@ -441,36 +521,78 @@ function buildSystemPrompt(context) {
     ? `${context.unreadNotifications.length} thông báo chưa đọc.`
     : "Không có thông báo mới.";
 
+  // Personalization hint from learned user behavior
+  let insightHint = "";
+  if (insights && insights.totalMessages >= 5) {
+    const topicLabelMap = {
+      deadline: "deadline/hạn chót",
+      priority: "ưu tiên công việc",
+      project: "project",
+      task: "task/công việc",
+      workflow: "workflow/stage",
+      team: "team/thành viên",
+      report: "báo cáo/thống kê",
+    };
+    const timeMap = { morning: "buổi sáng", afternoon: "buổi chiều", evening: "buổi tối", night: "đêm khuya" };
+    const parts = [];
+    if (insights.topTopics.length > 0) {
+      parts.push(`hay hỏi về: ${insights.topTopics.map((t) => topicLabelMap[t] || t).join(", ")}`);
+    }
+    if (insights.preferredTime) {
+      parts.push(`thường dùng app vào ${timeMap[insights.preferredTime] || insights.preferredTime}`);
+    }
+    if (parts.length > 0) {
+      insightHint = `\nHành vi người dùng ghi nhận: ${parts.join("; ")}. Ưu tiên trả lời ngắn gọn, đúng trọng tâm phù hợp thói quen này.\n`;
+    }
+  }
+
+  // RAG: inject tài liệu liên quan vào prompt nếu có
+  let docContext = "";
+  if (Array.isArray(context.relevantDocs) && context.relevantDocs.length > 0) {
+    docContext =
+      `\n=== TÀI LIỆU LIÊN QUAN (đựa trên tài liệu user đã upload) ===\n` +
+      context.relevantDocs
+        .map((doc, i) => `[${i + 1}] ${doc.fileName}:\n${doc.text}`)
+        .join("\n\n") +
+      `\n\nNếu câu hỏi liên quan đến tài liệu trên, hãy trích dẫn và áp dụng thông tin đó vào câu trả lời.\n`;
+  }
+
   return (
     `Bạn là trợ lý AI thông minh tích hợp trong ứng dụng quản lý công việc TaskFlow.\n` +
-    `Phạm vi bắt buộc: chỉ trả lời về dữ liệu và chức năng trong web TaskFlow, gồm task, project, deadline, priority, workflow/stage, subtask, comment, thành viên, team, chat, inbox, thông báo, tài khoản và cách sử dụng ứng dụng.\n` +
+    `Phạm vi: trả lời về dữ liệu TaskFlow (task, project, deadline, priority, workflow, thành viên, thông báo) VÀ hỗ trợ kỹ thuật phần mềm (bug, debug, git, sprint, agile, API, testing, deploy, design pattern, code review, bảo mật).\n` +
     `Dữ liệu TaskFlow bên dưới là dữ liệu người dùng đã đăng nhập được phép xem trong ứng dụng; không từ chối chỉ vì có tên task, mô tả task, assignee hoặc thông tin project.\n` +
-    `Thời điểm hiện tại: ${dateStr}\n\n` +
-    `=== DỮ LIỆU TASKFLOW CỦA NGƯỜI DÙNG ===\n\n` +
+    `Thời điểm hiện tại: ${dateStr}\n` +
+    insightHint +
+    `\n=== DỮ LIỆU TASKFLOW CỦA NGƯỜI DÙNG ===\n\n` +
     `** DANH SÁCH PROJECT (${context.projects.length} project):**\n${projectSummary}\n\n` +
     `** DANH SÁCH TASK ĐANG MỞ (${context.tasks.length} task):**\n${taskSummary}\n\n` +
-    `** THÔNG BÁO:** ${notifSummary}\n\n` +
-    `=== HƯỚNG DẪN TRẢ LỜI ===\n` +
+    `** THÔNG BÁO:** ${notifSummary}\n` +
+    docContext +
+    `\n=== HƯỚNG DẪN TRẢ LỜI ===\n` +
     `- Trả lời bằng tiếng Việt tự nhiên, rõ ràng, có cấu trúc.\n` +
     `- Luôn hiểu câu hỏi tiếng Việt có dấu, không dấu, viết tắt phổ biến về công việc.\n` +
     `- Dùng markdown (bold, bullet list, số thứ tự) để trình bày khi cần.\n` +
-    `- Nếu người dùng hỏi nội dung ngoài phạm vi web TaskFlow, từ chối ngắn gọn bằng tiếng Việt và mời họ hỏi về task/project/deadline trong TaskFlow.\n` +
-    `- Nếu người dùng hỏi "task này", "xử lý task này", "hướng dẫn task", hãy dùng task đang xuất hiện trong dữ liệu TaskFlow để đưa ra các bước thực hiện cụ thể.\n` +
+    `- Nếu người dùng hỏi nội dung ngoài phạm vi, từ chối ngắn gọn bằng tiếng Việt.\n` +
+    `- Nếu người dùng hỏi "task này", "xử lý task này", hãy dùng task đang xuất hiện trong dữ liệu TaskFlow để đưa ra các bước thực hiện cụ thể.\n` +
     `- CHỈ dựa vào dữ liệu TaskFlow ở trên để trả lời về task/project của người dùng.\n` +
-    `- Nếu câu hỏi về task cụ thể, tìm trong danh sách trên và trích dẫn thông tin chính xác.\n` +
+    `- Nếu có TÀI LIỆU LIÊN QUAN ở trên, hãy ưu tiên sử dụng thông tin đó khi trả lời.\n` +
     `- Khi gợi ý ưu tiên: xét deadline gần, priority cao, task quá hạn trước.\n` +
     `- Nếu không có dữ liệu liên quan, nói rõ "Tôi không thấy thông tin đó trong hệ thống của bạn".\n` +
     `- Không bịa đặt task, deadline hoặc thông tin không có trong dữ liệu.\n` +
-    `- Không trả lời kiến thức chung, giải trí, chính trị, y tế, tài chính, lập trình ngoài phạm vi sử dụng web TaskFlow.`
+    `- Nếu người dùng hỏi về kỹ thuật phần mềm (bug, code, git, api, deploy, test, agile...): trả lời thực tế, ngắn gọn, ưu tiên gắn với công việc đang có trong TaskFlow nếu liên quan.\n` +
+    `- Được phép giải thích khái niệm kỹ thuật, đưa ra bước thực hành, gợi ý công cụ/thư viện, debug giả thưật, viết document.\n` +
+    `- Không trả lời về giải trí, chính trị, y tế, tài chính cá nhân không liên quan đến công việc.`
   );
 }
 
-function buildLlamaMessages({ message, context, user }) {
+function buildLlamaMessages({ message, context, user, chatHistory = [], insights = null }) {
   return [
     {
       role: "system",
-      content: buildSystemPrompt(context),
+      content: buildSystemPrompt(context, insights),
     },
+    // Inject previous conversation turns so the AI has multi-turn memory
+    ...chatHistory,
     {
       role: "user",
       content: `Người dùng: ${user.username}\n\nCâu hỏi: ${message}`,
@@ -478,14 +600,14 @@ function buildLlamaMessages({ message, context, user }) {
   ];
 }
 
-async function callOllamaNative({ message, context, user }) {
+async function callOllamaNative({ message, context, user, chatHistory = [], insights = null }) {
   const config = getLlamaConfig();
   const ollamaBaseUrl = config.baseUrl
     .replace(/\/v1\/?$/, "")
     .replace(/\/$/, "");
   const model = await pickAvailableOllamaModel(ollamaBaseUrl, config.model);
 
-  const systemPrompt = buildSystemPrompt(context);
+  const systemPrompt = buildSystemPrompt(context, insights);
   const userContent = `Người dùng: ${user.username}\n\nCâu hỏi: ${message}`;
 
   const response = await axios.post(
@@ -499,6 +621,8 @@ async function callOllamaNative({ message, context, user }) {
       },
       messages: [
         { role: "system", content: systemPrompt },
+        // Multi-turn: inject previous conversation history
+        ...chatHistory,
         { role: "user", content: userContent },
       ],
     },
@@ -524,7 +648,7 @@ async function callOllamaNative({ message, context, user }) {
   };
 }
 
-async function callOllamaForSelectedTask({ message, context, user }) {
+async function callOllamaForSelectedTask({ message, context, user, chatHistory = [] }) {
   const config = getLlamaConfig();
   const ollamaBaseUrl = config.baseUrl
     .replace(/\/v1\/?$/, "")
@@ -551,6 +675,8 @@ async function callOllamaForSelectedTask({ message, context, user }) {
             "Chỉ trả lời trong phạm vi TaskFlow. Không trả lời kiến thức ngoài web. " +
             "Hãy trả lời như một người hỗ trợ công việc: ngắn vừa đủ, có ngữ cảnh task, có bước tiếp theo cụ thể, tránh văn mẫu cứng.",
         },
+        // Multi-turn: inject previous turns so user doesn't need to repeat context
+        ...chatHistory.slice(-10),
         {
           role: "user",
           content:
@@ -583,9 +709,9 @@ async function callOllamaForSelectedTask({ message, context, user }) {
   };
 }
 
-async function callLlama({ message, context, user }) {
+async function callLlama({ message, context, user, chatHistory = [], insights = null }) {
   const config = getLlamaConfig();
-  const messages = buildLlamaMessages({ message, context, user });
+  const messages = buildLlamaMessages({ message, context, user, chatHistory, insights });
 
   const response = await axios.post(
     `${config.baseUrl}/chat/completions`,
@@ -639,6 +765,165 @@ async function callLocalAI({ message, tasks, selectedTaskIds, user }) {
     ...response.data,
     provider: response.data?.provider || "local-ai",
   };
+}
+
+// ─── AI Chat History & Insights ─────────────────────────────────────────────
+
+/**
+ * Lưu 1 tin nhắn vào bảng ai_chat_history.
+ * Được gọi non-blocking — không làm chậm response AI.
+ */
+async function saveMessageToDB(userId, sessionId, role, content, provider = null) {
+  try {
+    if (!(await tableExists("ai_chat_history"))) return;
+    await pool.query(
+      "INSERT INTO ai_chat_history (user_id, session_id, role, content, provider) VALUES (?, ?, ?, ?, ?)",
+      [userId, sessionId, role, String(content).slice(0, 8000), provider],
+    );
+  } catch (err) {
+    console.error("saveMessageToDB error:", err.message);
+  }
+}
+
+/**
+ * Load lịch sử session gần nhất của user (tối đa `limit` dòng).
+ */
+async function loadRecentHistory(userId, limit = 30) {
+  try {
+    if (!(await tableExists("ai_chat_history"))) return { history: [], sessionId: null };
+
+    const [sessions] = await pool.query(
+      "SELECT session_id FROM ai_chat_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+      [userId],
+    );
+    if (sessions.length === 0) return { history: [], sessionId: null };
+
+    const recentSessionId = sessions[0].session_id;
+    const [rows] = await pool.query(
+      `SELECT id, session_id, role, content, provider, created_at
+       FROM ai_chat_history
+       WHERE user_id = ? AND session_id = ?
+       ORDER BY created_at ASC
+       LIMIT ?`,
+      [userId, recentSessionId, limit],
+    );
+
+    return { history: rows, sessionId: recentSessionId };
+  } catch (err) {
+    console.error("loadRecentHistory error:", err.message);
+    return { history: [], sessionId: null };
+  }
+}
+
+/** Xóa toàn bộ history của 1 user (khi user bấm "Xóa chat"). */
+async function deleteUserHistory(userId) {
+  try {
+    if (!(await tableExists("ai_chat_history"))) return;
+    await pool.query("DELETE FROM ai_chat_history WHERE user_id = ?", [userId]);
+  } catch (err) {
+    console.error("deleteUserHistory error:", err.message);
+  }
+}
+
+/** Tự dọn history cũ hơn 30 ngày (gọi ngẫu nhiên 2% request). */
+async function cleanupOldHistory() {
+  try {
+    if (!(await tableExists("ai_chat_history"))) return;
+    await pool.query("DELETE FROM ai_chat_history WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+  } catch (err) {
+    console.error("cleanupOldHistory error:", err.message);
+  }
+}
+
+// Từ khóa nhận diện chủ đề câu hỏi để xây dựng insights
+const INSIGHT_TOPIC_KEYWORDS = {
+  deadline: ["deadline", "han chot", "qua han", "sap den", "sap toi", "han"],
+  priority: ["uu tien", "priority", "quan trong", "gap", "khan cap"],
+  project: ["project", "du an"],
+  task: ["task", "cong viec", "viec lam", "viec"],
+  workflow: ["workflow", "stage", "giai doan", "quy trinh", "tien do"],
+  team: ["thanh vien", "team", "member", "assignee", "nhom"],
+  report: ["bao cao", "report", "tong ket", "thong ke"],
+};
+
+/**
+ * Cập nhật hành vi người dùng sau mỗi câu hỏi.
+ * Dữ liệu được dùng để cá nhân hóa system prompt.
+ */
+async function updateUserInsights(userId, message) {
+  try {
+    if (!(await tableExists("ai_user_insights"))) return;
+
+    const normalized = normalizeForScope(message);
+    const hour = new Date().getHours();
+    const timeOfDay =
+      hour >= 6 && hour < 12 ? "morning"
+      : hour >= 12 && hour < 18 ? "afternoon"
+      : hour >= 18 && hour < 22 ? "evening"
+      : "night";
+
+    const detectedTopics = Object.entries(INSIGHT_TOPIC_KEYWORDS)
+      .filter(([, keywords]) => keywords.some((kw) => normalized.includes(kw)))
+      .map(([topic]) => topic);
+
+    const [existing] = await pool.query(
+      "SELECT frequent_topics, active_hours, total_messages FROM ai_user_insights WHERE user_id = ?",
+      [userId],
+    );
+
+    if (existing.length === 0) {
+      const topics = {};
+      detectedTopics.forEach((t) => { topics[t] = 1; });
+      await pool.query(
+        "INSERT INTO ai_user_insights (user_id, frequent_topics, active_hours, total_messages) VALUES (?, ?, ?, 1)",
+        [userId, JSON.stringify(topics), JSON.stringify({ [timeOfDay]: 1 })],
+      );
+    } else {
+      const row = existing[0];
+      const topics = JSON.parse(row.frequent_topics || "{}");
+      const hours = JSON.parse(row.active_hours || "{}");
+      detectedTopics.forEach((t) => { topics[t] = (topics[t] || 0) + 1; });
+      hours[timeOfDay] = (hours[timeOfDay] || 0) + 1;
+      await pool.query(
+        "UPDATE ai_user_insights SET frequent_topics = ?, active_hours = ?, total_messages = total_messages + 1 WHERE user_id = ?",
+        [JSON.stringify(topics), JSON.stringify(hours), userId],
+      );
+    }
+  } catch (err) {
+    console.error("updateUserInsights error:", err.message);
+  }
+}
+
+/**
+ * Đọc insights của user để inject vào system prompt.
+ */
+async function getUserInsights(userId) {
+  try {
+    if (!(await tableExists("ai_user_insights"))) return null;
+
+    const [rows] = await pool.query(
+      "SELECT frequent_topics, active_hours, total_messages FROM ai_user_insights WHERE user_id = ?",
+      [userId],
+    );
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    const topics = JSON.parse(row.frequent_topics || "{}");
+    const hours = JSON.parse(row.active_hours || "{}");
+
+    const topTopics = Object.entries(topics)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([t]) => t);
+
+    const preferredTime = Object.entries(hours)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    return { topTopics, preferredTime, totalMessages: Number(row.total_messages) };
+  } catch (err) {
+    console.error("getUserInsights error:", err.message);
+    return null;
+  }
 }
 
 function formatTaskLine(task, index) {
@@ -746,6 +1031,13 @@ router.post("/chat", authMiddleware, async (req, res) => {
       ? req.body.selectedTaskIds
       : [];
 
+    // session_id: nhóm các lượt chat cùng phiên; chatHistory: lịch sử hội thoại từ frontend
+    const sessionId = String(req.body.sessionId || "").trim() || Date.now().toString(36);
+    const rawHistory = Array.isArray(req.body.chatHistory) ? req.body.chatHistory : [];
+    const chatHistory = rawHistory
+      .filter((h) => h && (h.role === "user" || h.role === "assistant") && typeof h.content === "string")
+      .slice(-20);
+
     if (!isTaskFlowScopeMessage(message, selectedTaskIds)) {
       return res.json(buildOutOfScopeReply());
     }
@@ -757,55 +1049,72 @@ router.post("/chat", authMiddleware, async (req, res) => {
       email: req.user.email,
     };
 
+    // Load user insights để cá nhân hóa system prompt
+    const insights = await getUserInsights(req.user.id);
+
+    // RAG: tìm chunk tài liệu liên quan với câu hỏi (non-blocking nếu fail)
+    context.relevantDocs = await retrieveRelevantChunks(req.user.id, message);
+    if (context.relevantDocs.length > 0) {
+      console.log(`[RAG] Found ${context.relevantDocs.length} relevant chunks for user ${req.user.id}`);
+    }
+
+    // Lưu câu hỏi của user vào DB (non-blocking, không làm chậm response)
+    saveMessageToDB(req.user.id, sessionId, "user", message).catch(() => {});
+    // Cập nhật hành vi người dùng (non-blocking)
+    updateUserInsights(req.user.id, message).catch(() => {});
+
+    let reply;
+
     if (shouldBuildSelectedTaskGuidance(message, selectedTaskIds)) {
       try {
-        const selectedTaskReply = await callOllamaForSelectedTask({ message, context, user });
-        return res.json(selectedTaskReply);
+        reply = await callOllamaForSelectedTask({ message, context, user, chatHistory });
       } catch (selectedTaskErr) {
         console.error("Selected task guidance error:", selectedTaskErr.response?.data || selectedTaskErr.message);
-        return res.json(buildSelectedTaskGuidance(message, context));
-      }
-    }
-
-    const llamaConfig = getLlamaConfig();
-
-    if (isLocalOllamaConfig(llamaConfig)) {
-      try {
-        // Local Ollama works best through the native /api/chat endpoint.
-        const ollamaReply = await callOllamaNative({ message, context, user });
-        if (ollamaReply) {
-          return res.json(ollamaReply);
-        }
-      } catch (ollamaErr) {
-        console.error("Ollama native error:", ollamaErr.response?.data || ollamaErr.message);
+        reply = buildSelectedTaskGuidance(message, context);
       }
     } else {
-      try {
-        // Hosted providers such as Groq/OpenRouter use the OpenAI-compatible API.
-        const llamaReply = await callLlama({ message, context, user });
-        if (llamaReply) {
-          return res.json(llamaReply);
+      const llamaConfig = getLlamaConfig();
+
+      if (isLocalOllamaConfig(llamaConfig)) {
+        try {
+          // Local Ollama: dùng native /api/chat với multi-turn history
+          reply = await callOllamaNative({ message, context, user, chatHistory, insights });
+        } catch (ollamaErr) {
+          console.error("Ollama native error:", ollamaErr.response?.data || ollamaErr.message);
         }
-      } catch (llamaErr) {
-        console.error("Llama provider error:", llamaErr.response?.data || llamaErr.message);
+      } else {
+        try {
+          // Cloud providers (Groq/OpenRouter): dùng OpenAI-compatible API
+          reply = await callLlama({ message, context, user, chatHistory, insights });
+        } catch (llamaErr) {
+          console.error("Llama provider error:", llamaErr.response?.data || llamaErr.message);
+        }
+      }
+
+      if (!reply) {
+        try {
+          // Fallback 1: Python local AI
+          const localResult = await callLocalAI({ message, tasks: context.tasks, selectedTaskIds, user });
+          reply = { ...localResult, provider: localResult.provider || "local-ai" };
+        } catch (localErr) {
+          console.error("Local AI service error:", localErr.response?.data || localErr.message);
+          // Fallback 2: static offline reply từ dữ liệu DB
+          reply = buildOfflineReply(message, context);
+        }
       }
     }
 
-    try {
-      // 3. Fallback: Python local AI
-      const localReply = await callLocalAI({
-        message,
-        tasks: context.tasks,
-        selectedTaskIds,
-        user,
-      });
-
-      return res.json(localReply);
-    } catch (localErr) {
-      console.error("Local AI service error:", localErr.response?.data || localErr.message);
-      // 4. Final fallback: static offline reply
-      return res.json(buildOfflineReply(message, context));
+    // Lưu câu trả lời của AI vào DB (non-blocking)
+    if (reply?.reply) {
+      saveMessageToDB(req.user.id, sessionId, "assistant", reply.reply, reply.provider).catch(() => {});
     }
+
+    // Tự dọn history cũ (2% xác suất mỗi request để tránh overhead)
+    if (Math.random() < 0.02) {
+      cleanupOldHistory().catch(() => {});
+    }
+
+    return res.json(reply);
   } catch (err) {
     console.error("AI route error:", err.response?.data || err.message);
 
@@ -813,6 +1122,28 @@ router.post("/chat", authMiddleware, async (req, res) => {
       intent: "unknown",
       reply: "Lỗi kết nối tới AI service. Vui lòng thử lại sau.",
     });
+  }
+});
+
+/** GET /api/ai/history — Load lịch sử chat session gần nhất */
+router.get("/history", authMiddleware, async (req, res) => {
+  try {
+    const result = await loadRecentHistory(req.user.id);
+    return res.json(result);
+  } catch (err) {
+    console.error("AI history GET error:", err.message);
+    return res.json({ history: [], sessionId: null });
+  }
+});
+
+/** DELETE /api/ai/history — Xóa toàn bộ lịch sử chat của user */
+router.delete("/history", authMiddleware, async (req, res) => {
+  try {
+    await deleteUserHistory(req.user.id);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("AI history DELETE error:", err.message);
+    return res.json({ success: false });
   }
 });
 

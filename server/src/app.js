@@ -6,6 +6,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const workflowRoutes = require('./routes/workflowRoutes');
 const aiRoutes = require("./routes/aiRoutes");
+const { router: aiDocumentRoutes } = require("./routes/aiDocumentRoutes");
 const { checkOverdueTasks } = require("./controllers/taskController");
 
 const app = express();
@@ -40,6 +41,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/projects', require('./routes/projectRoutes'));
 app.use('/api', require('./routes/taskRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
+app.use("/api/ai/documents", aiDocumentRoutes);  // RAG: upload/list/delete tài liệu
 app.use("/api/ai", aiRoutes);
 app.use('/api', workflowRoutes);
 
