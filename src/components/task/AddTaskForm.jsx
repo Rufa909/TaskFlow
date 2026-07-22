@@ -27,6 +27,9 @@ export default function AddTaskForm({
 
   taskAttachment,
   setTaskAttachment,
+  stageDocuments = [],
+  taskDocumentIds = [],
+  setTaskDocumentIds = () => {},
 
   taskPriority,
   setTaskPriority,
@@ -56,6 +59,7 @@ export default function AddTaskForm({
   const [isLabelsDropdownOpen, setIsLabelsDropdownOpen] = useState(false);
   const [projectMembers, setProjectMembers] = useState([]);
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
+  const [isAttachmentPopupOpen, setIsAttachmentPopupOpen] = useState(false);
   const priorities = [
     { value: "urgent", label: "Urgent", color: "#dc2626" },
     { value: "high", label: "High", color: "#f97316" },
@@ -119,21 +123,8 @@ const selectedPriority =
     setIsPriorityOpen(false);
     setIsLabelsDropdownOpen(false);
     setIsAssigneeOpen(false);
+    setIsAttachmentPopupOpen(false);
     setIsTaskProjectMenuOpen(false);
-  };
-
-  const handleAttachmentChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    const oversized = files.find((file) => file.size > 5 * 1024 * 1024);
-
-    if (oversized) {
-      e.target.value = "";
-      setTaskAttachment([]);
-      showToast("File vượt quá dung lượng tối đa 5MB", "error");
-      return;
-    }
-
-    setTaskAttachment(files);
   };
 
   const selectedFiles = Array.isArray(taskAttachment)
@@ -141,6 +132,66 @@ const selectedPriority =
     : taskAttachment
       ? [taskAttachment]
       : [];
+  const availableStageDocuments = Array.isArray(stageDocuments)
+    ? stageDocuments.filter((doc) => doc?.file_url || doc?.url)
+    : [];
+  const selectedDocumentIds = Array.isArray(taskDocumentIds)
+    ? taskDocumentIds.map(Number)
+    : [];
+  const selectedDocuments = availableStageDocuments.filter((doc) =>
+    selectedDocumentIds.includes(Number(doc.document_id)),
+  );
+  const selectedAttachmentCount =
+    availableStageDocuments.length > 0 ? selectedDocuments.length : selectedFiles.length;
+
+  const handleAttachmentChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    const oversized = files.find((file) => file.size > 20 * 1024 * 1024);
+
+    if (oversized) {
+      e.target.value = "";
+      setTaskAttachment([]);
+      setIsAttachmentPopupOpen(false);
+      showToast("File vượt quá dung lượng tối đa 20MB", "error");
+      return;
+    }
+
+    setTaskAttachment(files);
+    setIsAttachmentPopupOpen(files.length > 0);
+    e.target.value = "";
+  };
+
+  const removeSelectedFile = (indexToRemove) => {
+    const nextFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
+    setTaskAttachment(nextFiles);
+    setIsAttachmentPopupOpen(nextFiles.length > 0);
+  };
+
+  const clearSelectedFiles = () => {
+    setTaskAttachment([]);
+    setIsAttachmentPopupOpen(false);
+  };
+
+  const toggleStageDocument = (documentId) => {
+    const normalizedId = Number(documentId);
+    setTaskDocumentIds((prev) => {
+      const values = Array.isArray(prev) ? prev.map(Number) : [];
+      return values.includes(normalizedId)
+        ? values.filter((id) => id !== normalizedId)
+        : [...values, normalizedId];
+    });
+  };
+
+  const clearSelectedDocuments = () => {
+    setTaskDocumentIds([]);
+    setIsAttachmentPopupOpen(false);
+  };
+
+  const formatFileSize = (size) => {
+    if (!Number.isFinite(size)) return "";
+    if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  };
 
   const toggleTaskLabel = (label) => {
     setTaskLabels((prev) =>
@@ -197,19 +248,103 @@ const selectedPriority =
             </span>
           )}
         </button>
-        <label className="attachment-btn">
-          <Icon name="paperclip" size={14} />
-          {selectedFiles.length > 1
-            ? `${selectedFiles.length} files`
-            : selectedFiles[0]?.name || "Attachment"}
-          <input
-            type="file"
-            hidden
-            multiple
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-            onChange={handleAttachmentChange}
-          />
-        </label>
+        <div className="attachment-picker">
+          {availableStageDocuments.length > 0 ? (
+            <button
+              type="button"
+              className={`attachment-btn ${selectedAttachmentCount > 0 ? "has-files" : ""}`}
+              onClick={() => {
+                const nextOpen = !isAttachmentPopupOpen;
+                closeOptionPopups();
+                setIsAttachmentPopupOpen(nextOpen);
+              }}
+            >
+              <Icon name="paperclip" size={14} />
+              {selectedAttachmentCount > 0
+                ? `${selectedAttachmentCount} document${selectedAttachmentCount > 1 ? "s" : ""}`
+                : "Attachment"}
+            </button>
+          ) : (
+            <label className={`attachment-btn ${selectedFiles.length > 0 ? "has-files" : ""}`}>
+              <Icon name="paperclip" size={14} />
+              {selectedFiles.length > 1
+                ? `${selectedFiles.length} files`
+                : selectedFiles[0]?.name || "Attachment"}
+              <input
+                type="file"
+                hidden
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                onChange={handleAttachmentChange}
+              />
+            </label>
+          )}
+
+          {isAttachmentPopupOpen && availableStageDocuments.length > 0 && (
+            <div className="attachment-popup document-picker-popup">
+              <div className="attachment-popup-header">
+                <span>Documents stage trước</span>
+                {selectedDocuments.length > 0 && (
+                  <button type="button" onClick={clearSelectedDocuments}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="attachment-popup-list">
+                {availableStageDocuments.map((doc) => {
+                  const checked = selectedDocumentIds.includes(Number(doc.document_id));
+                  return (
+                    <button
+                      key={doc.document_id}
+                      type="button"
+                      className={`attachment-popup-item document-option ${checked ? "selected" : ""}`}
+                      onClick={() => toggleStageDocument(doc.document_id)}
+                    >
+                      <span className="document-check">
+                        {checked && <Icon name="check" size={13} />}
+                      </span>
+                      <Icon name="paperclip" size={14} />
+                      <span className="attachment-popup-main">
+                        <strong>{doc.title || doc.original_name || "Document"}</strong>
+                        <small>{doc.document_type || doc.original_name || "Stage document"}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isAttachmentPopupOpen && availableStageDocuments.length === 0 && selectedFiles.length > 0 && (
+            <div className="attachment-popup">
+              <div className="attachment-popup-header">
+                <span>Documents selected</span>
+                <button type="button" onClick={clearSelectedFiles}>
+                  Clear
+                </button>
+              </div>
+              <div className="attachment-popup-list">
+                {selectedFiles.map((file, index) => (
+                  <div key={`${file.name}-${file.size}-${index}`} className="attachment-popup-item">
+                    <Icon name="paperclip" size={14} />
+                    <span className="attachment-popup-main">
+                      <strong>{file.name}</strong>
+                      <small>{formatFileSize(file.size)}</small>
+                    </span>
+                    <button
+                      type="button"
+                      className="attachment-popup-remove"
+                      aria-label={`Remove ${file.name}`}
+                      onClick={() => removeSelectedFile(index)}
+                    >
+                      <Icon name="x" size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <div className="priority-picker">
           <button
             type="button"
@@ -437,6 +572,8 @@ const selectedPriority =
               setTaskDeadline(null);
               setTaskTime("");
               setTaskAttachment([]);
+              setTaskDocumentIds([]);
+              setIsAttachmentPopupOpen(false);
               setTaskPriority("medium");
               setTaskLabels([]);
               setTaskAssignee([]);

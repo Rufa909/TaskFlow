@@ -7,6 +7,7 @@ let attachmentTableReady;
 let labelsColumnReady;
 let workflowSchemaReady;
 let taskDetailSchemaReady;
+let stageDocumentAttachmentSchemaReady;
 const PROJECT_MEMBER_ROLE_ENUM = "ENUM('owner','leader','member','ba','developer','qa','devops','viewer')";
 const TASK_ASSIGNABLE_ROLES = ["member", "ba", "developer", "qa", "devops"];
 const TASK_MANAGER_ROLES = ["owner", "leader", "ba", "developer", "qa", "devops"];
@@ -399,6 +400,37 @@ async function ensureTaskAttachmentTable() {
   return attachmentTableReady;
 }
 
+async function ensureStageDocumentAttachmentSchema() {
+  if (!stageDocumentAttachmentSchemaReady) {
+    stageDocumentAttachmentSchemaReady = pool.query(
+      `
+      CREATE TABLE IF NOT EXISTS stage_documents (
+        document_id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL,
+        stage_id INT NOT NULL,
+        uploaded_by INT NOT NULL,
+        document_type VARCHAR(80) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        original_name VARCHAR(255) NULL,
+        file_name VARCHAR(255) NULL,
+        file_url VARCHAR(500) NULL,
+        mime_type VARCHAR(120) NULL,
+        file_size INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+        FOREIGN KEY (stage_id) REFERENCES project_stages(id) ON DELETE CASCADE,
+        FOREIGN KEY (uploaded_by) REFERENCES users(user_id) ON DELETE CASCADE,
+        INDEX idx_stage_documents_stage (stage_id),
+        INDEX idx_stage_documents_type (stage_id, document_type)
+      )
+      `,
+    );
+  }
+
+  return stageDocumentAttachmentSchemaReady;
+}
+
 async function ensureTaskLabelsColumn() {
   if (!labelsColumnReady) {
     labelsColumnReady = (async () => {
@@ -572,6 +604,20 @@ async function enrichTaskRows(rows) {
 }
 
 function parseAssigneeIds(value) {
+  if (value === undefined || value === null || value === "") return [];
+  let values = value;
+  if (typeof value === "string") {
+    try {
+      values = JSON.parse(value);
+    } catch {
+      values = [value];
+    }
+  }
+  if (!Array.isArray(values)) values = [values];
+  return [...new Set(values.map(Number).filter(Number.isInteger))];
+}
+
+function parseStageDocumentIds(value) {
   if (value === undefined || value === null || value === "") return [];
   let values = value;
   if (typeof value === "string") {
@@ -806,6 +852,40 @@ async function insertTaskAttachments(taskId, files, userId) {
   }
 }
 
+async function insertTaskStageDocumentAttachments(taskId, projectId, taskStageId, documentIds, userId) {
+  if (!taskStageId || documentIds.length === 0) return;
+
+  await ensureStageDocumentAttachmentSchema();
+
+  const [result] = await pool.query(
+    `
+    INSERT INTO attachments
+    (task_id, originalName, file_url, fileName, mimeType, size, upload_by)
+    SELECT
+      ?,
+      COALESCE(sd.original_name, sd.title, CONCAT('Document ', sd.document_id)),
+      sd.file_url,
+      COALESCE(sd.file_name, CONCAT('stage-document-', sd.document_id)),
+      sd.mime_type,
+      sd.file_size,
+      ?
+    FROM stage_documents sd
+    JOIN project_stages task_stage ON task_stage.id = ?
+    WHERE sd.project_id = ?
+      AND task_stage.project_id = ?
+      AND sd.document_id IN (?)
+      AND sd.file_url IS NOT NULL
+    `,
+    [taskId, userId, taskStageId, projectId, projectId, documentIds],
+  );
+
+  if (result.affectedRows === 0) {
+    const error = new Error("Selected documents are not available for this project");
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 async function insertCommentAttachments(taskId, commentId, files, userId) {
   for (const file of files) {
     await pool.query(
@@ -886,7 +966,7 @@ exports.getTasks = async (req, res) => {
 exports.createTask = async (req, res) => {
   try {
     const { projectId } = req.params;
-    const { title, description, deadline, time, priority, labels, assigned_to, note, stage_id, stageId } = req.body;
+    const { title, description, deadline, time, priority, labels, assigned_to, note, stage_id, stageId, stage_document_ids } = req.body;
     await ensureTaskCompletionColumn();
     await ensureTaskAttachmentTable();
     await ensureTaskLabelsColumn();
@@ -1024,6 +1104,13 @@ exports.createTask = async (req, res) => {
     }
 
     await insertTaskAttachments(taskId, getUploadedTaskFiles(req), req.user.id);
+    await insertTaskStageDocumentAttachments(
+      taskId,
+      projectId,
+      taskStageId,
+      parseStageDocumentIds(stage_document_ids),
+      req.user.id,
+    );
 
     const [rows] = await pool.query(
       `
@@ -1037,7 +1124,16 @@ exports.createTask = async (req, res) => {
         ta.size AS attachment_size
       FROM tasks t
       JOIN projects p ON p.project_id = t.project_id
-      LEFT JOIN attachments ta ON ta.task_id = t.task_id
+      LEFT JOIN (
+        SELECT a.*
+        FROM attachments a
+        JOIN (
+          SELECT task_id, MIN(attachment_id) AS attachment_id
+          FROM attachments
+          WHERE comment_id IS NULL
+          GROUP BY task_id
+        ) first_attachment ON first_attachment.attachment_id = a.attachment_id
+      ) ta ON ta.task_id = t.task_id
       WHERE t.task_id = ?
       `,
       [taskId],

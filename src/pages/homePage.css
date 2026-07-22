@@ -3310,3 +3310,146 @@ body {
   background: #e3f2fd !important;
   color: #2196f3 !important;
 }
+
+/* --- ATTACHMENT DOCUMENT PICKER --- */
+.attachment-picker {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.form-actions-row .attachment-btn.has-files {
+  color: var(--accent-color);
+  border-color: rgba(30, 136, 229, 0.35);
+  background: var(--active-bg);
+}
+
+.attachment-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 220;
+  width: min(340px, calc(100vw - 32px));
+  max-height: 280px;
+  padding: 10px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.14);
+}
+
+.attachment-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 8px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.form-actions-row .attachment-popup-header button {
+  width: auto;
+  min-height: 0;
+  padding: 2px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--accent-color);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.attachment-popup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-actions-row .attachment-popup-item {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #edf0f3;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--text-main);
+  text-align: left;
+  white-space: normal;
+}
+
+.form-actions-row .attachment-popup-item:hover {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+}
+
+.form-actions-row .attachment-popup-item.document-option {
+  cursor: pointer;
+}
+
+.form-actions-row .attachment-popup-item.document-option.selected {
+  border-color: rgba(30, 136, 229, 0.45);
+  background: var(--active-bg);
+}
+
+.attachment-popup-main {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attachment-popup-main strong,
+.attachment-popup-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-popup-main strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.attachment-popup-main small {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.form-actions-row .attachment-popup-remove,
+.document-check {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+
+.form-actions-row .attachment-popup-remove {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.form-actions-row .attachment-popup-remove:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.document-check {
+  border: 1px solid #d1d5db;
+  color: var(--accent-color);
+}
+
+.document-option.selected .document-check {
+  border-color: var(--accent-color);
+  background: #fff;
+}

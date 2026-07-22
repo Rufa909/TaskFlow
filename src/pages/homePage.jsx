@@ -171,6 +171,8 @@ export default function HomePage() {
   const [editingProjectSaving, setEditingProjectSaving] = useState(false);
   const [tasksByProject, setTasksByProject] = useState({});
   const [taskAttachment, setTaskAttachment] = useState([]);
+  const [taskDocumentIds, setTaskDocumentIds] = useState([]);
+  const [previousStageDocuments, setPreviousStageDocuments] = useState([]);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
@@ -285,6 +287,38 @@ export default function HomePage() {
     };
     fetchWorkflow();
   }, [activeProject?.project_id]);
+
+  useEffect(() => {
+    let active = true;
+    const currentStageId = getCurrentWorkflowStage(workflowStages)?.id;
+
+    async function fetchPreviousStageDocuments() {
+      if (!activeProject?.project_id || !currentStageId) {
+        setPreviousStageDocuments([]);
+        setTaskDocumentIds([]);
+        return;
+      }
+
+      try {
+        const res = await api.get(
+          `/projects/${activeProject.project_id}/stages/${currentStageId}/overview`,
+        );
+        if (!active) return;
+        setPreviousStageDocuments(res.data?.incoming?.documents || []);
+        setTaskDocumentIds([]);
+      } catch (err) {
+        if (!active) return;
+        console.error("Cannot load previous stage documents:", err);
+        setPreviousStageDocuments([]);
+        setTaskDocumentIds([]);
+      }
+    }
+
+    fetchPreviousStageDocuments();
+    return () => {
+      active = false;
+    };
+  }, [activeProject?.project_id, workflowStages]);
 
   const fetchReportingTasks = async () => {
     setLoadingReporting(true);
@@ -505,6 +539,9 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       if (targetStageId) {
         formData.append("stage_id", targetStageId);
       }
+      if (taskDocumentIds.length > 0) {
+        formData.append("stage_document_ids", JSON.stringify(taskDocumentIds));
+      }
 
       taskAttachment.forEach((file) => formData.append("attachments", file));
 
@@ -525,6 +562,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       setTaskAssignee([]);
       setNewTaskLabels([]);
       setTaskAttachment([]);
+      setTaskDocumentIds([]);
       setTaskStageId(currentStageId);
       setIsAddingTask(false);
     } catch (err) {
@@ -1575,6 +1613,9 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                       setTaskTime={setTaskTime}
                       taskAttachment={taskAttachment}
                       setTaskAttachment={setTaskAttachment}
+                      stageDocuments={previousStageDocuments}
+                      taskDocumentIds={taskDocumentIds}
+                      setTaskDocumentIds={setTaskDocumentIds}
                       taskPriority={taskPriority}
                       setTaskPriority={setTaskPriority}
                       taskLabels={newTaskLabels}
