@@ -102,7 +102,8 @@
   position: relative;
 }
 
-.nav-item .inbox-notification-count {
+.nav-item .inbox-notification-count,
+.nav-item .chat-notification-count {
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
@@ -113,6 +114,10 @@
   font-weight: 700;
   line-height: 18px;
   text-align: center;
+}
+
+.nav-item .chat-notification-count {
+  background: #ef4444;
 }
 
 .project-item .project-name {

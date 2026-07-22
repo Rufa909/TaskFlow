@@ -9,6 +9,16 @@ import "./SideBar.css";
 
 const API_URL = "http://localhost:5000";
 const SIDEBAR_COLLAPSED_KEY = "taskflow.sidebarCollapsed";
+const CHAT_NOTIFICATION_TYPES = new Set(["chat_message", "project_chat_message", "group_invited"]);
+
+function isChatNotification(notification) {
+  if (!notification) return false;
+  if (notification.category === "chat") return true;
+  if (CHAT_NOTIFICATION_TYPES.has(notification.type)) return true;
+  if (notification.chat_project_id || notification.project_chat_project_id) return true;
+  if (notification.chat_sender_name || notification.project_chat_sender_name) return true;
+  return /^new (project )?message from /i.test(String(notification.title || ""));
+}
 
 function getSavedSidebarCollapsed() {
   return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
@@ -295,9 +305,16 @@ export default function Sidebar({
 
   const { setIsFiltersOpen } = useFilters();
   const unreadNotificationCount = notifications.filter((item) => !item.is_read).length;
+  const chatBadgeCount = notifications.filter(
+    (item) => !item.is_read && isChatNotification(item),
+  ).length;
+  const unreadInboxNotificationCount = notifications.filter(
+    (item) => !item.is_read && !isChatNotification(item),
+  ).length;
   const pendingInboxNotificationCount =
     approvalNotifications.length + invitationNotifications.length;
   const notificationBadgeCount = unreadNotificationCount + pendingInboxNotificationCount;
+  const inboxBadgeCount = unreadInboxNotificationCount + pendingInboxNotificationCount;
   const latestNotifications = [
     ...approvalNotifications,
     ...invitationNotifications,
@@ -340,13 +357,26 @@ export default function Sidebar({
   const searchResultCount =
     searchSuggestions.projects.length + searchSuggestions.tasks.length;
 
-  const markAllNotificationsRead = async () => {
-    if (unreadNotificationCount === 0 || isMarkingAllRead) return;
+  const markNotificationsRead = async ({ includeChat = true } = {}) => {
+    const targetNotifications = notifications.filter((item) => (
+      !item.is_read && (includeChat || !isChatNotification(item))
+    ));
+    if (targetNotifications.length === 0 || isMarkingAllRead) return;
 
     setIsMarkingAllRead(true);
     try {
-      await api.put("/notifications/read-all");
-      setNotifications((prev) => prev.map((item) => ({ ...item, is_read: 1 })));
+      if (includeChat) {
+        await api.put("/notifications/read-all");
+      } else {
+        await Promise.all(
+          targetNotifications.map((item) => api.put(`/notifications/${item.noti_id}/read`)),
+        );
+      }
+      setNotifications((prev) => prev.map((item) => (
+        includeChat || !isChatNotification(item)
+          ? { ...item, is_read: 1 }
+          : item
+      )));
     } catch (err) {
       console.error("Cannot mark all notifications read", err);
     } finally {
@@ -356,13 +386,18 @@ export default function Sidebar({
 
   const handleMarkAllNotificationsRead = async (e) => {
     e.stopPropagation();
-    await markAllNotificationsRead();
+    await markNotificationsRead({ includeChat: true });
   };
 
   const handleInboxClick = () => {
     closeProfileMenu();
     setIsNotificationsOpen(false);
-    markAllNotificationsRead();
+    markNotificationsRead({ includeChat: false });
+  };
+
+  const handleChatClick = () => {
+    closeProfileMenu();
+    setIsNotificationsOpen(false);
   };
 
   const openSearch = () => {
@@ -395,10 +430,10 @@ export default function Sidebar({
 
   useEffect(() => {
     if (location.pathname === "/inbox") {
-      markAllNotificationsRead();
+      markNotificationsRead({ includeChat: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, unreadNotificationCount]);
+  }, [location.pathname, unreadInboxNotificationCount]);
 
   const handleNotificationClick = async (notification) => {
     if (notification.kind === "approval" || notification.kind === "invitation") {
@@ -423,6 +458,20 @@ export default function Sidebar({
     }
 
     const projectId = notification.task_project_id || notification.reference_id;
+    const chatProjectId = notification.chat_project_id || notification.project_chat_project_id;
+    if (isChatNotification(notification)) {
+      const targetProject = projects.find(
+        (project) => Number(project.project_id) === Number(chatProjectId),
+      );
+      if (targetProject) {
+        setActiveProject(targetProject);
+      }
+      setActiveView("chat");
+      setIsNotificationsOpen(false);
+      navigate(chatProjectId ? `/chat?projectId=${chatProjectId}` : "/chat");
+      return;
+    }
+
     if (notification.task_project_id && notification.reference_id) {
       const targetProject = projects.find(
         (project) => Number(project.project_id) === Number(projectId),
@@ -557,6 +606,8 @@ export default function Sidebar({
                         </span>
                         <span className="notification-popover-meta">
                           {notification.task_project_name ||
+                            notification.chat_project_name ||
+                            notification.project_chat_project_name ||
                             notification.project_name ||
                             "TaskFlow"}
                           {notification.deadline &&
@@ -729,9 +780,9 @@ export default function Sidebar({
             <Icon name="inbox" size={18} />
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("inbox")}</span>
-          {notificationBadgeCount > 0 && (
+          {inboxBadgeCount > 0 && (
             <span className="count inbox-notification-count">
-              {notificationBadgeCount > 9 ? "9+" : notificationBadgeCount}
+              {inboxBadgeCount > 9 ? "9+" : inboxBadgeCount}
             </span>
           )}
         </Link>
@@ -739,12 +790,17 @@ export default function Sidebar({
           to="/chat"
           className={`nav-item ${location.pathname === "/chat" ? "active" : ""}`}
           style={{ textDecoration: "none", display: "flex" }}
-          onClick={closeProfileMenu}
+          onClick={handleChatClick}
         >
           <span className="icon">
             <Icon name="chat" size={18} />
           </span>{" "}
           <span style={{ flex: 1, textAlign: "left" }}>{t("chat")}</span>
+          {chatBadgeCount > 0 && (
+            <span className="count chat-notification-count">
+              {chatBadgeCount > 9 ? "9+" : chatBadgeCount}
+            </span>
+          )}
         </Link>
         <Link
           to="/today"

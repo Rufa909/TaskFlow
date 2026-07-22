@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -56,6 +56,27 @@ function conversationKey(conversation) {
   return String(conversation?.conversation_id || "");
 }
 
+function chatNotificationKey(notification) {
+  if (!notification || notification.is_read) return "";
+  if (notification.category && notification.category !== "chat") return "";
+  if (notification.type === "project_chat_message") {
+    return notification.project_chat_conversation_id
+      || (notification.project_chat_project_id ? `project-${notification.project_chat_project_id}` : "");
+  }
+  if (notification.type === "chat_message") {
+    return notification.chat_conversation_id ? String(notification.chat_conversation_id) : "";
+  }
+  if (notification.type === "group_invited") {
+    return notification.chat_conversation_id ? String(notification.chat_conversation_id) : "";
+  }
+  return "";
+}
+
+function chatNotificationProjectId(notification) {
+  if (!notification || notification.is_read) return "";
+  return notification.chat_project_id || notification.project_chat_project_id || "";
+}
+
 function groupRoleLabel(role) {
   return role === "admin" ? "Admin" : "Member";
 }
@@ -66,6 +87,7 @@ export default function ChatPage() {
   const { confirm } = useConfirm();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const t = (key) => getTranslation(language, key);
 
   const [projects, setProjects] = useState([]);
@@ -84,14 +106,27 @@ export default function ChatPage() {
 
   const [members, setMembers] = useState([]);
   const [chatUsers, setChatUsers] = useState([]);
+  const [globalDirectConversations, setGlobalDirectConversations] = useState([]);
+  const [globalDirectUsers, setGlobalDirectUsers] = useState([]);
+  const [loadingDirectChats, setLoadingDirectChats] = useState(false);
+  const [globalGroupConversations, setGlobalGroupConversations] = useState([]);
+  const [globalGroupUsers, setGlobalGroupUsers] = useState([]);
+  const [loadingGroupChats, setLoadingGroupChats] = useState(false);
+  const [isCreateDirectOpen, setIsCreateDirectOpen] = useState(false);
+  const [directInviteEmail, setDirectInviteEmail] = useState("");
+  const [directInviteUser, setDirectInviteUser] = useState(null);
+  const [directEmailSuggestions, setDirectEmailSuggestions] = useState([]);
+  const [creatingDirectChat, setCreatingDirectChat] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [loadingChat, setLoadingChat] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [chatNotifications, setChatNotifications] = useState([]);
   const [messageText, setMessageText] = useState("");
   const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const [canManageProject, setCanManageProject] = useState(false);
 
   const [savingMember, setSavingMember] = useState(false);
@@ -100,7 +135,13 @@ export default function ChatPage() {
   const [loadingProjectMemberCandidates, setLoadingProjectMemberCandidates] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [createGroupInviteEmail, setCreateGroupInviteEmail] = useState("");
+  const [createGroupInviteUser, setCreateGroupInviteUser] = useState(null);
+  const [createGroupEmailSuggestions, setCreateGroupEmailSuggestions] = useState([]);
   const [groupAddMemberIds, setGroupAddMemberIds] = useState([]);
+  const [groupInviteEmail, setGroupInviteEmail] = useState("");
+  const [groupInviteUser, setGroupInviteUser] = useState(null);
+  const [groupInviteEmailSuggestions, setGroupInviteEmailSuggestions] = useState([]);
   const [groupMemberCandidates, setGroupMemberCandidates] = useState([]);
   const [loadingGroupMemberCandidates, setLoadingGroupMemberCandidates] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -108,11 +149,19 @@ export default function ChatPage() {
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [chatPanelView, setChatPanelView] = useState("overview");
   const [openMemberMenuId, setOpenMemberMenuId] = useState(null);
+  const [openConversationMenuId, setOpenConversationMenuId] = useState("");
 
   const messagesEndRef = useRef(null);
   const attachmentInputRef = useRef(null);
+  const latestMessageIdRef = useRef(0);
   const activeProjectId = activeProject?.project_id;
   const activeConversationId = conversationKey(activeConversation);
+  const activeChatProjectId = activeConversation?.type && activeConversation.type !== "project"
+    ? activeConversation.project_id
+    : activeProjectId;
+  const canLoadActiveChat = ["direct", "group"].includes(activeConversation?.type)
+    ? Boolean(activeConversationId)
+    : Boolean(activeChatProjectId && activeConversationId);
   const isRemovedFromActiveChat = Boolean(
     activeConversation?.removed_at
       || (activeConversation?.type === "project" && activeProject?.user_role === "removed"),
@@ -132,8 +181,14 @@ export default function ChatPage() {
     for (const member of chatUsers) {
       if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
     }
+    for (const member of globalDirectUsers) {
+      if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
+    }
+    for (const member of globalGroupUsers) {
+      if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
+    }
     return map;
-  }, [chatUsers, members]);
+  }, [chatUsers, globalDirectUsers, globalGroupUsers, members]);
 
   const selectableMembers = useMemo(
     () => members.filter((member) => Number(member.user_id) !== Number(user?.id)),
@@ -182,16 +237,89 @@ export default function ChatPage() {
     return [];
   }, [activeConversation, groupMemberCandidates]);
 
+  const groupConversations = useMemo(() => {
+    const byId = new Map();
+    const addConversation = (conversation) => {
+      if (!conversation || conversation.type !== "group") return;
+      const key = conversationKey(conversation);
+      if (!key) return;
+      byId.set(key, {
+        ...byId.get(key),
+        ...conversation,
+        project_name: conversation.project_name || byId.get(key)?.project_name || "",
+      });
+    };
+
+    globalGroupConversations.forEach(addConversation);
+    conversations.forEach(addConversation);
+    if (activeConversation?.type === "group") addConversation(activeConversation);
+
+    return Array.from(byId.values()).sort((a, b) => (
+      new Date(b.last_message_at || b.created_at || 0) - new Date(a.last_message_at || a.created_at || 0)
+    ));
+  }, [activeConversation, conversations, globalGroupConversations]);
+  const directConversations = useMemo(() => {
+    const byId = new Map();
+    const addConversation = (conversation) => {
+      if (!conversation || conversation.type !== "direct") return;
+      const key = conversationKey(conversation);
+      if (!key) return;
+      byId.set(key, {
+        ...byId.get(key),
+        ...conversation,
+        project_name: conversation.project_name || byId.get(key)?.project_name || activeProject?.name,
+      });
+    };
+
+    globalDirectConversations.forEach(addConversation);
+    conversations.forEach(addConversation);
+    if (activeConversation?.type === "direct") addConversation(activeConversation);
+
+    return Array.from(byId.values()).sort((a, b) => (
+      new Date(b.last_message_at || b.created_at || 0) - new Date(a.last_message_at || a.created_at || 0)
+    ));
+  }, [activeConversation, activeProject?.name, conversations, globalDirectConversations]);
+
+  const unreadCountsByConversation = useMemo(() => {
+    const counts = {};
+    for (const notification of chatNotifications) {
+      const key = chatNotificationKey(notification);
+      if (!key) continue;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }, [chatNotifications]);
+
+  const unreadCountsByProject = useMemo(() => {
+    const counts = {};
+    for (const notification of chatNotifications) {
+      if (notification.type === "project_chat_message") continue;
+      const projectId = chatNotificationProjectId(notification);
+      if (!projectId) continue;
+      counts[projectId] = (counts[projectId] || 0) + 1;
+    }
+    return counts;
+  }, [chatNotifications]);
+
   const canManageActiveGroup = useMemo(() => {
     if (activeConversation?.type !== "group") return false;
     if (activeConversation.removed_at) return false;
     if (activeConversation.disbanded_at) return false;
+    const isProjectScopedGroup = Boolean(activeConversation.project_id);
     const participantRole = activeConversation.participant_role
       || activeConversation.participant_roles?.[String(user?.id)]
       || activeConversation.participant_roles?.[Number(user?.id)];
 
-    return participantRole === "admin" || Number(activeConversation.created_by) === Number(user?.id);
-  }, [activeConversation, user?.id]);
+    return (isProjectScopedGroup && canManageProject)
+      || participantRole === "admin"
+      || Number(activeConversation.created_by) === Number(user?.id);
+  }, [activeConversation, canManageProject, user?.id]);
+
+  const canClearActiveHistory = Boolean(
+    !isRemovedFromActiveChat
+      && (activeConversation?.type === "direct"
+        || activeConversation?.type === "group"),
+  );
 
   const getChatMemberRoleLabel = useCallback(
     (member) => {
@@ -205,24 +333,74 @@ export default function ChatPage() {
     [activeConversation],
   );
 
-  const loadProjects = useCallback(async () => {
-    setLoadingProjects(true);
+  const loadProjects = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoadingProjects(true);
     try {
       const res = await api.get("/projects");
       const nextProjects = res.data.projects || [];
+      const queryProjectId = new URLSearchParams(location.search).get("projectId");
       setProjects(nextProjects);
-      setActiveProject((current) => current || nextProjects[0] || null);
+      setActiveProject((current) => {
+        const queryProject = queryProjectId
+          ? nextProjects.find((project) => Number(project.project_id) === Number(queryProjectId))
+          : null;
+        const currentProject = current
+          ? nextProjects.find((project) => Number(project.project_id) === Number(current.project_id))
+          : null;
+        return queryProject || currentProject || nextProjects[0] || null;
+      });
     } catch (err) {
       console.error("Cannot load projects", err);
-      showToast("Cannot load projects", "error");
+      if (!silent) showToast("Cannot load projects", "error");
     } finally {
-      setLoadingProjects(false);
+      if (!silent) setLoadingProjects(false);
     }
-  }, [showToast]);
+  }, [location.search, showToast]);
 
-  const loadProjectChat = useCallback(async (projectId) => {
+  const loadGlobalDirectChats = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoadingDirectChats(true);
+    try {
+      const res = await api.get("/projects/chat/direct-conversations");
+      setGlobalDirectConversations(res.data.conversations || []);
+      setGlobalDirectUsers(res.data.chat_users || []);
+    } catch (err) {
+      console.error("Cannot load direct chats", err);
+      setGlobalDirectConversations([]);
+      setGlobalDirectUsers([]);
+    } finally {
+      if (!silent) setLoadingDirectChats(false);
+    }
+  }, []);
+
+  const loadGlobalGroupChats = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoadingGroupChats(true);
+    try {
+      const res = await api.get("/projects/chat/group-conversations");
+      setGlobalGroupConversations(res.data.conversations || []);
+      setGlobalGroupUsers(res.data.chat_users || []);
+    } catch (err) {
+      console.error("Cannot load groups", err);
+      setGlobalGroupConversations([]);
+      setGlobalGroupUsers([]);
+    } finally {
+      if (!silent) setLoadingGroupChats(false);
+    }
+  }, []);
+
+  const loadChatNotifications = useCallback(async () => {
+    try {
+      const res = await api.get("/notifications", { params: { limit: 100 } });
+      setChatNotifications(
+        (res.data.notifications || []).filter((notification) => chatNotificationKey(notification)),
+      );
+    } catch (err) {
+      console.error("Cannot load chat notifications", err);
+    }
+  }, []);
+
+  const loadProjectChat = useCallback(async (projectId, preferredConversationId = null, { silent = false } = {}) => {
     if (!projectId) return;
-    setLoadingChat(true);
+    if (!silent) setLoadingChat(true);
     try {
       const res = await api.get(`/projects/${projectId}/chat`);
       const nextMembers = res.data.members || [];
@@ -238,25 +416,55 @@ export default function ChatPage() {
       ));
       setConversations(nextConversations);
       setActiveConversation((current) => {
+        if (preferredConversationId) {
+          const preferred = nextConversations.find((item) => (
+            conversationKey(item) === String(preferredConversationId)
+          ));
+          if (preferred) return preferred;
+        }
         const currentKey = conversationKey(current);
         return nextConversations.find((item) => conversationKey(item) === currentKey) || nextConversations[0] || null;
       });
     } catch (err) {
       console.error("Cannot load project chat", err);
-      showToast("Cannot load project chat", "error");
-      setMembers([]);
-      setChatUsers([]);
-      setConversations([]);
-      setActiveConversation(null);
-      setCanManageProject(false);
+      if (!silent) {
+        showToast("Cannot load project chat", "error");
+        setMembers([]);
+        setChatUsers([]);
+        setConversations([]);
+        setActiveConversation(null);
+        setCanManageProject(false);
+      }
     } finally {
-      setLoadingChat(false);
+      if (!silent) setLoadingChat(false);
     }
   }, [showToast]);
 
   useEffect(() => {
     loadProjects();
-  }, [loadProjects]);
+    loadGlobalDirectChats();
+    loadGlobalGroupChats();
+    loadChatNotifications();
+  }, [loadChatNotifications, loadGlobalDirectChats, loadGlobalGroupChats, loadProjects]);
+
+  useEffect(() => {
+    const id = setInterval(loadChatNotifications, 5000);
+    return () => clearInterval(id);
+  }, [loadChatNotifications]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadProjects({ silent: true });
+      loadGlobalDirectChats({ silent: true });
+      loadGlobalGroupChats({ silent: true });
+      loadChatNotifications();
+      if (activeProjectId) {
+        loadProjectChat(activeProjectId, null, { silent: true });
+      }
+    }, 5000);
+
+    return () => clearInterval(id);
+  }, [activeProjectId, loadChatNotifications, loadGlobalDirectChats, loadGlobalGroupChats, loadProjectChat, loadProjects]);
 
   useEffect(() => {
     setMembers([]);
@@ -265,6 +473,9 @@ export default function ChatPage() {
     setActiveConversation(null);
     setMessages([]);
     setGroupMemberIds([]);
+    setCreateGroupInviteEmail("");
+    setCreateGroupInviteUser(null);
+    setCreateGroupEmailSuggestions([]);
     setGroupAddMemberIds([]);
     setGroupName("");
     setIsCreateGroupOpen(false);
@@ -272,36 +483,60 @@ export default function ChatPage() {
   }, [activeProjectId, loadProjectChat]);
 
   useEffect(() => {
-    if (!activeProjectId || !activeConversationId) {
+    if (!canLoadActiveChat) {
       setMessages([]);
+      latestMessageIdRef.current = 0;
       return;
     }
 
     let mounted = true;
-    const fetchMessages = async () => {
-      setLoadingMessages(true);
+    latestMessageIdRef.current = 0;
+    const fetchMessages = async (silent = false) => {
+      if (!silent) setLoadingMessages(true);
       try {
-        const endpoint = activeConversation?.type === "project"
-          ? `/projects/${activeProjectId}/messages`
-          : `/projects/${activeProjectId}/conversations/${activeConversationId}/messages`;
+        const endpoint = activeConversation?.type === "direct"
+          ? `/projects/chat/direct-conversations/${activeConversationId}/messages`
+          : activeConversation?.type === "group"
+            ? `/projects/chat/group-conversations/${activeConversationId}/messages`
+          : activeConversation?.type === "project"
+            ? `/projects/${activeChatProjectId}/messages`
+            : `/projects/${activeChatProjectId}/conversations/${activeConversationId}/messages`;
         const res = await api.get(endpoint);
-        if (mounted) setMessages(res.data.messages || []);
+        const nextMessages = res.data.messages || [];
+        const newestMessageId = nextMessages.reduce(
+          (maxId, message) => Math.max(maxId, Number(message.message_id) || 0),
+          0,
+        );
+        const incomingMessage = nextMessages.find((message) => (
+          Number(message.message_id) > latestMessageIdRef.current
+          && Number(message.sender_id) !== Number(user?.id)
+        ));
+
+        if (mounted) {
+          if (latestMessageIdRef.current > 0 && incomingMessage) {
+            showToast(`Tin nhắn mới từ ${incomingMessage.sender_username || "User"}`, "info");
+          }
+          latestMessageIdRef.current = Math.max(latestMessageIdRef.current, newestMessageId);
+          setMessages(nextMessages);
+        }
       } catch (err) {
         console.error("Cannot load messages", err);
-        if (mounted) {
+        if (mounted && !silent) {
           showToast("Cannot load chat messages", "error");
           setMessages([]);
         }
       } finally {
-        if (mounted) setLoadingMessages(false);
+        if (mounted && !silent) setLoadingMessages(false);
       }
     };
 
     fetchMessages();
+    const intervalId = setInterval(() => fetchMessages(true), 5000);
     return () => {
       mounted = false;
+      clearInterval(intervalId);
     };
-  }, [activeProjectId, activeConversation?.type, activeConversationId, showToast]);
+  }, [activeChatProjectId, activeConversation?.type, activeConversationId, canLoadActiveChat, showToast, user?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -312,6 +547,9 @@ export default function ChatPage() {
     setProjectMemberCandidates([]);
     setSelectedProjectMemberIds([]);
     setGroupAddMemberIds([]);
+    setGroupInviteEmail("");
+    setGroupInviteUser(null);
+    setGroupInviteEmailSuggestions([]);
     setGroupMemberCandidates([]);
     setOpenMemberMenuId(null);
     setSelectedAttachment(null);
@@ -322,8 +560,104 @@ export default function ChatPage() {
     setOpenMemberMenuId(null);
     if (chatPanelView !== "add") setSelectedProjectMemberIds([]);
     if (chatPanelView !== "add") setGroupAddMemberIds([]);
+    if (chatPanelView !== "add") setGroupInviteEmail("");
+    if (chatPanelView !== "add") setGroupInviteUser(null);
+    if (chatPanelView !== "add") setGroupInviteEmailSuggestions([]);
     if (chatPanelView !== "add") setGroupMemberCandidates([]);
   }, [chatPanelView]);
+
+  useEffect(() => {
+    let active = true;
+    const query = createGroupInviteEmail.trim();
+    setCreateGroupInviteUser((current) => (
+      current?.email && current.email.toLowerCase() === query ? current : null
+    ));
+
+    if (query.length < 2) {
+      setCreateGroupEmailSuggestions([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get("/projects/chat/user-search", {
+          params: { q: query },
+        });
+        if (active) setCreateGroupEmailSuggestions(res.data.users || []);
+      } catch (err) {
+        if (active) setCreateGroupEmailSuggestions([]);
+      }
+    }, 220);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [createGroupInviteEmail]);
+
+  useEffect(() => {
+    let active = true;
+    const query = groupInviteEmail.trim();
+    setGroupInviteUser((current) => (
+      current?.email && current.email.toLowerCase() === query ? current : null
+    ));
+
+    if (query.length < 2) {
+      setGroupInviteEmailSuggestions([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get("/projects/chat/user-search", {
+          params: { q: query },
+        });
+        if (active) setGroupInviteEmailSuggestions(res.data.users || []);
+      } catch (err) {
+        if (active) setGroupInviteEmailSuggestions([]);
+      }
+    }, 220);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [groupInviteEmail]);
+
+  useEffect(() => {
+    let active = true;
+    const query = directInviteEmail.trim();
+    setDirectInviteUser((current) => (
+      current?.email && current.email.toLowerCase() === query.toLowerCase() ? current : null
+    ));
+
+    if (query.length < 2) {
+      setDirectEmailSuggestions([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get("/projects/chat/user-search", {
+          params: { q: query },
+        });
+        if (active) setDirectEmailSuggestions(res.data.users || []);
+      } catch (err) {
+        if (active) setDirectEmailSuggestions([]);
+      }
+    }, 220);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [directInviteEmail]);
 
   useEffect(() => {
     if (chatPanelView !== "add" || activeConversation?.type !== "project" || !canManageProject || !activeProjectId) {
@@ -357,7 +691,6 @@ export default function ChatPage() {
       chatPanelView !== "add"
       || activeConversation?.type !== "group"
       || !canManageActiveGroup
-      || !activeProjectId
       || !activeConversationId
     ) {
       return;
@@ -367,7 +700,7 @@ export default function ChatPage() {
     async function loadGroupMemberCandidates() {
       setLoadingGroupMemberCandidates(true);
       try {
-        const res = await api.get(`/projects/${activeProjectId}/conversations/${activeConversationId}/member-candidates`);
+        const res = await api.get(`/projects/chat/group-conversations/${activeConversationId}/member-candidates`);
         if (mounted) setGroupMemberCandidates(res.data.users || []);
       } catch (err) {
         if (mounted) {
@@ -383,7 +716,7 @@ export default function ChatPage() {
     return () => {
       mounted = false;
     };
-  }, [activeConversation?.type, activeConversationId, activeProjectId, canManageActiveGroup, chatPanelView, showToast]);
+  }, [activeConversation?.type, activeConversationId, canManageActiveGroup, chatPanelView, showToast]);
 
   const handleLogout = async () => {
     if (await confirm(t("confirmLogout"), { confirmLabel: "Logout", danger: true })) {
@@ -428,9 +761,36 @@ export default function ChatPage() {
     }
   };
 
+  const markConversationNotificationsRead = useCallback((conversation) => {
+    const key = conversationKey(conversation);
+    if (!key) return;
+
+    const unreadForConversation = chatNotifications.filter(
+      (notification) => chatNotificationKey(notification) === key,
+    );
+    if (unreadForConversation.length === 0) return;
+
+    setChatNotifications((prev) => (
+      prev.filter((notification) => chatNotificationKey(notification) !== key)
+    ));
+    Promise.all(
+      unreadForConversation.map((notification) => api.put(`/notifications/${notification.noti_id}/read`)),
+    ).catch((err) => {
+      console.error("Cannot mark chat conversation read", err);
+      loadChatNotifications();
+    });
+  }, [chatNotifications, loadChatNotifications]);
+
+  const openChatConversation = useCallback((conversation) => {
+    if (!conversation) return;
+    setOpenConversationMenuId("");
+    setActiveConversation(conversation);
+    markConversationNotificationsRead(conversation);
+  }, [markConversationNotificationsRead]);
+
   const handleSendMessage = async (event) => {
     event.preventDefault();
-    if (!activeProjectId || !activeConversation || isChatLocked || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
+    if (!canLoadActiveChat || !activeConversation || isChatLocked || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
 
     const content = messageText.trim();
     const attachment = selectedAttachment;
@@ -440,17 +800,36 @@ export default function ChatPage() {
     setSendingMessage(true);
 
     try {
+      let res;
       if (attachment) {
         const formData = new FormData();
         formData.append("content", content);
         formData.append("conversation_id", activeConversationId);
         formData.append("attachment", attachment);
-        await api.post(`/projects/${activeProjectId}/messages`, formData);
+        const endpoint = activeConversation.type === "direct"
+          ? `/projects/chat/direct-conversations/${activeConversationId}/messages`
+          : activeConversation.type === "group"
+            ? `/projects/chat/group-conversations/${activeConversationId}/messages`
+          : `/projects/${activeChatProjectId}/messages`;
+        res = await api.post(endpoint, formData);
       } else {
-        await api.post(`/projects/${activeProjectId}/messages`, {
+        const endpoint = activeConversation.type === "direct"
+          ? `/projects/chat/direct-conversations/${activeConversationId}/messages`
+          : activeConversation.type === "group"
+            ? `/projects/chat/group-conversations/${activeConversationId}/messages`
+          : `/projects/${activeChatProjectId}/messages`;
+        res = await api.post(endpoint, {
           content,
           conversation_id: activeConversationId,
         });
+      }
+      if (res?.data?.message) {
+        latestMessageIdRef.current = Math.max(
+          latestMessageIdRef.current,
+          Number(res.data.message.message_id) || 0,
+        );
+        setMessages((prev) => [...prev, res.data.message]);
+        if (activeConversation.type === "direct") loadGlobalDirectChats();
       }
     } catch (err) {
       console.error("Cannot send message", err);
@@ -469,42 +848,66 @@ export default function ChatPage() {
   };
 
   const openDirectChat = async (memberId) => {
-    if (!activeProjectId || !memberId) return;
+    if (!memberId) return;
     try {
-      const res = await api.post(`/projects/${activeProjectId}/conversations`, {
-        type: "direct",
-        member_ids: [memberId],
+      const res = await api.post("/projects/chat/direct-conversations", {
+        user_id: Number(memberId),
       });
-      await loadProjectChat(activeProjectId);
-      const id = res.data.conversation?.conversation_id;
-      setActiveConversation((current) => (
-        conversations.find((item) => Number(item.conversation_id) === Number(id)) || current
-      ));
-      setTimeout(() => {
-        setActiveConversation((current) => (
-          current?.conversation_id === id ? current : { conversation_id: id, type: "direct", participants: [user?.id, memberId] }
-        ));
-      }, 0);
+      await loadGlobalDirectChats();
+      openChatConversation(res.data.conversation);
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot open direct chat", "error");
     }
   };
 
+  const openExistingDirectChat = async (conversation) => {
+    if (!conversation?.conversation_id) return;
+    openChatConversation(conversation);
+  };
+
+  const handleCreateDirectChat = async (event) => {
+    event.preventDefault();
+    if ((!directInviteEmail.trim() && !directInviteUser?.user_id) || creatingDirectChat) return;
+
+    setCreatingDirectChat(true);
+    try {
+      const res = await api.post("/projects/chat/direct-conversations", {
+        email: directInviteUser?.email || directInviteEmail.trim(),
+        user_id: directInviteUser?.user_id,
+      });
+      const conversation = res.data.conversation;
+      setDirectInviteEmail("");
+      setDirectInviteUser(null);
+      setDirectEmailSuggestions([]);
+      setIsCreateDirectOpen(false);
+      await loadGlobalDirectChats();
+      await openExistingDirectChat(conversation);
+      showToast("Direct chat opened", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot create direct chat", "error");
+    } finally {
+      setCreatingDirectChat(false);
+    }
+  };
+
   const handleCreateGroup = async (event) => {
     event.preventDefault();
-    if (!activeProjectId || !groupName.trim() || groupMemberIds.length === 0) return;
+    if (!groupName.trim() || (groupMemberIds.length === 0 && !createGroupInviteEmail.trim())) return;
     setCreatingGroup(true);
     try {
-      const res = await api.post(`/projects/${activeProjectId}/conversations`, {
-        type: "group",
+      const res = await api.post("/projects/chat/group-conversations", {
         name: groupName.trim(),
         member_ids: groupMemberIds,
+        invite_email: createGroupInviteUser?.email || createGroupInviteEmail.trim(),
       });
       setGroupName("");
       setGroupMemberIds([]);
+      setCreateGroupInviteEmail("");
+      setCreateGroupInviteUser(null);
+      setCreateGroupEmailSuggestions([]);
       setIsCreateGroupOpen(false);
-      await loadProjectChat(activeProjectId);
-      setActiveConversation(res.data.conversation);
+      await loadGlobalGroupChats();
+      openChatConversation(res.data.conversation);
       showToast("Group created", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot create group", "error");
@@ -537,11 +940,11 @@ export default function ChatPage() {
   };
 
   const handleAddSelectedGroupMembers = async () => {
-    if (!activeProjectId || !activeConversationId || groupAddMemberIds.length === 0 || addingGroupMembers) return;
+    if (!activeConversationId || groupAddMemberIds.length === 0 || addingGroupMembers) return;
     setAddingGroupMembers(true);
     try {
       await Promise.all(groupAddMemberIds.map((userId) => (
-        api.post(`/projects/${activeProjectId}/conversations/${activeConversationId}/members`, {
+        api.post(`/projects/chat/group-conversations/${activeConversationId}/members`, {
           user_id: Number(userId),
         })
       )));
@@ -549,7 +952,7 @@ export default function ChatPage() {
       setGroupMemberCandidates((prev) => (
         prev.filter((member) => !groupAddMemberIds.includes(Number(member.user_id)))
       ));
-      await loadProjectChat(activeProjectId);
+      await loadGlobalGroupChats({ silent: true });
       showToast("Added to group", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot add group member", "error");
@@ -558,8 +961,29 @@ export default function ChatPage() {
     }
   };
 
+  const handleInviteGroupMemberByEmail = async (event) => {
+    event.preventDefault();
+    if (!activeConversationId || !groupInviteEmail.trim() || addingGroupMembers) return;
+    setAddingGroupMembers(true);
+    try {
+      await api.post(`/projects/chat/group-conversations/${activeConversationId}/members`, {
+        email: groupInviteUser?.email || groupInviteEmail.trim(),
+      });
+      setGroupInviteEmail("");
+      setGroupInviteUser(null);
+      setGroupInviteEmailSuggestions([]);
+      setGroupAddMemberIds([]);
+      await loadGlobalGroupChats({ silent: true });
+      showToast("Invited to group", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot invite by email", "error");
+    } finally {
+      setAddingGroupMembers(false);
+    }
+  };
+
   const handleRemoveGroupMember = async (member) => {
-    if (!activeProjectId || !activeConversationId || !member?.user_id) return;
+    if (!activeConversationId || !member?.user_id) return;
     const confirmed = await confirm(`Remove ${displayName(member)} from this group chat?`, {
       confirmLabel: "Remove",
       danger: true,
@@ -567,8 +991,8 @@ export default function ChatPage() {
     if (!confirmed) return;
 
     try {
-      await api.delete(`/projects/${activeProjectId}/conversations/${activeConversationId}/members/${member.user_id}`);
-      await loadProjectChat(activeProjectId);
+      await api.delete(`/projects/chat/group-conversations/${activeConversationId}/members/${member.user_id}`);
+      await loadGlobalGroupChats({ silent: true });
       showToast("Removed from group chat", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot remove group member", "error");
@@ -602,7 +1026,7 @@ export default function ChatPage() {
   };
 
   const handleDisbandGroup = async () => {
-    if (!activeProjectId || !activeConversationId || activeConversation?.type !== "group") return;
+    if (!activeConversationId || activeConversation?.type !== "group") return;
     const confirmed = await confirm("Disband this group?", {
       confirmLabel: "Disband",
       danger: true,
@@ -610,12 +1034,82 @@ export default function ChatPage() {
     if (!confirmed) return;
 
     try {
-      await api.patch(`/projects/${activeProjectId}/conversations/${activeConversationId}/disband`);
+      await api.patch(`/projects/chat/group-conversations/${activeConversationId}/disband`);
       setMessages([]);
-      await loadProjectChat(activeProjectId);
+      await loadGlobalGroupChats({ silent: true });
       showToast("Group disbanded", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot disband group", "error");
+    }
+  };
+
+  const handleClearChatHistory = async () => {
+    if (!activeConversationId || !["direct", "group"].includes(activeConversation?.type) || clearingHistory) return;
+    const confirmed = await confirm("Delete all messages in this conversation? This will clear the history for everyone.", {
+      confirmLabel: "Clear history",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    setClearingHistory(true);
+    try {
+      const endpoint = activeConversation.type === "direct"
+        ? `/projects/chat/direct-conversations/${activeConversationId}/messages`
+        : `/projects/chat/group-conversations/${activeConversationId}/messages`;
+      await api.delete(endpoint);
+      setMessages([]);
+      latestMessageIdRef.current = 0;
+      await Promise.all([
+        loadChatNotifications({ silent: true }),
+        activeConversation.type === "direct"
+          ? loadGlobalDirectChats({ silent: true })
+          : loadGlobalGroupChats({ silent: true }),
+      ]);
+      showToast("Chat history cleared", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot clear chat history", "error");
+    } finally {
+      setClearingHistory(false);
+    }
+  };
+
+  const handleRemoveConversationFromList = async (conversation) => {
+    const key = conversationKey(conversation);
+    if (!key || !["direct", "group"].includes(conversation?.type)) return;
+
+    const confirmed = await confirm("Delete this chat history from your side?", {
+      confirmLabel: "Delete history",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      const endpoint = conversation.type === "direct"
+        ? `/projects/chat/direct-conversations/${key}`
+        : `/projects/chat/group-conversations/${key}`;
+      await api.delete(endpoint);
+      setOpenConversationMenuId("");
+      setChatNotifications((prev) => prev.filter((notification) => chatNotificationKey(notification) !== key));
+
+      if (activeConversationId === key) {
+        setActiveConversation(null);
+        setMessages([]);
+        latestMessageIdRef.current = 0;
+      }
+
+      if (conversation.type === "direct") {
+        setGlobalDirectConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
+        setConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
+        await loadGlobalDirectChats({ silent: true });
+      } else {
+        setGlobalGroupConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
+        setConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
+        await loadGlobalGroupChats({ silent: true });
+      }
+
+      showToast("Chat history deleted", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Cannot delete chat history", "error");
     }
   };
 
@@ -651,6 +1145,24 @@ export default function ChatPage() {
     setSelectedProjectMemberIds((prev) => (
       prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
     ));
+  };
+
+  const selectCreateGroupInviteUser = (member) => {
+    setCreateGroupInviteUser(member);
+    setCreateGroupInviteEmail(member.email || "");
+    setCreateGroupEmailSuggestions([]);
+  };
+
+  const selectGroupInviteUser = (member) => {
+    setGroupInviteUser(member);
+    setGroupInviteEmail(member.email || "");
+    setGroupInviteEmailSuggestions([]);
+  };
+
+  const selectDirectInviteUser = (member) => {
+    setDirectInviteUser(member);
+    setDirectInviteEmail(member.email || "");
+    setDirectEmailSuggestions([]);
   };
 
   return (
@@ -708,7 +1220,10 @@ export default function ChatPage() {
                     key={project.project_id}
                     type="button"
                     className={`chat-project-row ${activeProject?.project_id === project.project_id ? "active" : ""}`}
-                    onClick={() => setActiveProject(project)}
+                    onClick={() => {
+                      setActiveProject(project);
+                      markConversationNotificationsRead({ conversation_id: `project-${project.project_id}` });
+                    }}
                   >
                     <span className="chat-project-icon">
                       <Icon name="hash" size={16} />
@@ -717,6 +1232,13 @@ export default function ChatPage() {
                       <span className="chat-project-name">{project.name}</span>
                       <span className="chat-project-role">{project.user_role || "member"}</span>
                     </span>
+                    {(unreadCountsByConversation[`project-${project.project_id}`] || unreadCountsByProject[project.project_id]) > 0 && (
+                      <span className="chat-row-badge">
+                        {(unreadCountsByConversation[`project-${project.project_id}`] || 0) + (unreadCountsByProject[project.project_id] || 0) > 9
+                          ? "9+"
+                          : (unreadCountsByConversation[`project-${project.project_id}`] || 0) + (unreadCountsByProject[project.project_id] || 0)}
+                      </span>
+                    )}
                   </button>
                 ))
               )}
@@ -724,12 +1246,11 @@ export default function ChatPage() {
 
             <div className="chat-thread-panel">
               <div className="chat-panel-title-row">
-                <div className="chat-panel-title">Chats</div>
+                <div className="chat-panel-title">Groups</div>
                 <button
                   type="button"
                   className={`chat-create-toggle ${isCreateGroupOpen ? "active" : ""}`}
                   onClick={() => setIsCreateGroupOpen((open) => !open)}
-                  disabled={!activeProject}
                 >
                   <Icon name="teamAdd" size={14} />
                   <span>Create group</span>
@@ -738,6 +1259,58 @@ export default function ChatPage() {
               {isCreateGroupOpen && (
                 <form className="chat-create-group-form" onSubmit={handleCreateGroup}>
                   <input type="text" placeholder="Group name" value={groupName} onChange={(event) => setGroupName(event.target.value)} />
+                  <div className="chat-create-email-row">
+                    <Icon name="mail" size={14} />
+                    <input
+                      type="email"
+                      placeholder="Invite by email"
+                      value={createGroupInviteEmail}
+                      autoComplete="off"
+                      onChange={(event) => {
+                        setCreateGroupInviteEmail(event.target.value);
+                        setCreateGroupInviteUser(null);
+                      }}
+                    />
+                  </div>
+                  {createGroupInviteUser && (
+                    <div className="chat-email-selected-user">
+                      <span className="chat-avatar small">
+                        {createGroupInviteUser.user_photo ? (
+                          <img src={avatarUrl(createGroupInviteUser.user_photo)} alt="" />
+                        ) : (
+                          displayName(createGroupInviteUser).charAt(0).toUpperCase()
+                        )}
+                      </span>
+                      <span>
+                        <strong>{displayName(createGroupInviteUser)}</strong>
+                        <small>{createGroupInviteUser.email}</small>
+                      </span>
+                    </div>
+                  )}
+                  {!createGroupInviteUser && createGroupEmailSuggestions.length > 0 && (
+                    <div className="chat-email-suggestions">
+                      {createGroupEmailSuggestions.map((member) => (
+                        <button
+                          key={member.user_id}
+                          type="button"
+                          onClick={() => selectCreateGroupInviteUser(member)}
+                        >
+                          <span className="chat-avatar small">
+                            {member.user_photo ? (
+                              <img src={avatarUrl(member.user_photo)} alt="" />
+                            ) : (
+                              displayName(member).charAt(0).toUpperCase()
+                            )}
+                          </span>
+                          <span>
+                            <strong>{displayName(member)}</strong>
+                            <small>{member.email}</small>
+                          </span>
+                          {member.project_role && <em>{member.project_role}</em>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="chat-group-member-picker compact">
                     {selectableMembers.map((member) => (
                       <button
@@ -755,34 +1328,228 @@ export default function ChatPage() {
                     ))}
                   </div>
                   <div className="chat-create-actions">
-                    <button type="button" className="secondary" onClick={() => setIsCreateGroupOpen(false)}>Cancel</button>
-                    <button type="submit" disabled={creatingGroup || !groupName.trim() || groupMemberIds.length === 0}>Create group</button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setIsCreateGroupOpen(false);
+                        setCreateGroupInviteEmail("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={creatingGroup || !groupName.trim() || (groupMemberIds.length === 0 && !createGroupInviteEmail.trim())}
+                    >
+                      Create group
+                    </button>
                   </div>
                 </form>
               )}
-              {loadingChat ? (
-                <div className="chat-empty">Loading chats...</div>
-              ) : conversations.map((conversation) => {
-                const isDirect = conversation.type === "direct";
-                const directMember = isDirect ? getDirectConversationMember(conversation) : null;
+              {loadingGroupChats ? (
+                <div className="chat-empty">Loading groups...</div>
+              ) : groupConversations.length === 0 ? (
+                <div className="chat-empty">No groups yet.</div>
+              ) : groupConversations.map((conversation) => {
+                const key = conversationKey(conversation);
+                const unreadCount = unreadCountsByConversation[key] || 0;
                 return (
-                  <button
-                    key={conversationKey(conversation)}
-                    type="button"
-                    className={`chat-thread-row ${activeConversationId === conversationKey(conversation) ? "active" : ""}`}
-                    onClick={() => setActiveConversation(conversation)}
+                  <div
+                    key={key}
+                    className={`chat-thread-row-shell ${activeConversationId === key ? "active" : ""}`}
                   >
-                    {isDirect ? (
-                      <span className="chat-thread-avatar">
-                        {directMember?.user_photo ? <img src={avatarUrl(directMember.user_photo)} alt="" /> : displayName(directMember).charAt(0).toUpperCase()}
+                    <button
+                      type="button"
+                      className="chat-thread-row"
+                      onClick={() => openChatConversation(conversation)}
+                    >
+                      <Icon name="users" size={15} />
+                      <span className="chat-thread-main">
+                        {conversation.name || "Group chat"}
+                        {conversation.project_name && <small>{conversation.project_name}</small>}
                       </span>
-                    ) : (
-                      <Icon name={conversation.type === "group" ? "users" : "hash"} size={15} />
+                      {unreadCount > 0 && (
+                        <span className="chat-row-badge">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-thread-more-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenConversationMenuId((current) => (current === key ? "" : key));
+                      }}
+                      aria-label="Chat actions"
+                    >
+                      <Icon name="more" size={16} />
+                    </button>
+                    {openConversationMenuId === key && (
+                      <div className="chat-thread-menu">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveConversationFromList(conversation)}
+                        >
+                          <Icon name="trash" size={14} />
+                          <span>Delete history</span>
+                        </button>
+                      </div>
                     )}
-                    <span>{getConversationLabel(conversation)}</span>
-                  </button>
+                  </div>
                 );
               })}
+            </div>
+
+            <div className="chat-thread-panel chat-thread-panel--direct">
+              <div className="chat-panel-title-row">
+                <div className="chat-panel-title">Direct chats</div>
+                <button
+                  type="button"
+                  className={`chat-create-toggle ${isCreateDirectOpen ? "active" : ""}`}
+                  onClick={() => setIsCreateDirectOpen((current) => !current)}
+                >
+                  <Icon name="teamAdd" size={14} />
+                  New
+                </button>
+              </div>
+              {isCreateDirectOpen && (
+                <form className="chat-create-direct-form" onSubmit={handleCreateDirectChat}>
+                  <div className="chat-create-email-row">
+                    <Icon name="mail" size={14} />
+                    <input
+                      type="email"
+                      placeholder="Find by email"
+                      value={directInviteEmail}
+                      autoComplete="off"
+                      onChange={(event) => {
+                        setDirectInviteEmail(event.target.value);
+                        setDirectInviteUser(null);
+                      }}
+                    />
+                  </div>
+                  {directInviteUser && (
+                    <div className="chat-email-selected-user">
+                      <span className="chat-avatar small">
+                        {directInviteUser.user_photo ? (
+                          <img src={avatarUrl(directInviteUser.user_photo)} alt="" />
+                        ) : (
+                          displayName(directInviteUser).charAt(0).toUpperCase()
+                        )}
+                      </span>
+                      <span>
+                        <strong>{displayName(directInviteUser)}</strong>
+                        <small>{directInviteUser.email}</small>
+                      </span>
+                    </div>
+                  )}
+                  {!directInviteUser && directEmailSuggestions.length > 0 && (
+                    <div className="chat-email-suggestions">
+                      {directEmailSuggestions.map((member) => (
+                        <button
+                          key={member.user_id}
+                          type="button"
+                          onClick={() => selectDirectInviteUser(member)}
+                        >
+                          <span className="chat-avatar small">
+                            {member.user_photo ? (
+                              <img src={avatarUrl(member.user_photo)} alt="" />
+                            ) : (
+                              displayName(member).charAt(0).toUpperCase()
+                            )}
+                          </span>
+                          <span>
+                            <strong>{displayName(member)}</strong>
+                            <small>{member.email}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="chat-create-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setIsCreateDirectOpen(false);
+                        setDirectInviteEmail("");
+                        setDirectInviteUser(null);
+                        setDirectEmailSuggestions([]);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={creatingDirectChat || !directInviteEmail.trim()}
+                    >
+                      Open chat
+                    </button>
+                  </div>
+                </form>
+              )}
+              {loadingDirectChats ? (
+                <div className="chat-empty">Loading direct chats...</div>
+              ) : directConversations.length === 0 ? (
+                <div className="chat-empty">No direct chats yet.</div>
+              ) : directConversations.map((conversation) => {
+                const isDirect = conversation.type === "direct";
+                const directMember = isDirect ? getDirectConversationMember(conversation) : null;
+                const key = conversationKey(conversation);
+                const unreadCount = unreadCountsByConversation[key] || 0;
+                return (
+                  <div
+                    key={key}
+                    className={`chat-thread-row-shell ${activeConversationId === key ? "active" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="chat-thread-row"
+                      onClick={() => openExistingDirectChat(conversation)}
+                    >
+                      {isDirect ? (
+                        <span className="chat-thread-avatar">
+                          {directMember?.user_photo ? <img src={avatarUrl(directMember.user_photo)} alt="" /> : displayName(directMember).charAt(0).toUpperCase()}
+                        </span>
+                      ) : (
+                        <Icon name={conversation.type === "group" ? "users" : "hash"} size={15} />
+                      )}
+                      <span className="chat-thread-main">
+                        {getConversationLabel(conversation)}
+                        {conversation.project_name && <small>{conversation.project_name}</small>}
+                      </span>
+                      {unreadCount > 0 && (
+                        <span className="chat-row-badge">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-thread-more-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenConversationMenuId((current) => (current === key ? "" : key));
+                      }}
+                      aria-label="Chat actions"
+                    >
+                      <Icon name="more" size={16} />
+                    </button>
+                    {openConversationMenuId === key && (
+                      <div className="chat-thread-menu">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveConversationFromList(conversation)}
+                        >
+                          <Icon name="trash" size={14} />
+                          <span>Delete history</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+                })}
             </div>
           </aside>
 
@@ -792,17 +1559,17 @@ export default function ChatPage() {
                 <h1>{activeConversationTitle}</h1>
                 <p>
                   {activeConversation?.type === "direct"
-                    ? "Private conversation in this project."
+                    ? "Private conversation."
                     : activeConversation?.type === "group"
-                      ? "Group conversation with selected project members."
+                      ? "Group conversation."
                       : "Messages are shared with every member in this project."}
                 </p>
               </div>
             </div>
 
             <div className="chat-message-list">
-              {!activeProject ? (
-                <div className="chat-empty chat-empty-large">Select a project first.</div>
+              {!activeConversation ? (
+                <div className="chat-empty chat-empty-large">Select a chat first.</div>
               ) : loadingMessages ? (
                 <div className="chat-empty chat-empty-large">Loading messages...</div>
               ) : isDisbandedActiveGroup ? (
@@ -941,14 +1708,29 @@ export default function ChatPage() {
                     <button type="button" className="chat-info-nav-row" onClick={() => setChatPanelView("add")}>
                       <span>
                         <strong>Add member</strong>
-                        <small>{activeConversation?.type === "group" ? "Add project members to this group" : "Add a new project member"}</small>
+                        <small>{activeConversation?.type === "group" ? "Add members to this group" : "Add a new project member"}</small>
                       </span>
                       <Icon name="chevronRight" size={16} />
                     </button>
                   )}
 
+                  {canClearActiveHistory && (
+                    <button
+                      type="button"
+                      className="chat-danger-row"
+                      onClick={handleClearChatHistory}
+                      disabled={clearingHistory || messages.length === 0}
+                    >
+                      <span>
+                        <strong>Clear history</strong>
+                        <small>Delete all messages in this conversation</small>
+                      </span>
+                      <Icon name="trash" size={16} />
+                    </button>
+                  )}
+
                   {activeConversation?.type === "group" && canManageActiveGroup && (
-                    <button type="button" className="chat-disband-row" onClick={handleDisbandGroup}>
+                    <button type="button" className="chat-danger-row" onClick={handleDisbandGroup}>
                       <span>
                         <strong>Disband group</strong>
                       </span>
@@ -1074,11 +1856,70 @@ export default function ChatPage() {
               {chatPanelView === "add" && activeConversation?.type === "group" && canManageActiveGroup && (
                 <>
                   <div className="chat-panel-title">Add member</div>
+                  <form className="chat-email-invite-form" onSubmit={handleInviteGroupMemberByEmail}>
+                    <label htmlFor="groupInviteEmail">Invite by email</label>
+                    <div className="chat-email-invite-row">
+                      <Icon name="mail" size={15} />
+                      <input
+                        id="groupInviteEmail"
+                        type="email"
+                        placeholder="member@email.com"
+                        value={groupInviteEmail}
+                        autoComplete="off"
+                        onChange={(event) => {
+                          setGroupInviteEmail(event.target.value);
+                          setGroupInviteUser(null);
+                        }}
+                      />
+                    </div>
+                    {groupInviteUser && (
+                      <div className="chat-email-selected-user">
+                        <span className="chat-avatar small">
+                          {groupInviteUser.user_photo ? (
+                            <img src={avatarUrl(groupInviteUser.user_photo)} alt="" />
+                          ) : (
+                            displayName(groupInviteUser).charAt(0).toUpperCase()
+                          )}
+                        </span>
+                        <span>
+                          <strong>{displayName(groupInviteUser)}</strong>
+                          <small>{groupInviteUser.email}</small>
+                        </span>
+                      </div>
+                    )}
+                    {!groupInviteUser && groupInviteEmailSuggestions.length > 0 && (
+                      <div className="chat-email-suggestions">
+                        {groupInviteEmailSuggestions.map((member) => (
+                          <button
+                            key={member.user_id}
+                            type="button"
+                            onClick={() => selectGroupInviteUser(member)}
+                          >
+                            <span className="chat-avatar small">
+                              {member.user_photo ? (
+                                <img src={avatarUrl(member.user_photo)} alt="" />
+                              ) : (
+                                displayName(member).charAt(0).toUpperCase()
+                              )}
+                            </span>
+                            <span>
+                              <strong>{displayName(member)}</strong>
+                              <small>{member.email}</small>
+                            </span>
+                            {member.project_role && <em>{member.project_role}</em>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button type="submit" disabled={addingGroupMembers || !groupInviteEmail.trim()}>
+                      Invite email
+                    </button>
+                  </form>
                   <div className="chat-group-member-picker compact">
                     {loadingGroupMemberCandidates ? (
                       <div className="chat-empty">Loading members...</div>
                     ) : addableChatMembers.length === 0 ? (
-                      <div className="chat-empty">All project members are already in this group.</div>
+                      <div className="chat-empty">All available members are already in this group.</div>
                     ) : addableChatMembers.map((member) => (
                       <button
                         key={member.user_id}

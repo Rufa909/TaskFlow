@@ -1,7 +1,9 @@
 const pool = require("../config/db");
+const { ensureProjectChatTables } = require("./projectChatController");
 
 exports.getMyNotifications = async (req, res) => {
   try {
+    await ensureProjectChatTables();
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
@@ -18,10 +20,24 @@ exports.getMyNotifications = async (req, res) => {
         n.reference_id,
         n.is_read,
         n.created_at,
+        CASE
+          WHEN n.type IN ('chat_message', 'project_chat_message', 'group_invited') THEN 'chat'
+          ELSE 'inbox'
+        END AS category,
         p.name AS project_name,
         t.title AS task_title,
         t.project_id AS task_project_id,
         tp.name AS task_project_name,
+        COALESCE(cc.project_id, gic.project_id) AS chat_project_id,
+        COALESCE(cc.conversation_id, gic.conversation_id) AS chat_conversation_id,
+        COALESCE(ccp.name, gip.name) AS chat_project_name,
+        COALESCE(cc.type, gic.type) AS chat_type,
+        COALESCE(cc.name, gic.name) AS chat_conversation_name,
+        ccs.username AS chat_sender_name,
+        pcpm.project_id AS project_chat_project_id,
+        CONCAT('project-', pcpm.project_id) AS project_chat_conversation_id,
+        pcpp.name AS project_chat_project_name,
+        pcps.username AS project_chat_sender_name,
         t.deadline,
         t.time,
         CASE
@@ -49,6 +65,9 @@ exports.getMyNotifications = async (req, res) => {
           WHEN n.type = 'leader_approved_task' THEN CONCAT('Task waiting for owner approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'task_changes_requested' THEN CONCAT('Changes requested: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'workflow_handover_ready' THEN 'Workflow handover package is ready'
+          WHEN n.type = 'chat_message' THEN CONCAT('New message from ', COALESCE(ccs.username, 'User'))
+          WHEN n.type = 'project_chat_message' THEN CONCAT('New project message from ', COALESCE(pcps.username, 'User'))
+          WHEN n.type = 'group_invited' THEN CONCAT('Added to group: ', COALESCE(gic.name, 'Group chat'))
           ELSE 'New notification'
         END AS title
       FROM notifications n
@@ -59,6 +78,21 @@ exports.getMyNotifications = async (req, res) => {
         ON n.type IN ('task_assigned', 'deadline_overdue', 'assignment_request', 'assignment_pending', 'assignment_rejected', 'task_submitted', 'leader_approved_task', 'task_changes_requested')
        AND t.task_id = n.reference_id
       LEFT JOIN projects tp ON tp.project_id = t.project_id
+      LEFT JOIN project_chat_messages ccm
+        ON n.type = 'chat_message'
+       AND ccm.message_id = n.reference_id
+      LEFT JOIN project_chat_conversations cc ON cc.conversation_id = ccm.conversation_id
+      LEFT JOIN projects ccp ON ccp.project_id = cc.project_id
+      LEFT JOIN users ccs ON ccs.user_id = ccm.sender_id
+      LEFT JOIN project_chat_conversations gic
+        ON n.type = 'group_invited'
+       AND gic.conversation_id = n.reference_id
+      LEFT JOIN projects gip ON gip.project_id = gic.project_id
+      LEFT JOIN project_messages pcpm
+        ON n.type = 'project_chat_message'
+       AND pcpm.message_id = n.reference_id
+      LEFT JOIN projects pcpp ON pcpp.project_id = pcpm.project_id
+      LEFT JOIN users pcps ON pcps.user_id = pcpm.sender_id
       WHERE n.user_id = ?
       ORDER BY n.created_at DESC
       LIMIT ? OFFSET ?
