@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -14,7 +14,6 @@ import { useFilters } from "../context/FiltersContext";
 import { useTeams } from "../context/TeamsContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
-import useSocketIo from "../hooks/useSocketIo";
 import { isPastLocalDate, toLocalDateTime } from "../utils/dateTime";
 import "./InboxPage.css";
 
@@ -397,60 +396,6 @@ export default function InboxPage() {
       showToast(err.response?.data?.message || "Cannot add task", "error");
     }
   };
-
-  const socketProjects = useMemo(() => {
-    // Inbox approval rooms depend on which projects user can review
-    return reviewableProjects.map((p) => Number(p.project_id));
-  }, [reviewableProjects]);
-
-  const lastSocketReloadRef = useRef(0);
-
-  const handleSocketTaskChanged = async () => {
-    const now = Date.now();
-    // debounce: tránh spam khi nhiều sự kiện trong 1 lúc
-    if (now - lastSocketReloadRef.current < 800) return;
-    lastSocketReloadRef.current = now;
-
-    await fetchInboxTasks();
-
-    // Refresh approvals list (in case status changed)
-    if (socketProjects.length > 0) {
-      // reuse existing effect logic by calling same API pattern
-      setLoadingApprovals(true);
-      try {
-        const submissionResults = await Promise.all(
-          reviewableProjects.map((project) =>
-            api
-              .get(`/projects/${project.project_id}/task-submissions`)
-              .then((res) =>
-                (res.data.submissions || []).map((item) => ({
-                  ...item,
-                  project_name: project.name,
-                })),
-              )
-              .catch(() => []),
-          ),
-        );
-
-        setTaskSubmissions(
-          submissionResults
-            .flat()
-            .filter((item) => ["pending", "leader_approved"].includes(item.status)),
-        );
-      } finally {
-        setLoadingApprovals(false);
-      }
-    }
-  };
-
-  useSocketIo({
-    enabled: true,
-    projectIds: socketProjects,
-    onTaskChanged: () => {
-      // payload hiện tại chưa được dùng chi tiết, chỉ cần refresh
-      handleSocketTaskChanged();
-    },
-  });
 
   // Respond to invitation (accept / decline)
 

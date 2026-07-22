@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const auth = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
+const { MAX_UPLOAD_SIZE_MB } = upload;
 const { getProjects, createProject, deleteProject, updateProject } = require('../controllers/projectController');
 const {
   getProjectChatOverview,
@@ -18,12 +19,32 @@ const {
   updateConversationMemberRole,
 } = require('../controllers/projectChatController');
 
+function uploadChatAttachment(req, res, next) {
+  upload.single('attachment')(req, res, (err) => {
+    if (!err) {
+      return next();
+    }
+
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        message: `File vượt quá dung lượng tối đa ${MAX_UPLOAD_SIZE_MB}MB`,
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: err.message || 'Không thể upload file',
+    });
+  });
+}
+
 // Tất cả route projects đều cần đăng nhập
 router.get('/', auth, getProjects);
 router.post('/', auth, createProject);
 router.get('/:projectId/chat', auth, getProjectChatOverview);
 router.get('/:projectId/messages', auth, getProjectMessages);
-router.post('/:projectId/messages', auth, upload.single('attachment'), createProjectMessage);
+router.post('/:projectId/messages', auth, uploadChatAttachment, createProjectMessage);
 router.get('/:projectId/conversations/:conversationId/messages', auth, getConversationMessages);
 router.post('/:projectId/conversations', auth, createConversation);
 router.get('/:projectId/member-candidates', auth, getProjectMemberCandidates);

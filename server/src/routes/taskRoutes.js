@@ -29,6 +29,7 @@ const {
 
 const authMiddleware = require("../middleware/authMiddleware");
 const upload = require("../middleware/uploadMiddleware");
+const { MAX_UPLOAD_SIZE_MB } = upload;
 const {
   getMyNotifications,
   markAllNotificationsRead,
@@ -47,7 +48,7 @@ function uploadAttachment(req, res, next) {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
         success: false,
-        message: "File vượt quá dung lượng tối đa 5MB",
+        message: `File vượt quá dung lượng tối đa ${MAX_UPLOAD_SIZE_MB}MB`,
       });
     }
 

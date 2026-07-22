@@ -354,7 +354,7 @@ export default function TaskList({
               )}
 
               {task.priority && (
-                <div className={`task-priority priority-${task.priority}`}>
+                <div className={`task-priority task-priority-${task.priority}`}>
                   <Icon name="flag" size={12} /> {task.priority}
                 </div>
               )}

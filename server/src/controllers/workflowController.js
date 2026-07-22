@@ -1,26 +1,10 @@
 const ProjectStage = require("../models/ProjectStage");
 const db = require("../config/db");
-const { emitWorkflowChanged } = require("../socket");
 
 let workflowHandoverSchemaReady;
 
-const REQUIRED_DOCUMENTS_BY_STAGE = {
-  1: [
-    { type: "requirement_document", label: "Requirement Document" },
-    { type: "user_story", label: "User Story" },
-    { type: "erd", label: "ERD" },
-    { type: "wireframe", label: "Wireframe" },
-  ],
-};
-
-const DEFAULT_REQUIRED_DOCUMENTS = [];
-
 function getUserId(req) {
   return req.user.id || req.user.user_id;
-}
-
-function getRequiredDocuments(stage) {
-  return REQUIRED_DOCUMENTS_BY_STAGE[Number(stage.stage_order)] || DEFAULT_REQUIRED_DOCUMENTS;
 }
 
 function formatDocument(row) {
@@ -192,19 +176,8 @@ async function getStage(projectId, stageId) {
   return rows[0] || null;
 }
 
-async function isStageResponsible(stage, userId, access) {
-  const [members] = await db.query(
-    "SELECT user_id FROM stage_members WHERE stage_id = ?",
-    [stage.id],
-  );
-
-  if (members.length > 0) {
-    return members.some((member) => Number(member.user_id) === Number(userId));
-  }
-
-  if (stage.assigned_to) return Number(stage.assigned_to) === Number(userId);
-
-  return access.isOwner;
+function canMoveStage(access) {
+  return access?.isOwner || String(access?.role || "").toLowerCase() === "leader";
 }
 
 async function getStageDocuments(stageId) {
@@ -302,29 +275,10 @@ async function buildStagePackage(projectId, stage) {
 }
 
 async function buildCompletionChecklist(stage) {
-  const requiredDocuments = getRequiredDocuments(stage);
-  const documents = await getStageDocuments(stage.id);
-  const handover = await getStageHandover(stage.id);
-  const uploadedTypes = new Set(documents.map((doc) => doc.document_type));
-
-  const documentItems = requiredDocuments.map((item) => ({
-    key: item.type,
-    label: item.label,
-    complete: uploadedTypes.has(item.type),
-  }));
-
-  const handoverItem = {
-    key: "handover_notes",
-    label: "Handover Notes",
-    complete: Boolean(handover?.summary && String(handover.summary).trim()),
-  };
-
-  const items = [...documentItems, handoverItem];
-
   return {
-    items,
-    missing: items.filter((item) => !item.complete).map((item) => item.label),
-    canComplete: items.every((item) => item.complete),
+    items: [],
+    missing: [],
+    canComplete: true,
   };
 }
 
@@ -403,7 +357,7 @@ const workflowController = {
 
       const packageData = await buildStagePackage(context.projectId, stage);
       const checklist = await buildCompletionChecklist(stage);
-      const canCompleteStage = await isStageResponsible(stage, context.userId, context.access);
+      const canCompleteStage = canMoveStage(context.access);
 
       res.json({
         success: true,
@@ -466,8 +420,6 @@ const workflowController = {
         "SELECT * FROM stage_documents WHERE document_id = ?",
         [result.insertId],
       );
-      emitWorkflowChanged(context.projectId, { type: "stage_document_created", stageId: stage.id });
-
       res.status(201).json({ success: true, document: formatDocument(rows[0]) });
     } catch (error) {
       console.error("Workflow createDocument error:", error);
@@ -506,7 +458,6 @@ const workflowController = {
          WHERE sd.discussion_id = ?`,
         [result.insertId],
       );
-      emitWorkflowChanged(context.projectId, { type: "stage_discussion_created", stageId: Number(req.params.stageId) });
       res.status(201).json({ success: true, discussion: rows[0] });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -544,7 +495,6 @@ const workflowController = {
          WHERE sd.decision_id = ?`,
         [result.insertId],
       );
-      emitWorkflowChanged(context.projectId, { type: "stage_decision_created", stageId: Number(req.params.stageId) });
       res.status(201).json({ success: true, decision: rows[0] });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -600,7 +550,6 @@ const workflowController = {
          WHERE sd.deliverable_id = ?`,
         [result.insertId],
       );
-      emitWorkflowChanged(context.projectId, { type: "stage_deliverable_created", stageId: Number(req.params.stageId) });
       res.status(201).json({ success: true, deliverable: rows[0] });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -636,7 +585,6 @@ const workflowController = {
           req.body.recommendations || null,
         ],
       );
-      emitWorkflowChanged(context.projectId, { type: "stage_handover_updated", stageId: Number(req.params.stageId) });
       res.json({ success: true, handover: await getStageHandover(req.params.stageId) });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -653,23 +601,15 @@ const workflowController = {
       const stage = await getStage(context.projectId, stageId);
       if (!stage) return res.status(404).json({ success: false, message: "Stage not found" });
 
-      const canCompleteStage = await isStageResponsible(stage, context.userId, context.access);
+      const canCompleteStage = canMoveStage(context.access);
       if (!canCompleteStage) {
         return res.status(403).json({
           success: false,
-          message: "Only stage owners can complete this stage",
+          message: "Only project owner or leader can move to the next stage",
         });
       }
 
       const checklist = await buildCompletionChecklist(stage);
-      if (!checklist.canComplete) {
-        return res.status(400).json({
-          success: false,
-          message: "Cannot move to the next stage. Required handover information is missing.",
-          missing: checklist.missing,
-          checklist,
-        });
-      }
 
       const packageData = await buildStagePackage(context.projectId, stage);
       await db.query(
@@ -687,11 +627,6 @@ const workflowController = {
       await notifyNextStageMembers(context.projectId, stage);
 
       const stages = await normalizeWorkflow(context.projectId);
-      emitWorkflowChanged(context.projectId, {
-        type: "stage_completed",
-        stageId: stage.id,
-        stages,
-      });
 
       res.json({
         success: true,
@@ -724,7 +659,6 @@ const workflowController = {
 
       await ProjectStage.movePrevious(req.body.stageId, context.userId);
       const stages = await normalizeWorkflow(context.projectId);
-      emitWorkflowChanged(context.projectId, { type: "stage_reopened", stageId: req.body.stageId, stages });
 
       res.json({
         success: true,

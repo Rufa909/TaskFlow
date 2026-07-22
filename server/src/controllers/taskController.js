@@ -1,5 +1,4 @@
 const pool = require("../config/db");
-const { emitTaskChanged } = require("../socket");
 const nodemailer = require("nodemailer");
 const fs = require("fs/promises");
 const path = require("path");
@@ -1045,14 +1044,6 @@ exports.createTask = async (req, res) => {
     );
 const enrichedTask = (await enrichTaskRows(rows))[0];
 
-// realtime push
-try {
-  emitTaskChanged(projectId, {
-    type: 'created',
-    task: enrichedTask,
-  });
-} catch (_) {}
-
 res.status(201).json({ success: true, task: enrichedTask });
   } catch (err) {
     console.error("Loi createTask:", err);
@@ -1194,13 +1185,6 @@ exports.updateTask = async (req, res) => {
     );
 
 const enrichedTask = (await enrichTaskRows(rows))[0];
-
-try {
-  emitTaskChanged(projectId, {
-    type: 'updated',
-    task: enrichedTask,
-  });
-} catch (_) {}
 
 res.json({
       success: true,
@@ -1399,14 +1383,6 @@ exports.completeTask = async (req, res) => {
       );
 
       const submittedTask = (await enrichTaskRows([{ ...task, status: "SUBMITTED" }]))[0];
-
-      try {
-        emitTaskChanged(projectId, {
-          type: "submitted",
-          task: submittedTask,
-        });
-      } catch (_) {}
-
       return res.json({
         success: true,
         pendingApproval: true,
@@ -1456,13 +1432,6 @@ exports.completeTask = async (req, res) => {
     );
 
 const enrichedTask = (await enrichTaskRows(rows))[0];
-
-try {
-  emitTaskChanged(projectId, {
-    type: 'completed',
-    task: enrichedTask,
-  });
-} catch (_) {}
 
 res.json({ success: true, task: enrichedTask });
   } catch (err) {
@@ -1556,13 +1525,6 @@ exports.deleteTask = async (req, res) => {
          )`,
       [taskId, projectId, projectId],
     );
-try {
-      emitTaskChanged(projectId, {
-        type: 'deleted',
-        taskId: Number(taskId),
-      });
-    } catch (_) {}
-
 res.json({ success: true, message: "Đã xóa task" });
   } catch (err) {
     console.error("Loi deleteTask:", err);
@@ -2822,3 +2784,4 @@ exports.getTasksByStage = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+

@@ -1,5 +1,4 @@
 const pool = require("../config/db");
-const { emitProjectMessage } = require("../socket");
 
 const PROJECT_ROLES = ["leader", "member", "ba", "developer", "qa", "devops", "viewer"];
 const GROUP_ROLES = ["admin", "member"];
@@ -445,7 +444,6 @@ const createProjectMessage = async (req, res) => {
         ],
       );
       const message = await fetchProjectMessageById(result.insertId, conversationId);
-      emitProjectMessage(projectId, message, conversationId);
       return res.status(201).json({ success: true, message });
     }
 
@@ -475,7 +473,6 @@ const createProjectMessage = async (req, res) => {
       ],
     );
     const message = await fetchConversationMessageById(result.insertId);
-    emitProjectMessage(projectId, message, conversation.conversation_id);
     res.status(201).json({ success: true, message });
   } catch (err) {
     console.error("Cannot create project message:", err);

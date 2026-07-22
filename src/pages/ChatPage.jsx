@@ -10,7 +10,6 @@ import Icon from "../components/common/Icon";
 import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
-import useSocketIo from "../hooks/useSocketIo";
 import "./ChatPage.css";
 
 const API_URL = "http://localhost:5000";
@@ -114,7 +113,6 @@ export default function ChatPage() {
   const attachmentInputRef = useRef(null);
   const activeProjectId = activeProject?.project_id;
   const activeConversationId = conversationKey(activeConversation);
-  const socketProjectIds = useMemo(() => (activeProjectId ? [activeProjectId] : []), [activeProjectId]);
   const isRemovedFromActiveChat = Boolean(
     activeConversation?.removed_at
       || (activeConversation?.type === "project" && activeProject?.user_role === "removed"),
@@ -386,27 +384,6 @@ export default function ChatPage() {
       mounted = false;
     };
   }, [activeConversation?.type, activeConversationId, activeProjectId, canManageActiveGroup, chatPanelView, showToast]);
-
-  const handleProjectMessage = useCallback(
-    (payload) => {
-      if (Number(payload?.projectId) !== Number(activeProjectId)) return;
-      if (String(payload?.conversationId) !== String(activeConversationId)) return;
-      const nextMessage = payload.message;
-      if (!nextMessage?.message_id) return;
-
-      setMessages((prev) => {
-        if (prev.some((item) => item.message_id === nextMessage.message_id)) return prev;
-        return [...prev, nextMessage];
-      });
-    },
-    [activeConversationId, activeProjectId],
-  );
-
-  useSocketIo({
-    enabled: Boolean(activeProjectId),
-    projectIds: socketProjectIds,
-    onProjectMessage: handleProjectMessage,
-  });
 
   const handleLogout = async () => {
     if (await confirm(t("confirmLogout"), { confirmLabel: "Logout", danger: true })) {
