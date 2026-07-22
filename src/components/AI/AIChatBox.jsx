@@ -2,7 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import api from "../../api/axiosInstance";
 import "./AIChatBox.css";
 
-// ─── Simple Markdown Renderer ───────────────────────────────────────────────
+const OLLAMA_AVATAR_SRC = "/ollama-avatar.png";
+
+function inlineMarkdown(text) {
+  return String(text)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(.+?)__/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/_(.+?)_/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, "<code>$1</code>");
+}
+
 function renderMarkdown(text) {
   if (!text) return "";
 
@@ -13,48 +23,39 @@ function renderMarkdown(text) {
   while (i < lines.length) {
     const line = lines[i];
 
-    // Blank line
     if (line.trim() === "") {
       i++;
       continue;
     }
 
-    // Numbered list: collect consecutive items
     if (/^\d+\.\s/.test(line.trim())) {
       const items = [];
       while (i < lines.length && /^\d+\.\s/.test(lines[i].trim())) {
         items.push(lines[i].trim().replace(/^\d+\.\s/, ""));
         i++;
       }
-      result.push(
-        `<ol>${items.map(item => `<li>${inlineMarkdown(item)}</li>`).join("")}</ol>`
-      );
+      result.push(`<ol>${items.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</ol>`);
       continue;
     }
 
-    // Bullet list: - or *
     if (/^[-*]\s/.test(line.trim())) {
       const items = [];
       while (i < lines.length && /^[-*]\s/.test(lines[i].trim())) {
         items.push(lines[i].trim().replace(/^[-*]\s/, ""));
         i++;
       }
-      result.push(
-        `<ul>${items.map(item => `<li>${inlineMarkdown(item)}</li>`).join("")}</ul>`
-      );
+      result.push(`<ul>${items.map((item) => `<li>${inlineMarkdown(item)}</li>`).join("")}</ul>`);
       continue;
     }
 
-    // Heading
     if (/^#{1,3}\s/.test(line)) {
-      const level = line.match(/^(#{1,3})/)[1].length;
+      const level = line.match(/^(#{1,3})/)?.[1].length || 1;
       const content = line.replace(/^#{1,3}\s/, "");
       result.push(`<h${level + 2}>${inlineMarkdown(content)}</h${level + 2}>`);
       i++;
       continue;
     }
 
-    // Normal paragraph
     result.push(`<p>${inlineMarkdown(line)}</p>`);
     i++;
   }
@@ -62,19 +63,6 @@ function renderMarkdown(text) {
   return result.join("");
 }
 
-function inlineMarkdown(text) {
-  return text
-    // Bold **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/__(.+?)__/g, "<strong>$1</strong>")
-    // Italic *text* or _text_
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/_(.+?)_/g, "<em>$1</em>")
-    // Inline code
-    .replace(/`(.+?)`/g, "<code>$1</code>");
-}
-
-// ─── Date formatter ──────────────────────────────────────────────────────────
 function formatTaskDate(value) {
   if (!value) return "Không có deadline";
   const date = new Date(value);
@@ -86,12 +74,11 @@ function formatTaskDate(value) {
   });
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
 export default function AIChatBox() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
-      text: "Xin chào! Tôi là trợ lý AI của TaskFlow, được tích hợp với **Ollama (llama3.2)**.\n\nTôi có thể giúp bạn:\n- Xem và phân tích task, project của bạn\n- Gợi ý ưu tiên công việc theo deadline\n- Giải đáp câu hỏi về công việc trong hệ thống\n\nHãy hỏi tôi bất cứ điều gì về task của bạn!",
+      text: "Xin chào! Tôi là trợ lý AI của TaskFlow.\n\nTôi có thể giúp bạn:\n- Xem và phân tích task, project của bạn\n- Gợi ý ưu tiên công việc theo deadline\n- Giải đáp câu hỏi về công việc trong hệ thống\n\nHãy hỏi tôi bất cứ điều gì về task của bạn!",
       sender: "bot",
       time: new Date(),
     },
@@ -104,21 +91,22 @@ export default function AIChatBox() {
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [aiProvider, setAiProvider] = useState(null);
+  const [isComposing, setIsComposing] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
   const selectedTaskIdSet = useMemo(
     () => new Set(selectedTaskIds.map(String)),
-    [selectedTaskIds]
+    [selectedTaskIds],
   );
 
   const selectedTasks = useMemo(
     () => tasks.filter((task) => selectedTaskIdSet.has(String(task.task_id))),
-    [tasks, selectedTaskIdSet]
+    [tasks, selectedTaskIdSet],
   );
 
   const toggleChat = useCallback(() => {
-    setIsOpen((v) => !v);
+    setIsOpen((value) => !value);
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -139,6 +127,7 @@ export default function AIChatBox() {
           api.get("/tasks"),
           api.get("/projects"),
         ]);
+
         if (tasksRes.status === "fulfilled") {
           setTasks(tasksRes.value.data.tasks || []);
         }
@@ -153,8 +142,6 @@ export default function AIChatBox() {
     };
 
     loadData();
-
-    // Focus input when opened
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [isOpen]);
 
@@ -163,7 +150,7 @@ export default function AIChatBox() {
     setSelectedTaskIds((prev) =>
       prev.includes(normalizedId)
         ? prev.filter((id) => id !== normalizedId)
-        : [...prev, normalizedId]
+        : [...prev, normalizedId],
     );
   }, []);
 
@@ -172,13 +159,12 @@ export default function AIChatBox() {
   }, []);
 
   const handleSend = useCallback(
-    async (e) => {
-      e?.preventDefault();
+    async (event) => {
+      event?.preventDefault();
       const text = inputValue.trim();
       if (!text || isLoading) return;
 
-      const userMessage = { text, sender: "user", time: new Date() };
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages((prev) => [...prev, { text, sender: "user", time: new Date() }]);
       setInputValue("");
       setIsLoading(true);
 
@@ -191,37 +177,43 @@ export default function AIChatBox() {
 
         if (data.provider) setAiProvider(data.provider);
 
-        const botMessage = {
-          text: data.reply || "Xin lỗi, tôi chưa hiểu ý bạn.",
-          sender: "bot",
-          time: new Date(),
-          provider: data.provider,
-        };
-        setMessages((prev) => [...prev, botMessage]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            text: data.reply || "Xin lỗi, tôi chưa hiểu ý bạn.",
+            sender: "bot",
+            time: new Date(),
+            provider: data.provider,
+          },
+        ]);
       } catch (err) {
         console.error(err);
-        const errorMessage = {
-          text: "⚠️ Không kết nối được tới AI. Hãy đảm bảo Ollama đang chạy (`ollama serve`) và thử lại.",
-          sender: "bot",
-          time: new Date(),
-          isError: true,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            text: "Không kết nối được tới AI. Hãy đảm bảo dịch vụ AI đang chạy và thử lại.",
+            sender: "bot",
+            time: new Date(),
+            isError: true,
+          },
+        ]);
       } finally {
         setIsLoading(false);
       }
     },
-    [inputValue, isLoading, selectedTaskIds]
+    [inputValue, isLoading, selectedTaskIds],
   );
 
   const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend(e);
+    (event) => {
+      if (event.nativeEvent?.isComposing || isComposing || event.keyCode === 229) return;
+
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        handleSend(event);
       }
     },
-    [handleSend]
+    [handleSend, isComposing],
   );
 
   const clearMessages = useCallback(() => {
@@ -234,7 +226,6 @@ export default function AIChatBox() {
     ]);
   }, []);
 
-  // Priority badge color
   const getPriorityClass = (priority) => {
     if (priority === "high") return "priority-high";
     if (priority === "low") return "priority-low";
@@ -249,21 +240,22 @@ export default function AIChatBox() {
     });
   };
 
+  const highPriorityCount = tasks.filter((task) => task.priority === "high").length;
+
   return (
     <div className={`ai-chatbox-container ${isOpen ? "open" : ""}`}>
       {isOpen && (
         <div className="ai-chatbox-window">
-          {/* Header */}
           <div className="ai-chatbox-header">
             <div className="ai-header-left">
               <div className="ai-avatar">
-                <span>🤖</span>
+                <img src={OLLAMA_AVATAR_SRC} alt="Ollama" />
               </div>
               <div className="ai-header-info">
                 <h3>Trợ lý AI TaskFlow</h3>
                 <span className="ai-status">
                   <span className="ai-status-dot" />
-                  {aiProvider ? `Powered by ${aiProvider}` : "Ollama · llama3.2"}
+                  {aiProvider ? `Powered by ${aiProvider}` : "TaskFlow AI"}
                 </span>
               </div>
             </div>
@@ -275,7 +267,7 @@ export default function AIChatBox() {
                 title="Xóa cuộc trò chuyện"
                 aria-label="Xóa lịch sử chat"
               >
-                🗑️
+                <span aria-hidden="true">⌫</span>
               </button>
               <button
                 type="button"
@@ -283,39 +275,33 @@ export default function AIChatBox() {
                 onClick={toggleChat}
                 aria-label="Đóng Chat"
               >
-                ✕
+                ×
               </button>
             </div>
           </div>
 
-          {/* Context Summary Bar */}
           {!isLoadingTasks && (tasks.length > 0 || projects.length > 0) && (
             <div className="ai-context-bar">
-              <span className="ai-context-item">
-                📁 {projects.length} project
-              </span>
-              <span className="ai-context-item">
-                ✅ {tasks.length} task đang mở
-              </span>
-              {tasks.filter(t => t.priority === "high").length > 0 && (
+              <span className="ai-context-item">{projects.length} project</span>
+              <span className="ai-context-item">{tasks.length} task đang mở</span>
+              {highPriorityCount > 0 && (
                 <span className="ai-context-item ai-context-urgent">
-                  🔥 {tasks.filter(t => t.priority === "high").length} ưu tiên cao
+                  {highPriorityCount} ưu tiên cao
                 </span>
               )}
             </div>
           )}
 
-          {/* Task Picker */}
           <div className="ai-task-picker">
             <button
               type="button"
               className="ai-task-picker-toggle"
-              onClick={() => setIsTaskPanelOpen((v) => !v)}
+              onClick={() => setIsTaskPanelOpen((value) => !value)}
             >
               <span>
                 {selectedTaskIds.length > 0
-                  ? `📌 ${selectedTaskIds.length} task đã chọn để hỏi`
-                  : "📌 Chọn task cụ thể để hỏi AI"}
+                  ? `${selectedTaskIds.length} task đã chọn để hỏi`
+                  : "Chọn task cụ thể để hỏi AI"}
               </span>
               <span className="picker-arrow" aria-hidden="true">
                 {isTaskPanelOpen ? "▲" : "▼"}
@@ -326,7 +312,7 @@ export default function AIChatBox() {
               <div className="ai-task-picker-panel">
                 <div className="ai-task-picker-actions">
                   <span className="ai-task-count">
-                    {isLoadingTasks ? "⏳ Đang tải..." : `${tasks.length} task đang mở`}
+                    {isLoadingTasks ? "Đang tải..." : `${tasks.length} task đang mở`}
                   </span>
                   {selectedTaskIds.length > 0 && (
                     <button type="button" className="ai-clear-btn" onClick={clearTaskSelection}>
@@ -354,9 +340,7 @@ export default function AIChatBox() {
                             {task.priority || "medium"}
                           </span>
                           <span>{task.project_name || "No project"}</span>
-                          {task.deadline && (
-                            <span>📅 {formatTaskDate(task.deadline)}</span>
-                          )}
+                          {task.deadline && <span>{formatTaskDate(task.deadline)}</span>}
                         </span>
                       </span>
                     </label>
@@ -366,7 +350,6 @@ export default function AIChatBox() {
             )}
           </div>
 
-          {/* Selected Tasks Chips */}
           {selectedTasks.length > 0 && (
             <div className="ai-selected-chips">
               {selectedTasks.slice(0, 3).map((task) => (
@@ -387,12 +370,13 @@ export default function AIChatBox() {
             </div>
           )}
 
-          {/* Messages */}
           <div className="ai-chatbox-messages">
             {messages.map((msg, index) => (
-              <div key={index} className={`ai-message-wrap ${msg.sender}`}>
+              <div key={`${msg.sender}-${index}`} className={`ai-message-wrap ${msg.sender}`}>
                 {msg.sender === "bot" && (
-                  <div className="ai-bot-avatar">🤖</div>
+                  <div className="ai-bot-avatar">
+                    <img src={OLLAMA_AVATAR_SRC} alt="Ollama" />
+                  </div>
                 )}
                 <div className={`message-bubble ${msg.sender} ${msg.isError ? "error" : ""}`}>
                   {msg.sender === "bot" ? (
@@ -411,7 +395,9 @@ export default function AIChatBox() {
 
             {isLoading && (
               <div className="ai-message-wrap bot">
-                <div className="ai-bot-avatar">🤖</div>
+                <div className="ai-bot-avatar">
+                  <img src={OLLAMA_AVATAR_SRC} alt="Ollama" />
+                </div>
                 <div className="message-bubble bot typing">
                   <div className="typing-indicator">
                     <span />
@@ -425,13 +411,14 @@ export default function AIChatBox() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <form className="ai-chatbox-input-area" onSubmit={handleSend}>
             <textarea
               ref={inputRef}
               placeholder="Hỏi AI về task, deadline, project của bạn..."
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(event) => setInputValue(event.target.value)}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
               rows={1}
@@ -447,31 +434,24 @@ export default function AIChatBox() {
                 <span className="send-spinner" />
               ) : (
                 <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
                 </svg>
               )}
             </button>
           </form>
-          <div className="ai-footer-hint">
-            Enter để gửi · Shift+Enter xuống dòng
           </div>
-        </div>
       )}
 
-      {/* Toggle Button */}
       <button
         className={`ai-chatbox-toggle ${isOpen ? "active" : ""}`}
         onClick={toggleChat}
         aria-label="Mở Trợ lý AI"
       >
         {isOpen ? (
-          <span>✕</span>
+          <span>×</span>
         ) : (
           <span className="ai-toggle-icon">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
-              <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z" />
-            </svg>
-            <span className="ai-toggle-label">AI</span>
+            <img src={OLLAMA_AVATAR_SRC} alt="Ollama" />
           </span>
         )}
       </button>
