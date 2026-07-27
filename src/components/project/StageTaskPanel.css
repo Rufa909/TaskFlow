@@ -442,6 +442,32 @@
   gap: 8px;
 }
 
+.leader-ai-section {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 13px;
+}
+
+.leader-section-title.compact {
+  margin-bottom: 7px;
+}
+
+.leader-note-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.leader-note-list li + li {
+  margin-top: 4px;
+}
+
 .leader-suggestion-item {
   border: 1px solid #e0e7ff;
   border-radius: 8px;
@@ -792,6 +818,10 @@
   }
 
   .leader-workload-list {
+    grid-template-columns: 1fr;
+  }
+
+  .leader-ai-section {
     grid-template-columns: 1fr;
   }
 

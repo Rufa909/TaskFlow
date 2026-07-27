@@ -1,5 +1,6 @@
 const ProjectStage = require("../models/ProjectStage");
 const db = require("../config/db");
+const { generateLeaderSuggestionsWithAi } = require("../services/leaderSuggestionAiService");
 
 let workflowHandoverSchemaReady;
 
@@ -649,11 +650,44 @@ const workflowController = {
         currentPackage: packageData.current,
         members,
       });
+      let aiSuggestionData = null;
+      let aiError = null;
+
+      try {
+        aiSuggestionData = await generateLeaderSuggestionsWithAi({
+          stage,
+          incomingPackage: packageData.incoming,
+          currentPackage: packageData.current,
+          tasks,
+          members,
+          metrics: suggestionData.metrics,
+        });
+      } catch (error) {
+        aiError = error.message;
+        console.warn("Leader suggestions AI fallback:", error.message);
+      }
+
+      const finalSuggestionData = aiSuggestionData?.suggestions?.length
+        ? {
+            ...suggestionData,
+            suggestions: aiSuggestionData.suggestions,
+            risks: aiSuggestionData.risks || [],
+            next_actions: aiSuggestionData.next_actions || [],
+            suggestion_source: "ai",
+            ai_model: aiSuggestionData.model,
+          }
+        : {
+            ...suggestionData,
+            risks: [],
+            next_actions: [],
+            suggestion_source: "rules",
+            ai_error: aiError,
+          };
 
       res.json({
         success: true,
         stage,
-        ...suggestionData,
+        ...finalSuggestionData,
       });
     } catch (error) {
       console.error("Workflow getLeaderSuggestions error:", error);

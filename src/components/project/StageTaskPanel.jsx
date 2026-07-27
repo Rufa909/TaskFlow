@@ -137,6 +137,9 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
     .filter((task) => reviewStatuses.has(task.status) || blockedStatuses.has(task.status) || Number(task.assignee_count || 0) === 0)
     .slice(0, 6));
   const workload = suggestionData?.workload || [];
+  const risks = suggestionData?.risks || [];
+  const nextActions = suggestionData?.next_actions || [];
+  const suggestionSource = suggestionData?.suggestion_source || (backendSuggestions.length > 0 ? 'data' : 'fallback');
   const sourceDocuments = incomingPackage?.documents?.length || 0;
   const sourceDiscussions = incomingPackage?.discussions?.length || 0;
   const currentDocuments = currentPackage?.documents?.length || 0;
@@ -196,7 +199,8 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
         <div className="leader-section-title">
           <Lightbulb size={16} />
           <span>Assignment suggestions from previous stage</span>
-          {loadingSuggestions && <em className="leader-loading-badge">{"\u0110ang c\u1eadp nh\u1eadt"}</em>}
+          {loadingSuggestions && <em className="leader-loading-badge">Updating</em>}
+          {!loadingSuggestions && <em className="leader-loading-badge">{suggestionSource === 'ai' ? 'AI' : 'Rules'}</em>}
         </div>
         <div className="leader-source-note">
           Based on {sourceDocuments} previous documents and {sourceDiscussions} discussions. Current stage has {currentDocuments} documents and {currentDiscussions} discussions.
@@ -219,6 +223,33 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
           ))}
         </div>
       </section>
+
+      {(risks.length > 0 || nextActions.length > 0) && (
+        <section className="leader-ai-section">
+          {risks.length > 0 && (
+            <div>
+              <div className="leader-section-title compact">
+                <AlertCircle size={15} />
+                <span>AI risk notes</span>
+              </div>
+              <ul className="leader-note-list">
+                {risks.map((risk) => <li key={risk}>{risk}</li>)}
+              </ul>
+            </div>
+          )}
+          {nextActions.length > 0 && (
+            <div>
+              <div className="leader-section-title compact">
+                <CheckCircle2 size={15} />
+                <span>Recommended next actions</span>
+              </div>
+              <ul className="leader-note-list">
+                {nextActions.map((action) => <li key={action}>{action}</li>)}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       {workload.length > 0 && (
         <section className="leader-task-section">
