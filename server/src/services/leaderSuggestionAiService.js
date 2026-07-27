@@ -146,6 +146,29 @@ function sanitizeSuggestion(item, index, membersById) {
   };
 }
 
+function sanitizePlanItem(item, index, membersById) {
+  if (!item || typeof item !== "object") return null;
+  const taskTitle = compactText(item.task_title || item.title, 180);
+  const detail = compactText(item.detail || item.description, 420);
+  if (!taskTitle || !detail) return null;
+
+  const memberId = Number(item.recommended_member_id || item.recommended_member?.user_id);
+  const recommendedMember = Number.isFinite(memberId) ? membersById.get(memberId) : null;
+
+  return {
+    id: item.id || `ai-plan-${index + 1}`,
+    task_id: Number.isFinite(Number(item.task_id)) ? Number(item.task_id) : null,
+    task_title: taskTitle,
+    detail,
+    priority: sanitizePriority(item.priority),
+    source: compactText(item.source || "ai_assignment_plan", 80),
+    suggested_deadline: compactText(item.suggested_deadline || item.deadline || "Set after leader review", 80),
+    recommended_role: compactText(item.recommended_role || recommendedMember?.role || "", 80),
+    recommended_member: recommendedMember || null,
+    reason: compactText(item.reason || "Recommended from previous-stage context and current workload.", 260),
+  };
+}
+
 function sanitizeAiPayload(payload, members) {
   const membersById = new Map((members || []).map((member) => [Number(member.user_id), member]));
   const suggestions = Array.isArray(payload?.suggestions)
@@ -154,9 +177,16 @@ function sanitizeAiPayload(payload, members) {
         .filter(Boolean)
         .slice(0, 8)
     : [];
+  const assignmentPlan = Array.isArray(payload?.assignment_plan)
+    ? payload.assignment_plan
+        .map((item, index) => sanitizePlanItem(item, index, membersById))
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
 
   return {
     suggestions,
+    assignment_plan: assignmentPlan,
     risks: Array.isArray(payload?.risks) ? payload.risks.map((item) => compactText(item, 220)).filter(Boolean).slice(0, 5) : [],
     next_actions: Array.isArray(payload?.next_actions) ? payload.next_actions.map((item) => compactText(item, 220)).filter(Boolean).slice(0, 5) : [],
   };
@@ -175,6 +205,19 @@ function buildPrompt(context) {
         instruction:
           "Analyze the previous-stage handover, current stage tasks, member roles, and workload. Suggest concrete task assignment/help for the leader. Prefer existing member roles and avoid inventing people. Return JSON with suggestions, risks, and next_actions.",
         output_schema: {
+          assignment_plan: [
+            {
+              task_id: "existing task id if assigning an existing unassigned task, otherwise null",
+              task_title: "concrete task name for the leader to create or assign",
+              detail: "what the assignee should do",
+              priority: "high | medium | low",
+              source: "current_unassigned_task | previous_stage_handover | workload | ai_assignment_plan",
+              suggested_deadline: "short deadline guidance",
+              recommended_role: "role name",
+              recommended_member_id: "existing user_id if clearly appropriate, otherwise null",
+              reason: "why this member should handle it",
+            },
+          ],
           suggestions: [
             {
               type: "assignment | review | risk | planning | technical | quality | handover",

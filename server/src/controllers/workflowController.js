@@ -224,6 +224,131 @@ function memberPayload(member) {
   };
 }
 
+function pickBalancedMember(members, roleHints = [], virtualLoads = new Map()) {
+  const normalizedHints = roleHints.map(normalizeText);
+  const preferred = members.filter((member) => {
+    const role = normalizeText(member.role);
+    return normalizedHints.some((hint) => role.includes(hint));
+  });
+  const nonOwners = members.filter((member) => normalizeText(member.role) !== "owner");
+  const pool = preferred.length > 0 ? preferred : (nonOwners.length > 0 ? nonOwners : members);
+
+  return [...pool].sort((a, b) => {
+    const aLoad = Number(a.active_task_count || 0) + Number(virtualLoads.get(Number(a.user_id)) || 0);
+    const bLoad = Number(b.active_task_count || 0) + Number(virtualLoads.get(Number(b.user_id)) || 0);
+    return aLoad - bLoad
+      || Number(a.total_task_count || 0) - Number(b.total_task_count || 0)
+      || String(a.username || a.email || "").localeCompare(String(b.username || b.email || ""));
+  })[0] || null;
+}
+
+function roleHintsForText(text) {
+  const normalized = normalizeText(text);
+  if (normalized.match(/qa|test|bug|kiem thu|performance|load/)) return ["qa", "tester"];
+  if (normalized.match(/ui|ux|wireframe|prototype|screen|giao dien|figma/)) return ["designer", "ui", "ux", "ba", "developer"];
+  if (normalized.match(/api|database|erd|schema|backend|integration|payment|momo|cod/)) return ["backend", "developer", "devops"];
+  if (normalized.match(/requirement|srs|scope|mvp|user story|use case|stakeholder/)) return ["ba", "leader"];
+  return ["developer", "member", "leader"];
+}
+
+function buildAssignmentPlan({ tasks, incomingPackage, members }) {
+  const virtualLoads = new Map();
+  const addVirtualLoad = (member) => {
+    if (!member?.user_id) return;
+    const key = Number(member.user_id);
+    virtualLoads.set(key, Number(virtualLoads.get(key) || 0) + 1);
+  };
+  const makePlanItem = ({ task, title, detail, priority = "medium", source = "previous_stage", deadline = "Set after leader review" }) => {
+    const searchText = `${title || ""} ${detail || ""} ${task?.title || ""} ${task?.description || ""}`;
+    const member = pickBalancedMember(members, roleHintsForText(searchText), virtualLoads);
+    addVirtualLoad(member);
+    return {
+      id: task?.task_id ? `task-${task.task_id}` : `plan-${virtualLoads.size}-${normalizeText(title).slice(0, 18)}`,
+      task_id: task?.task_id || null,
+      task_title: title || task?.title || "Untitled task",
+      detail: detail || task?.description || "Review scope and define acceptance criteria before assigning.",
+      priority,
+      source,
+      suggested_deadline: task?.deadline || deadline,
+      recommended_member: memberPayload(member),
+      recommended_role: member?.role || roleHintsForText(searchText)[0] || "member",
+      reason: member
+        ? `${member.username || member.email} has ${Number(member.active_task_count || 0)} active task(s), so this keeps workload balanced.`
+        : "Add project members before assigning this work.",
+    };
+  };
+
+  const unassignedTasks = tasks.filter((task) => Number(task.assignee_count || 0) === 0);
+  const currentPlans = unassignedTasks.slice(0, 6).map((task) => makePlanItem({
+    task,
+    title: task.title,
+    detail: task.description || "Assign owner and clarify acceptance criteria.",
+    priority: String(task.priority || "medium").toLowerCase(),
+    source: "current_unassigned_task",
+    deadline: "Use the task deadline",
+  }));
+
+  if (currentPlans.length > 0) return currentPlans;
+
+  const incomingDocuments = incomingPackage?.documents || [];
+  const incomingDiscussions = incomingPackage?.discussions || [];
+  const incomingDeliverables = incomingPackage?.deliverables || [];
+  const previousContext = normalizeText([
+    incomingPackage?.stage?.stage_name,
+    incomingPackage?.handover?.summary,
+    incomingPackage?.handover?.open_issues,
+    incomingPackage?.handover?.technical_limits,
+    incomingPackage?.handover?.recommendations,
+    ...incomingDocuments.map((item) => `${item.title || ""} ${item.document_type || ""}`),
+    ...incomingDiscussions.map((item) => item.message || ""),
+    ...incomingDeliverables.map((item) => `${item.title || ""} ${item.description || ""}`),
+  ].join(" "));
+
+  const templates = [
+    {
+      match: /requirement|srs|scope|mvp|user story|use case|stakeholder|survey/,
+      title: "Convert requirements into implementation backlog",
+      detail: "Break stage 1 scope, MVP items, and acceptance criteria into development-ready tasks.",
+      priority: "high",
+      deadline: "1-2 days",
+    },
+    {
+      match: /wireframe|ui|ux|prototype|screen|interface/,
+      title: "Prepare UI/UX flow for key screens",
+      detail: "Draft screen flow, state handling, and review notes before implementation starts.",
+      priority: "medium",
+      deadline: "2-3 days",
+    },
+    {
+      match: /api|database|erd|schema|backend|integration|payment|momo|cod/,
+      title: "Design API, database, and integration plan",
+      detail: "Define endpoints, schema changes, external integration risks, and review checkpoints.",
+      priority: "high",
+      deadline: "2-3 days",
+    },
+    {
+      match: /test|qa|performance|load|bug|peak/,
+      title: "Create QA checklist and test data",
+      detail: "Prepare test cases, sample data, and performance checks in parallel with implementation.",
+      priority: "medium",
+      deadline: "3-4 days",
+    },
+  ];
+
+  const matchedTemplates = templates.filter((item) => previousContext.match(item.match));
+  const selectedTemplates = matchedTemplates.length > 0
+    ? matchedTemplates
+    : templates.slice(0, 3);
+
+  return selectedTemplates.slice(0, 6).map((item) => makePlanItem({
+    title: item.title,
+    detail: item.detail,
+    priority: item.priority,
+    deadline: item.deadline,
+    source: "previous_stage_handover",
+  }));
+}
+
 async function getProjectMembersWithWorkload(projectId) {
   const [members] = await db.query(
     `SELECT p.owner_id AS user_id, u.username, u.email, 'owner' AS role
@@ -428,6 +553,7 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       current_discussions: currentPackage?.discussions?.length || 0,
     },
     suggestions: suggestions.slice(0, 8),
+    assignment_plan: buildAssignmentPlan({ tasks, incomingPackage, members }),
     workload: members.map(memberPayload),
     attention_tasks: [...unassignedTasks, ...reviewTasks, ...blockedTasks]
       .filter((task, index, list) => list.findIndex((item) => item.task_id === task.task_id) === index)
@@ -671,6 +797,9 @@ const workflowController = {
         ? {
             ...suggestionData,
             suggestions: aiSuggestionData.suggestions,
+            assignment_plan: aiSuggestionData.assignment_plan?.length
+              ? aiSuggestionData.assignment_plan
+              : suggestionData.assignment_plan,
             risks: aiSuggestionData.risks || [],
             next_actions: aiSuggestionData.next_actions || [],
             suggestion_source: "ai",

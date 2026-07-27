@@ -132,6 +132,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
   const progress = percent(completed, total);
   const backendSuggestions = suggestionData?.suggestions || [];
   const suggestions = backendSuggestions.length > 0 ? backendSuggestions : buildLeaderSuggestions(tasks, incomingPackage);
+  const assignmentPlan = suggestionData?.assignment_plan || [];
   const backendAttentionTasks = suggestionData?.attention_tasks || [];
   const attentionTasks = (backendAttentionTasks.length > 0 ? backendAttentionTasks : tasks
     .filter((task) => reviewStatuses.has(task.status) || blockedStatuses.has(task.status) || Number(task.assignee_count || 0) === 0)
@@ -223,6 +224,43 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
           ))}
         </div>
       </section>
+
+      {assignmentPlan.length > 0 && (
+        <section className="leader-task-section">
+          <div className="leader-section-title">
+            <ClipboardCheck size={16} />
+            <span>Suggested assignment plan</span>
+          </div>
+          <div className="leader-assignment-table">
+            <div className="leader-assignment-head">
+              <span>Task</span>
+              <span>Assign to</span>
+              <span>Priority</span>
+            </div>
+            {assignmentPlan.slice(0, 8).map((item) => (
+              <div key={item.id || item.task_id || item.task_title} className="leader-assignment-row">
+                <div className="leader-assignment-task">
+                  <strong>{item.task_title}</strong>
+                  <small>{item.detail}</small>
+                  {item.reason && <em>{item.reason}</em>}
+                </div>
+                <div className="leader-assignment-member">
+                  <strong>
+                    {item.recommended_member?.username || item.recommended_member?.email || 'Unassigned'}
+                  </strong>
+                  <small>{item.recommended_role || item.recommended_member?.role || 'member'}</small>
+                </div>
+                <div className="leader-assignment-meta">
+                  <span className={`leader-priority-pill priority-${item.priority || 'medium'}`}>
+                    {item.priority || 'medium'}
+                  </span>
+                  <small>{item.suggested_deadline || 'Set deadline'}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {(risks.length > 0 || nextActions.length > 0) && (
         <section className="leader-ai-section">
