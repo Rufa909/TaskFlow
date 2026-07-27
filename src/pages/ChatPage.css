@@ -255,10 +255,6 @@
   overflow-y: auto;
 }
 
-.chat-thread-panel--direct {
-  max-height: 28%;
-}
-
 .chat-panel-title-row {
   display: flex;
   align-items: center;
@@ -553,6 +549,52 @@
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-message-shell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-message-row.mine .chat-message-shell {
+  flex-direction: row-reverse;
+}
+
+.chat-message.recalled {
+  border-style: dashed;
+  background: #f3f4f6;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.chat-message-recalled {
+  min-width: 150px;
+}
+
+.chat-message-recall-btn {
+  min-width: 58px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fff;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.chat-message-row:hover .chat-message-recall-btn,
+.chat-message-recall-btn:focus-visible {
+  opacity: 1;
+}
+
+.chat-message-recall-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .chat-message-text + .chat-image-attachment,

@@ -96,12 +96,16 @@ function ensureProjectChatTables() {
         { name: "attachment_name", definition: "attachment_name VARCHAR(255) NULL" },
         { name: "attachment_type", definition: "attachment_type VARCHAR(120) NULL" },
         { name: "attachment_size", definition: "attachment_size INT NULL" },
+        { name: "recalled_at", definition: "recalled_at TIMESTAMP NULL" },
+        { name: "recalled_by", definition: "recalled_by INT NULL" },
       ]),
       ensureColumns("project_chat_messages", [
         { name: "attachment_url", definition: "attachment_url VARCHAR(500) NULL" },
         { name: "attachment_name", definition: "attachment_name VARCHAR(255) NULL" },
         { name: "attachment_type", definition: "attachment_type VARCHAR(120) NULL" },
         { name: "attachment_size", definition: "attachment_size INT NULL" },
+        { name: "recalled_at", definition: "recalled_at TIMESTAMP NULL" },
+        { name: "recalled_by", definition: "recalled_by INT NULL" },
       ]),
       ensureColumns("project_chat_conversations", [
         { name: "disbanded_at", definition: "disbanded_at TIMESTAMP NULL" },
@@ -202,20 +206,23 @@ async function getProjectMembersRows(projectId) {
 }
 
 function normalizeMessage(row, conversationId = null) {
+  const isRecalled = Boolean(row.recalled_at);
   return {
     message_id: row.message_id,
     project_id: row.project_id,
     conversation_id: conversationId || row.conversation_id || null,
     sender_id: row.sender_id,
-    content: row.content,
+    content: isRecalled ? null : row.content,
     created_at: row.created_at,
     sender_username: row.sender_username,
     sender_email: row.sender_email,
     sender_photo: row.sender_photo,
-    attachment_url: row.attachment_url || null,
-    attachment_name: row.attachment_name || null,
-    attachment_type: row.attachment_type || null,
-    attachment_size: row.attachment_size || null,
+    attachment_url: isRecalled ? null : row.attachment_url || null,
+    attachment_name: isRecalled ? null : row.attachment_name || null,
+    attachment_type: isRecalled ? null : row.attachment_type || null,
+    attachment_size: isRecalled ? null : row.attachment_size || null,
+    recalled_at: row.recalled_at || null,
+    recalled_by: row.recalled_by || null,
   };
 }
 
@@ -251,6 +258,7 @@ async function fetchConversationMessageById(messageId) {
   const [rows] = await pool.query(
     `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
             m.attachment_url, m.attachment_name, m.attachment_type, m.attachment_size,
+            m.recalled_at, m.recalled_by,
             c.project_id,
             u.username AS sender_username,
             u.email AS sender_email,
@@ -270,6 +278,7 @@ async function fetchProjectMessageById(messageId, conversationId) {
   const [rows] = await pool.query(
     `SELECT pm.message_id, pm.project_id, pm.sender_id, pm.content, pm.created_at,
             pm.attachment_url, pm.attachment_name, pm.attachment_type, pm.attachment_size,
+            pm.recalled_at, pm.recalled_by,
             u.username AS sender_username,
             u.email AS sender_email,
             u.user_photo AS sender_photo
@@ -847,6 +856,7 @@ const getProjectMessages = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT pm.message_id, pm.project_id, pm.sender_id, pm.content, pm.created_at,
               pm.attachment_url, pm.attachment_name, pm.attachment_type, pm.attachment_size,
+              pm.recalled_at, pm.recalled_by,
               u.username AS sender_username,
               u.email AS sender_email,
               u.user_photo AS sender_photo
@@ -890,6 +900,7 @@ const getConversationMessages = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
               m.attachment_url, m.attachment_name, m.attachment_type, m.attachment_size,
+              m.recalled_at, m.recalled_by,
               u.username AS sender_username,
               u.email AS sender_email,
               u.user_photo AS sender_photo
@@ -923,6 +934,7 @@ const getDirectConversationMessages = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
               m.attachment_url, m.attachment_name, m.attachment_type, m.attachment_size,
+              m.recalled_at, m.recalled_by,
               u.username AS sender_username,
               u.email AS sender_email,
               u.user_photo AS sender_photo
@@ -1081,6 +1093,7 @@ const getGroupConversationMessages = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT m.message_id, m.conversation_id, m.sender_id, m.content, m.created_at,
               m.attachment_url, m.attachment_name, m.attachment_type, m.attachment_size,
+              m.recalled_at, m.recalled_by,
               u.username AS sender_username,
               u.email AS sender_email,
               u.user_photo AS sender_photo
@@ -1221,6 +1234,13 @@ const createProjectMessage = async (req, res) => {
     }
 
     if (String(conversationId) === `project-${projectId}`) {
+      if (!canManageProject(project.user_role)) {
+        return res.status(403).json({
+          success: false,
+          message: "Only owner or leader can send announcements in project chat",
+        });
+      }
+
       const [result] = await pool.query(
         `INSERT INTO project_messages
          (project_id, sender_id, content, attachment_url, attachment_name, attachment_type, attachment_size)
@@ -1282,6 +1302,126 @@ const createProjectMessage = async (req, res) => {
   } catch (err) {
     console.error("Cannot create project message:", err);
     res.status(500).json({ success: false, message: "Cannot send message" });
+  }
+};
+
+const recallProjectMessage = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+
+    const projectId = Number(req.params.projectId);
+    const messageId = Number(req.params.messageId);
+    const project = await getAccessibleProject(projectId, req.user.id);
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: "Project not found or access denied" });
+    }
+    if (project.user_role === "removed") {
+      return res.status(403).json({ success: false, message: "You were removed from this project" });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE project_messages
+       SET recalled_at = COALESCE(recalled_at, NOW()),
+           recalled_by = COALESCE(recalled_by, ?)
+       WHERE project_id = ?
+         AND message_id = ?
+         AND sender_id = ?
+         AND recalled_at IS NULL`,
+      [req.user.id, projectId, messageId, req.user.id],
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Message not found or cannot be recalled" });
+    }
+
+    const message = await fetchProjectMessageById(messageId, `project-${projectId}`);
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error("Cannot recall project message:", err);
+    res.status(500).json({ success: false, message: "Cannot recall message" });
+  }
+};
+
+async function recallConversationMessageForAccess(conversation, messageId, userId) {
+  if (!conversation || conversation.removed_at) return null;
+  if (conversation.disbanded_at) {
+    const error = new Error("This group has been disbanded");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const [result] = await pool.query(
+    `UPDATE project_chat_messages
+     SET recalled_at = COALESCE(recalled_at, NOW()),
+         recalled_by = COALESCE(recalled_by, ?)
+     WHERE conversation_id = ?
+       AND message_id = ?
+       AND sender_id = ?
+       AND recalled_at IS NULL`,
+    [userId, conversation.conversation_id, messageId, userId],
+  );
+
+  if (result.affectedRows === 0) return null;
+  return fetchConversationMessageById(messageId);
+}
+
+const recallDirectConversationMessage = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const conversationId = Number(req.params.conversationId);
+    const messageId = Number(req.params.messageId);
+    const conversation = await assertDirectConversationAccess(conversationId, req.user.id);
+    const message = await recallConversationMessageForAccess(conversation, messageId, req.user.id);
+
+    if (!message) {
+      return res.status(404).json({ success: false, message: "Message not found or cannot be recalled" });
+    }
+
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error("Cannot recall direct message:", err);
+    res.status(err.statusCode || 500).json({ success: false, message: err.statusCode ? err.message : "Cannot recall message" });
+  }
+};
+
+const recallGroupConversationMessage = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const conversationId = Number(req.params.conversationId);
+    const messageId = Number(req.params.messageId);
+    const conversation = await assertGlobalGroupConversationAccess(conversationId, req.user.id);
+    const message = await recallConversationMessageForAccess(conversation, messageId, req.user.id);
+
+    if (!message) {
+      return res.status(404).json({ success: false, message: "Message not found or cannot be recalled" });
+    }
+
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error("Cannot recall group message:", err);
+    res.status(err.statusCode || 500).json({ success: false, message: err.statusCode ? err.message : "Cannot recall message" });
+  }
+};
+
+const recallProjectConversationMessage = async (req, res) => {
+  try {
+    await ensureProjectChatTables();
+    const projectId = Number(req.params.projectId);
+    const conversationId = Number(req.params.conversationId);
+    const messageId = Number(req.params.messageId);
+    const project = await getAccessibleProject(projectId, req.user.id);
+    const conversation = project && await assertConversationAccess(conversationId, projectId, req.user.id);
+    const message = await recallConversationMessageForAccess(conversation, messageId, req.user.id);
+
+    if (!message) {
+      return res.status(404).json({ success: false, message: "Message not found or cannot be recalled" });
+    }
+
+    res.json({ success: true, message });
+  } catch (err) {
+    console.error("Cannot recall conversation message:", err);
+    res.status(err.statusCode || 500).json({ success: false, message: err.statusCode ? err.message : "Cannot recall message" });
   }
 };
 
@@ -1629,6 +1769,9 @@ const addConversationMember = async (req, res) => {
       }
       userId = Number(invitedUser.user_id);
     }
+    if (!userId || Number(userId) === Number(req.user.id)) {
+      return res.status(400).json({ success: false, message: "Group member is invalid" });
+    }
 
     const members = await getProjectMembersRows(projectId);
     const projectMember = members.find((member) => Number(member.user_id) === userId);
@@ -1644,9 +1787,9 @@ const addConversationMember = async (req, res) => {
     }
 
     await pool.query(
-      `INSERT INTO project_chat_participants (conversation_id, user_id, role, removed_at)
-       VALUES (?, ?, 'member', NULL)
-       ON DUPLICATE KEY UPDATE removed_at = NULL, role = 'member'`,
+      `INSERT INTO project_chat_participants (conversation_id, user_id, role, removed_at, hidden_at, cleared_at)
+       VALUES (?, ?, 'member', NULL, NULL, NULL)
+       ON DUPLICATE KEY UPDATE removed_at = NULL, hidden_at = NULL, cleared_at = NULL, role = 'member'`,
       [conversationId, userId],
     );
     await createChatNotifications("group_invited", conversationId, [userId], req.user.id);
@@ -1685,11 +1828,14 @@ const addGlobalGroupMember = async (req, res) => {
       }
       userId = Number(invitedUser.user_id);
     }
+    if (!userId || Number(userId) === Number(req.user.id)) {
+      return res.status(400).json({ success: false, message: "Group member is invalid" });
+    }
 
     await pool.query(
-      `INSERT INTO project_chat_participants (conversation_id, user_id, role, removed_at)
-       VALUES (?, ?, 'member', NULL)
-       ON DUPLICATE KEY UPDATE removed_at = NULL, role = 'member'`,
+      `INSERT INTO project_chat_participants (conversation_id, user_id, role, removed_at, hidden_at, cleared_at)
+       VALUES (?, ?, 'member', NULL, NULL, NULL)
+       ON DUPLICATE KEY UPDATE removed_at = NULL, hidden_at = NULL, cleared_at = NULL, role = 'member'`,
       [conversationId, userId],
     );
     await createChatNotifications("group_invited", conversationId, [userId], req.user.id);
@@ -1930,6 +2076,10 @@ module.exports = {
   createProjectMessage,
   createDirectConversationMessage,
   createGroupConversationMessage,
+  recallProjectMessage,
+  recallDirectConversationMessage,
+  recallGroupConversationMessage,
+  recallProjectConversationMessage,
   createConversation,
   addProjectMember,
   getProjectMemberCandidates,
@@ -1945,3 +2095,4 @@ module.exports = {
   disbandConversation,
   updateConversationMemberRole,
 };
+

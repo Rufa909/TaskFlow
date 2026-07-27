@@ -135,7 +135,6 @@ export default function StageTaskPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, projectId, stageId]);
 
-  const checklist = overview?.checklist?.items || [];
   const currentPackage = overview?.current;
   const incomingPackage = overview?.incoming;
   const canComplete = Boolean(overview?.canCompleteStage);
@@ -351,23 +350,6 @@ export default function StageTaskPanel({
                   )}
                 </div>
               )}
-
-              <div className="stage-checklist">
-                <div className="stage-checklist-title">Checklist chuyển stage</div>
-                {checklist.length === 0 ? (
-                  <div className="stage-check-item done">
-                    <CheckCircle2 size={17} />
-                    <span>Không có điều kiện bắt buộc</span>
-                  </div>
-                ) : (
-                  checklist.map((item) => (
-                    <div key={item.key} className={`stage-check-item ${item.complete ? 'done' : 'missing'}`}>
-                      {item.complete ? <CheckCircle2 size={17} /> : <XCircle size={17} />}
-                      <span>{item.label}</span>
-                    </div>
-                  ))
-                )}
-              </div>
             </>
           )}
 

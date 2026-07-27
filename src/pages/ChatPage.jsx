@@ -106,17 +106,9 @@ export default function ChatPage() {
 
   const [members, setMembers] = useState([]);
   const [chatUsers, setChatUsers] = useState([]);
-  const [globalDirectConversations, setGlobalDirectConversations] = useState([]);
-  const [globalDirectUsers, setGlobalDirectUsers] = useState([]);
-  const [loadingDirectChats, setLoadingDirectChats] = useState(false);
   const [globalGroupConversations, setGlobalGroupConversations] = useState([]);
   const [globalGroupUsers, setGlobalGroupUsers] = useState([]);
   const [loadingGroupChats, setLoadingGroupChats] = useState(false);
-  const [isCreateDirectOpen, setIsCreateDirectOpen] = useState(false);
-  const [directInviteEmail, setDirectInviteEmail] = useState("");
-  const [directInviteUser, setDirectInviteUser] = useState(null);
-  const [directEmailSuggestions, setDirectEmailSuggestions] = useState([]);
-  const [creatingDirectChat, setCreatingDirectChat] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
   const [loadingChat, setLoadingChat] = useState(false);
@@ -126,6 +118,7 @@ export default function ChatPage() {
   const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [recallingMessageId, setRecallingMessageId] = useState(null);
   const [clearingHistory, setClearingHistory] = useState(false);
   const [canManageProject, setCanManageProject] = useState(false);
 
@@ -181,14 +174,11 @@ export default function ChatPage() {
     for (const member of chatUsers) {
       if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
     }
-    for (const member of globalDirectUsers) {
-      if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
-    }
     for (const member of globalGroupUsers) {
       if (!map.has(Number(member.user_id))) map.set(Number(member.user_id), member);
     }
     return map;
-  }, [chatUsers, globalDirectUsers, globalGroupUsers, members]);
+  }, [chatUsers, globalGroupUsers, members]);
 
   const selectableMembers = useMemo(
     () => members.filter((member) => Number(member.user_id) !== Number(user?.id)),
@@ -201,7 +191,7 @@ export default function ChatPage() {
       const other = (activeConversation.participants || [])
         .map((id) => memberById.get(Number(id)))
         .find((member) => Number(member?.user_id) !== Number(user?.id));
-      return displayName(other) || "Direct chat";
+      return displayName(other) || "Chat";
     }
     return activeConversation.name || activeProject?.name || "Project Chat";
   }, [activeConversation, activeProject?.name, memberById, user?.id]);
@@ -218,7 +208,7 @@ export default function ChatPage() {
       if (conversation.type === "project") return activeProject?.name || "Project Chat";
       if (conversation.type === "group") return `Group: ${conversation.name || "Group chat"}`;
       const other = getDirectConversationMember(conversation);
-      return displayName(other) || "Direct chat";
+      return displayName(other) || "Chat";
     },
     [activeProject?.name, getDirectConversationMember],
   );
@@ -258,28 +248,6 @@ export default function ChatPage() {
       new Date(b.last_message_at || b.created_at || 0) - new Date(a.last_message_at || a.created_at || 0)
     ));
   }, [activeConversation, conversations, globalGroupConversations]);
-  const directConversations = useMemo(() => {
-    const byId = new Map();
-    const addConversation = (conversation) => {
-      if (!conversation || conversation.type !== "direct") return;
-      const key = conversationKey(conversation);
-      if (!key) return;
-      byId.set(key, {
-        ...byId.get(key),
-        ...conversation,
-        project_name: conversation.project_name || byId.get(key)?.project_name || activeProject?.name,
-      });
-    };
-
-    globalDirectConversations.forEach(addConversation);
-    conversations.forEach(addConversation);
-    if (activeConversation?.type === "direct") addConversation(activeConversation);
-
-    return Array.from(byId.values()).sort((a, b) => (
-      new Date(b.last_message_at || b.created_at || 0) - new Date(a.last_message_at || a.created_at || 0)
-    ));
-  }, [activeConversation, activeProject?.name, conversations, globalDirectConversations]);
-
   const unreadCountsByConversation = useMemo(() => {
     const counts = {};
     for (const notification of chatNotifications) {
@@ -317,9 +285,16 @@ export default function ChatPage() {
 
   const canClearActiveHistory = Boolean(
     !isRemovedFromActiveChat
-      && (activeConversation?.type === "direct"
-        || activeConversation?.type === "group"),
+      && activeConversation?.type === "group",
   );
+
+  const canSendActiveChat = Boolean(
+    activeConversation
+      && !isChatLocked
+      && (activeConversation.type !== "project" || canManageProject),
+  );
+
+  const projectChatReadOnlyMessage = "Only Owner and Leader can send announcements in Project Chat.";
 
   const getChatMemberRoleLabel = useCallback(
     (member) => {
@@ -356,21 +331,6 @@ export default function ChatPage() {
       if (!silent) setLoadingProjects(false);
     }
   }, [location.search, showToast]);
-
-  const loadGlobalDirectChats = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoadingDirectChats(true);
-    try {
-      const res = await api.get("/projects/chat/direct-conversations");
-      setGlobalDirectConversations(res.data.conversations || []);
-      setGlobalDirectUsers(res.data.chat_users || []);
-    } catch (err) {
-      console.error("Cannot load direct chats", err);
-      setGlobalDirectConversations([]);
-      setGlobalDirectUsers([]);
-    } finally {
-      if (!silent) setLoadingDirectChats(false);
-    }
-  }, []);
 
   const loadGlobalGroupChats = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingGroupChats(true);
@@ -442,10 +402,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     loadProjects();
-    loadGlobalDirectChats();
     loadGlobalGroupChats();
     loadChatNotifications();
-  }, [loadChatNotifications, loadGlobalDirectChats, loadGlobalGroupChats, loadProjects]);
+  }, [loadChatNotifications, loadGlobalGroupChats, loadProjects]);
 
   useEffect(() => {
     const id = setInterval(loadChatNotifications, 5000);
@@ -455,7 +414,6 @@ export default function ChatPage() {
   useEffect(() => {
     const id = setInterval(() => {
       loadProjects({ silent: true });
-      loadGlobalDirectChats({ silent: true });
       loadGlobalGroupChats({ silent: true });
       loadChatNotifications();
       if (activeProjectId) {
@@ -464,7 +422,7 @@ export default function ChatPage() {
     }, 5000);
 
     return () => clearInterval(id);
-  }, [activeProjectId, loadChatNotifications, loadGlobalDirectChats, loadGlobalGroupChats, loadProjectChat, loadProjects]);
+  }, [activeProjectId, loadChatNotifications, loadGlobalGroupChats, loadProjectChat, loadProjects]);
 
   useEffect(() => {
     setMembers([]);
@@ -514,7 +472,7 @@ export default function ChatPage() {
 
         if (mounted) {
           if (latestMessageIdRef.current > 0 && incomingMessage) {
-            showToast(`Tin nhắn mới từ ${incomingMessage.sender_username || "User"}`, "info");
+            showToast(`Tin nháº¯n má»›i tá»« ${incomingMessage.sender_username || "User"}`, "info");
           }
           latestMessageIdRef.current = Math.max(latestMessageIdRef.current, newestMessageId);
           setMessages(nextMessages);
@@ -627,37 +585,6 @@ export default function ChatPage() {
       clearTimeout(timer);
     };
   }, [groupInviteEmail]);
-
-  useEffect(() => {
-    let active = true;
-    const query = directInviteEmail.trim();
-    setDirectInviteUser((current) => (
-      current?.email && current.email.toLowerCase() === query.toLowerCase() ? current : null
-    ));
-
-    if (query.length < 2) {
-      setDirectEmailSuggestions([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.get("/projects/chat/user-search", {
-          params: { q: query },
-        });
-        if (active) setDirectEmailSuggestions(res.data.users || []);
-      } catch (err) {
-        if (active) setDirectEmailSuggestions([]);
-      }
-    }, 220);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [directInviteEmail]);
 
   useEffect(() => {
     if (chatPanelView !== "add" || activeConversation?.type !== "project" || !canManageProject || !activeProjectId) {
@@ -790,7 +717,7 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event) => {
     event.preventDefault();
-    if (!canLoadActiveChat || !activeConversation || isChatLocked || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
+    if (!canLoadActiveChat || !canSendActiveChat || (!messageText.trim() && !selectedAttachment) || sendingMessage) return;
 
     const content = messageText.trim();
     const attachment = selectedAttachment;
@@ -829,7 +756,6 @@ export default function ChatPage() {
           Number(res.data.message.message_id) || 0,
         );
         setMessages((prev) => [...prev, res.data.message]);
-        if (activeConversation.type === "direct") loadGlobalDirectChats();
       }
     } catch (err) {
       console.error("Cannot send message", err);
@@ -847,46 +773,37 @@ export default function ChatPage() {
     setSelectedAttachment(file);
   };
 
-  const openDirectChat = async (memberId) => {
-    if (!memberId) return;
+  const handleRecallMessage = async (message) => {
+    if (!message?.message_id || Number(message.sender_id) !== Number(user?.id) || message.recalled_at) return;
+    const confirmed = await confirm("Thu h\u1ed3i tin nh\u1eafn n\u00e0y? N\u1ed9i dung s\u1ebd b\u1ecb \u1ea9n kh\u1ecfi cu\u1ed9c chat nh\u01b0ng h\u1ec7 th\u1ed1ng v\u1eabn l\u01b0u l\u1ea1i.", {
+      confirmLabel: "Thu h\u1ed3i",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    setRecallingMessageId(message.message_id);
     try {
-      const res = await api.post("/projects/chat/direct-conversations", {
-        user_id: Number(memberId),
-      });
-      await loadGlobalDirectChats();
-      openChatConversation(res.data.conversation);
+      const endpoint = activeConversation.type === "direct"
+        ? `/projects/chat/direct-conversations/${activeConversationId}/messages/${message.message_id}/revoke`
+        : activeConversation.type === "group"
+          ? `/projects/chat/group-conversations/${activeConversationId}/messages/${message.message_id}/revoke`
+          : activeConversation.type === "project"
+            ? `/projects/${activeChatProjectId}/messages/${message.message_id}/revoke`
+            : `/projects/${activeChatProjectId}/conversations/${activeConversationId}/messages/${message.message_id}/revoke`;
+      const res = await api.patch(endpoint);
+      if (res.data.message) {
+        setMessages((prev) => prev.map((item) => (
+          Number(item.message_id) === Number(message.message_id)
+            && String(item.conversation_id || activeConversationId) === String(message.conversation_id || activeConversationId)
+            ? res.data.message
+            : item
+        )));
+      }
+      showToast("\u0110\u00e3 thu h\u1ed3i tin nh\u1eafn", "success");
     } catch (err) {
-      showToast(err.response?.data?.message || "Cannot open direct chat", "error");
-    }
-  };
-
-  const openExistingDirectChat = async (conversation) => {
-    if (!conversation?.conversation_id) return;
-    openChatConversation(conversation);
-  };
-
-  const handleCreateDirectChat = async (event) => {
-    event.preventDefault();
-    if ((!directInviteEmail.trim() && !directInviteUser?.user_id) || creatingDirectChat) return;
-
-    setCreatingDirectChat(true);
-    try {
-      const res = await api.post("/projects/chat/direct-conversations", {
-        email: directInviteUser?.email || directInviteEmail.trim(),
-        user_id: directInviteUser?.user_id,
-      });
-      const conversation = res.data.conversation;
-      setDirectInviteEmail("");
-      setDirectInviteUser(null);
-      setDirectEmailSuggestions([]);
-      setIsCreateDirectOpen(false);
-      await loadGlobalDirectChats();
-      await openExistingDirectChat(conversation);
-      showToast("Direct chat opened", "success");
-    } catch (err) {
-      showToast(err.response?.data?.message || "Cannot create direct chat", "error");
+      showToast(err.response?.data?.message || "Kh\u00f4ng th\u1ec3 thu h\u1ed3i tin nh\u1eafn", "error");
     } finally {
-      setCreatingDirectChat(false);
+      setRecallingMessageId(null);
     }
   };
 
@@ -941,6 +858,9 @@ export default function ChatPage() {
 
   const handleAddSelectedGroupMembers = async () => {
     if (!activeConversationId || groupAddMemberIds.length === 0 || addingGroupMembers) return;
+    const addedMembers = groupMemberCandidates.filter((member) => (
+      groupAddMemberIds.includes(Number(member.user_id))
+    ));
     setAddingGroupMembers(true);
     try {
       await Promise.all(groupAddMemberIds.map((userId) => (
@@ -952,6 +872,26 @@ export default function ChatPage() {
       setGroupMemberCandidates((prev) => (
         prev.filter((member) => !groupAddMemberIds.includes(Number(member.user_id)))
       ));
+      setGlobalGroupUsers((prev) => {
+        const byId = new Map(prev.map((member) => [Number(member.user_id), member]));
+        addedMembers.forEach((member) => byId.set(Number(member.user_id), member));
+        return Array.from(byId.values());
+      });
+      setActiveConversation((current) => {
+        if (!current || conversationKey(current) !== activeConversationId) return current;
+        const nextParticipants = new Set((current.participants || []).map(Number));
+        const nextRoles = { ...(current.participant_roles || {}) };
+        addedMembers.forEach((member) => {
+          nextParticipants.add(Number(member.user_id));
+          nextRoles[String(member.user_id)] = "member";
+        });
+        return {
+          ...current,
+          participants: Array.from(nextParticipants),
+          participant_roles: nextRoles,
+          member_count: Math.max(Number(current.member_count || 0), nextParticipants.size),
+        };
+      });
       await loadGlobalGroupChats({ silent: true });
       showToast("Added to group", "success");
     } catch (err) {
@@ -966,13 +906,38 @@ export default function ChatPage() {
     if (!activeConversationId || !groupInviteEmail.trim() || addingGroupMembers) return;
     setAddingGroupMembers(true);
     try {
-      await api.post(`/projects/chat/group-conversations/${activeConversationId}/members`, {
+      const res = await api.post(`/projects/chat/group-conversations/${activeConversationId}/members`, {
         email: groupInviteUser?.email || groupInviteEmail.trim(),
       });
+      const addedMember = res.data.member || groupInviteUser;
       setGroupInviteEmail("");
       setGroupInviteUser(null);
       setGroupInviteEmailSuggestions([]);
       setGroupAddMemberIds([]);
+      if (addedMember?.user_id) {
+        setGlobalGroupUsers((prev) => {
+          const byId = new Map(prev.map((member) => [Number(member.user_id), member]));
+          byId.set(Number(addedMember.user_id), addedMember);
+          return Array.from(byId.values());
+        });
+        setGroupMemberCandidates((prev) => (
+          prev.filter((member) => Number(member.user_id) !== Number(addedMember.user_id))
+        ));
+        setActiveConversation((current) => {
+          if (!current || conversationKey(current) !== activeConversationId) return current;
+          const nextParticipants = new Set((current.participants || []).map(Number));
+          nextParticipants.add(Number(addedMember.user_id));
+          return {
+            ...current,
+            participants: Array.from(nextParticipants),
+            participant_roles: {
+              ...(current.participant_roles || {}),
+              [String(addedMember.user_id)]: "member",
+            },
+            member_count: Math.max(Number(current.member_count || 0), nextParticipants.size),
+          };
+        });
+      }
       await loadGlobalGroupChats({ silent: true });
       showToast("Invited to group", "success");
     } catch (err) {
@@ -1061,9 +1026,7 @@ export default function ChatPage() {
       latestMessageIdRef.current = 0;
       await Promise.all([
         loadChatNotifications({ silent: true }),
-        activeConversation.type === "direct"
-          ? loadGlobalDirectChats({ silent: true })
-          : loadGlobalGroupChats({ silent: true }),
+        loadGlobalGroupChats({ silent: true }),
       ]);
       showToast("Chat history cleared", "success");
     } catch (err) {
@@ -1098,9 +1061,7 @@ export default function ChatPage() {
       }
 
       if (conversation.type === "direct") {
-        setGlobalDirectConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
         setConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
-        await loadGlobalDirectChats({ silent: true });
       } else {
         setGlobalGroupConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
         setConversations((prev) => prev.filter((item) => conversationKey(item) !== key));
@@ -1123,10 +1084,7 @@ export default function ChatPage() {
       setOpenMemberMenuId((current) => (
         Number(current) === Number(member.user_id) ? null : Number(member.user_id)
       ));
-      return;
     }
-
-    openDirectChat(member.user_id);
   };
 
   const toggleGroupMember = (memberId) => {
@@ -1157,12 +1115,6 @@ export default function ChatPage() {
     setGroupInviteUser(member);
     setGroupInviteEmail(member.email || "");
     setGroupInviteEmailSuggestions([]);
-  };
-
-  const selectDirectInviteUser = (member) => {
-    setDirectInviteUser(member);
-    setDirectInviteEmail(member.email || "");
-    setDirectEmailSuggestions([]);
   };
 
   return (
@@ -1402,155 +1354,6 @@ export default function ChatPage() {
               })}
             </div>
 
-            <div className="chat-thread-panel chat-thread-panel--direct">
-              <div className="chat-panel-title-row">
-                <div className="chat-panel-title">Direct chats</div>
-                <button
-                  type="button"
-                  className={`chat-create-toggle ${isCreateDirectOpen ? "active" : ""}`}
-                  onClick={() => setIsCreateDirectOpen((current) => !current)}
-                >
-                  <Icon name="teamAdd" size={14} />
-                  New
-                </button>
-              </div>
-              {isCreateDirectOpen && (
-                <form className="chat-create-direct-form" onSubmit={handleCreateDirectChat}>
-                  <div className="chat-create-email-row">
-                    <Icon name="mail" size={14} />
-                    <input
-                      type="email"
-                      placeholder="Find by email"
-                      value={directInviteEmail}
-                      autoComplete="off"
-                      onChange={(event) => {
-                        setDirectInviteEmail(event.target.value);
-                        setDirectInviteUser(null);
-                      }}
-                    />
-                  </div>
-                  {directInviteUser && (
-                    <div className="chat-email-selected-user">
-                      <span className="chat-avatar small">
-                        {directInviteUser.user_photo ? (
-                          <img src={avatarUrl(directInviteUser.user_photo)} alt="" />
-                        ) : (
-                          displayName(directInviteUser).charAt(0).toUpperCase()
-                        )}
-                      </span>
-                      <span>
-                        <strong>{displayName(directInviteUser)}</strong>
-                        <small>{directInviteUser.email}</small>
-                      </span>
-                    </div>
-                  )}
-                  {!directInviteUser && directEmailSuggestions.length > 0 && (
-                    <div className="chat-email-suggestions">
-                      {directEmailSuggestions.map((member) => (
-                        <button
-                          key={member.user_id}
-                          type="button"
-                          onClick={() => selectDirectInviteUser(member)}
-                        >
-                          <span className="chat-avatar small">
-                            {member.user_photo ? (
-                              <img src={avatarUrl(member.user_photo)} alt="" />
-                            ) : (
-                              displayName(member).charAt(0).toUpperCase()
-                            )}
-                          </span>
-                          <span>
-                            <strong>{displayName(member)}</strong>
-                            <small>{member.email}</small>
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="chat-create-actions">
-                    <button
-                      type="button"
-                      className="secondary"
-                      onClick={() => {
-                        setIsCreateDirectOpen(false);
-                        setDirectInviteEmail("");
-                        setDirectInviteUser(null);
-                        setDirectEmailSuggestions([]);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={creatingDirectChat || !directInviteEmail.trim()}
-                    >
-                      Open chat
-                    </button>
-                  </div>
-                </form>
-              )}
-              {loadingDirectChats ? (
-                <div className="chat-empty">Loading direct chats...</div>
-              ) : directConversations.length === 0 ? (
-                <div className="chat-empty">No direct chats yet.</div>
-              ) : directConversations.map((conversation) => {
-                const isDirect = conversation.type === "direct";
-                const directMember = isDirect ? getDirectConversationMember(conversation) : null;
-                const key = conversationKey(conversation);
-                const unreadCount = unreadCountsByConversation[key] || 0;
-                return (
-                  <div
-                    key={key}
-                    className={`chat-thread-row-shell ${activeConversationId === key ? "active" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="chat-thread-row"
-                      onClick={() => openExistingDirectChat(conversation)}
-                    >
-                      {isDirect ? (
-                        <span className="chat-thread-avatar">
-                          {directMember?.user_photo ? <img src={avatarUrl(directMember.user_photo)} alt="" /> : displayName(directMember).charAt(0).toUpperCase()}
-                        </span>
-                      ) : (
-                        <Icon name={conversation.type === "group" ? "users" : "hash"} size={15} />
-                      )}
-                      <span className="chat-thread-main">
-                        {getConversationLabel(conversation)}
-                        {conversation.project_name && <small>{conversation.project_name}</small>}
-                      </span>
-                      {unreadCount > 0 && (
-                        <span className="chat-row-badge">
-                          {unreadCount > 9 ? "9+" : unreadCount}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className="chat-thread-more-btn"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setOpenConversationMenuId((current) => (current === key ? "" : key));
-                      }}
-                      aria-label="Chat actions"
-                    >
-                      <Icon name="more" size={16} />
-                    </button>
-                    {openConversationMenuId === key && (
-                      <div className="chat-thread-menu">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveConversationFromList(conversation)}
-                        >
-                          <Icon name="trash" size={14} />
-                          <span>Delete history</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-                })}
-            </div>
           </aside>
 
           <section className="chat-conversation">
@@ -1579,8 +1382,10 @@ export default function ChatPage() {
               ) : (
                 messages.map((message) => {
                   const mine = Number(message.sender_id) === Number(user?.id);
+                  const isRecalled = Boolean(message.recalled_at);
+                  const canRecallMessage = mine && !isRecalled && Number(recallingMessageId) !== Number(message.message_id);
                   return (
-                    <div key={`${message.conversation_id || activeConversationId}-${message.message_id}`} className={`chat-message-row ${mine ? "mine" : ""}`}>
+                    <div key={`${message.conversation_id || activeConversationId}-${message.message_id}`} className={`chat-message-row ${mine ? "mine" : ""} ${isRecalled ? "recalled" : ""}`}>
                       {!mine && (
                         <span className="chat-avatar">
                           {message.sender_photo ? (
@@ -1594,23 +1399,43 @@ export default function ChatPage() {
                         <div className="chat-message-meta">
                           <span>{mine ? "You" : message.sender_username || "User"}</span>
                           <span>{formatMessageTime(message.created_at)}</span>
+                          {isRecalled && <span>{"\u0110\u00e3 thu h\u1ed3i"}</span>}
                         </div>
-                        <div className={`chat-message ${mine ? "mine" : ""}`}>
-                          {message.content && <div className="chat-message-text">{message.content}</div>}
-                          {message.attachment_url && (
-                            isImageType(message.attachment_type || "") ? (
-                              <a className="chat-image-attachment" href={assetUrl(message.attachment_url)} target="_blank" rel="noreferrer">
-                                <img src={assetUrl(message.attachment_url)} alt={message.attachment_name || "Attachment"} />
-                              </a>
+                        <div className="chat-message-shell">
+                          <div className={`chat-message ${mine ? "mine" : ""} ${isRecalled ? "recalled" : ""}`}>
+                            {isRecalled ? (
+                              <div className="chat-message-recalled">{"Tin nh\u1eafn \u0111\u00e3 \u0111\u01b0\u1ee3c thu h\u1ed3i"}</div>
                             ) : (
-                              <a className="chat-file-attachment" href={assetUrl(message.attachment_url)} target="_blank" rel="noreferrer">
-                                <Icon name="paperclip" size={16} />
-                                <span>
-                                  <strong>{message.attachment_name || "Attachment"}</strong>
-                                  <small>{formatFileSize(message.attachment_size)}</small>
-                                </span>
-                              </a>
-                            )
+                              <>
+                                {message.content && <div className="chat-message-text">{message.content}</div>}
+                                {message.attachment_url && (
+                                  isImageType(message.attachment_type || "") ? (
+                                    <a className="chat-image-attachment" href={assetUrl(message.attachment_url)} target="_blank" rel="noreferrer">
+                                      <img src={assetUrl(message.attachment_url)} alt={message.attachment_name || "Attachment"} />
+                                    </a>
+                                  ) : (
+                                    <a className="chat-file-attachment" href={assetUrl(message.attachment_url)} target="_blank" rel="noreferrer">
+                                      <Icon name="paperclip" size={16} />
+                                      <span>
+                                        <strong>{message.attachment_name || "Attachment"}</strong>
+                                        <small>{formatFileSize(message.attachment_size)}</small>
+                                      </span>
+                                    </a>
+                                  )
+                                )}
+                              </>
+                            )}
+                          </div>
+                          {mine && !isRecalled && (
+                            <button
+                              type="button"
+                              className="chat-message-recall-btn"
+                              onClick={() => handleRecallMessage(message)}
+                              disabled={!canRecallMessage}
+                              title="Thu h\u1ed3i tin nh\u1eafn"
+                            >
+                              {Number(recallingMessageId) === Number(message.message_id) ? "..." : "Thu h\u1ed3i"}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1621,6 +1446,11 @@ export default function ChatPage() {
               {isRemovedFromActiveChat && !isDisbandedActiveGroup && (
                 <div className="chat-removed-notice">
                   {removedChatMessage}
+                </div>
+              )}
+              {activeConversation?.type === "project" && !canManageProject && !isRemovedFromActiveChat && (
+                <div className="chat-removed-notice">
+                  {projectChatReadOnlyMessage}
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -1650,25 +1480,25 @@ export default function ChatPage() {
                   className="chat-file-input"
                   accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.json"
                   onChange={handleAttachmentChange}
-                  disabled={!activeConversation || isChatLocked || sendingMessage}
+                  disabled={!canSendActiveChat || sendingMessage}
                 />
                 <button
                   type="button"
                   className="chat-attach-btn"
                   title="Attach file"
                   onClick={() => attachmentInputRef.current?.click()}
-                  disabled={!activeConversation || isChatLocked || sendingMessage}
+                  disabled={!canSendActiveChat || sendingMessage}
                 >
                   <Icon name="paperclip" size={18} />
                 </button>
                 <input
                   type="text"
-                  placeholder={isDisbandedActiveGroup ? disbandedChatMessage : isRemovedFromActiveChat ? removedChatMessage : activeConversation ? `Message ${activeConversationTitle}...` : "Select a chat..."}
+                  placeholder={isDisbandedActiveGroup ? disbandedChatMessage : isRemovedFromActiveChat ? removedChatMessage : activeConversation?.type === "project" && !canManageProject ? projectChatReadOnlyMessage : activeConversation ? `Message ${activeConversationTitle}...` : "Select a chat..."}
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
-                  disabled={!activeConversation || isChatLocked || sendingMessage}
+                  disabled={!canSendActiveChat || sendingMessage}
                 />
-                <button type="submit" disabled={!activeConversation || isChatLocked || sendingMessage || (!messageText.trim() && !selectedAttachment)}>
+                <button type="submit" disabled={!canSendActiveChat || sendingMessage || (!messageText.trim() && !selectedAttachment)}>
                   Send
                 </button>
               </div>
@@ -1778,16 +1608,6 @@ export default function ChatPage() {
                           </span>
                           {canOpenMemberActions && (
                             <div className={`chat-member-menu ${isMemberMenuOpen ? "open" : ""}`} onClick={(event) => event.stopPropagation()}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenMemberMenuId(null);
-                                  openDirectChat(member.user_id);
-                                }}
-                              >
-                                <Icon name="chat" size={14} />
-                                <span>Direct chat</span>
-                              </button>
                               {canRemoveMember && (
                                 <button
                                   type="button"
@@ -1978,3 +1798,4 @@ export default function ChatPage() {
     </div>
   );
 }
+

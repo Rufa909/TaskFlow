@@ -21,6 +21,10 @@ const {
   createProjectMessage,
   createDirectConversationMessage,
   createGroupConversationMessage,
+  recallProjectMessage,
+  recallDirectConversationMessage,
+  recallGroupConversationMessage,
+  recallProjectConversationMessage,
   createConversation,
   addProjectMember,
   getProjectMemberCandidates,
@@ -64,12 +68,14 @@ router.get('/chat/direct-conversations', auth, getDirectConversations);
 router.post('/chat/direct-conversations', auth, createDirectConversation);
 router.get('/chat/direct-conversations/:conversationId/messages', auth, getDirectConversationMessages);
 router.post('/chat/direct-conversations/:conversationId/messages', auth, uploadChatAttachment, createDirectConversationMessage);
+router.patch('/chat/direct-conversations/:conversationId/messages/:messageId/revoke', auth, recallDirectConversationMessage);
 router.delete('/chat/direct-conversations/:conversationId/messages', auth, clearDirectConversationMessages);
 router.delete('/chat/direct-conversations/:conversationId', auth, removeDirectConversationForMe);
 router.get('/chat/group-conversations', auth, getGroupConversations);
 router.post('/chat/group-conversations', auth, createGroupConversation);
 router.get('/chat/group-conversations/:conversationId/messages', auth, getGroupConversationMessages);
 router.post('/chat/group-conversations/:conversationId/messages', auth, uploadChatAttachment, createGroupConversationMessage);
+router.patch('/chat/group-conversations/:conversationId/messages/:messageId/revoke', auth, recallGroupConversationMessage);
 router.delete('/chat/group-conversations/:conversationId/messages', auth, clearGroupConversationMessages);
 router.get('/chat/group-conversations/:conversationId/member-candidates', auth, getGlobalGroupMemberCandidates);
 router.post('/chat/group-conversations/:conversationId/members', auth, addGlobalGroupMember);
@@ -80,7 +86,9 @@ router.get('/chat/user-search', auth, searchGlobalChatUsers);
 router.get('/:projectId/chat', auth, getProjectChatOverview);
 router.get('/:projectId/messages', auth, getProjectMessages);
 router.post('/:projectId/messages', auth, uploadChatAttachment, createProjectMessage);
+router.patch('/:projectId/messages/:messageId/revoke', auth, recallProjectMessage);
 router.get('/:projectId/conversations/:conversationId/messages', auth, getConversationMessages);
+router.patch('/:projectId/conversations/:conversationId/messages/:messageId/revoke', auth, recallProjectConversationMessage);
 router.post('/:projectId/conversations', auth, createConversation);
 router.get('/:projectId/member-candidates', auth, getProjectMemberCandidates);
 router.get('/:projectId/chat-user-search', auth, searchProjectChatUsers);
