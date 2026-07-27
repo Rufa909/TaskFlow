@@ -32,6 +32,7 @@ function uploadDocument(req, res, next) {
 // Định nghĩa routes
 router.get('/projects/:projectId/workflow', protect, workflowController.getProjectWorkflow);
 router.get('/projects/:projectId/stages/:stageId/overview', protect, workflowController.getStageOverview);
+router.get('/projects/:projectId/stages/:stageId/leader-suggestions', protect, workflowController.getLeaderSuggestions);
 router.get('/projects/:projectId/stages/:stageId/documents', protect, workflowController.getDocuments);
 router.post('/projects/:projectId/stages/:stageId/documents', protect, uploadDocument, workflowController.createDocument);
 router.get('/projects/:projectId/stages/:stageId/discussions', protect, workflowController.getDiscussions);

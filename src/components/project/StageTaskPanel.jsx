@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  BarChart3,
   CheckCircle2,
   ClipboardCheck,
   FileText,
+  Lightbulb,
   MessageSquare,
   Upload,
+  Users,
   X,
   XCircle,
 } from 'lucide-react';
@@ -18,6 +21,254 @@ const tabs = [
   { key: 'documents', label: 'Documents', icon: FileText },
   { key: 'discussions', label: 'Discussions', icon: MessageSquare },
 ];
+
+const leaderTab = { key: 'leader', label: 'Leader', icon: BarChart3 };
+
+const completedStatuses = new Set(['COMPLETED', 'OWNER_APPROVED']);
+const reviewStatuses = new Set(['SUBMITTED', 'LEADER_APPROVED']);
+const blockedStatuses = new Set(['REJECTED', 'CHANGES_REQUESTED']);
+const activeStatuses = new Set(['ACCEPTED', 'IN_PROGRESS']);
+
+function getTaskStatusLabel(status = '') {
+  return String(status || 'DRAFT').replace(/_/g, ' ').toLowerCase();
+}
+
+function percent(value, total) {
+  if (!total) return 0;
+  return Math.round((value / total) * 100);
+}
+
+function taskAssigneeNames(task) {
+  const assignees = Array.isArray(task?.assignees) ? task.assignees : [];
+  if (assignees.length === 0) return 'Unassigned';
+  return assignees
+    .map((member) => member.username || member.email || member.name || 'Member')
+    .filter(Boolean)
+    .join(', ');
+}
+
+function buildLeaderSuggestions(tasks = [], incomingPackage = null) {
+  const documents = incomingPackage?.documents || [];
+  const discussions = incomingPackage?.discussions || [];
+  const deliverables = incomingPackage?.deliverables || [];
+  const sourceText = [
+    incomingPackage?.stage?.stage_name,
+    ...documents.map((item) => `${item.title || ''} ${item.document_type || ''}`),
+    ...discussions.map((item) => item.message || ''),
+    ...deliverables.map((item) => `${item.title || ''} ${item.description || ''}`),
+  ].join(' ').toLowerCase();
+
+  const suggestions = [];
+
+  if (sourceText.match(/require|srs|scope|mvp|user story|use case|stakeholder|survey/)) {
+    suggestions.push({
+      title: 'Break down previous-stage requirements',
+      detail: 'Use previous documents and discussions to create clear tasks with acceptance criteria, prioritizing MVP items.',
+    });
+  }
+
+  if (sourceText.match(/wireframe|ui|ux|prototype|screen|interface/)) {
+    suggestions.push({
+      title: 'Assign UI/UX before development',
+      detail: 'Create tasks for screens, user flows, and stakeholder review before technical implementation starts.',
+    });
+  }
+
+  if (sourceText.match(/api|database|erd|integration|payment|momo|cod|schema|backend/)) {
+    suggestions.push({
+      title: 'Separate high-risk technical work',
+      detail: 'Create separate tasks for API, data, and integration work so blockers can be tracked early.',
+    });
+  }
+
+  if (sourceText.match(/test|qa|performance|load|bug|peak/)) {
+    suggestions.push({
+      title: 'Prepare QA in parallel',
+      detail: 'Add QA tasks with test cases, sample data, and performance criteria instead of waiting until the end of the stage.',
+    });
+  }
+
+  const unassignedCount = tasks.filter((task) => Number(task.assignee_count || 0) === 0 && (!task.assignees || task.assignees.length === 0)).length;
+  const reviewCount = tasks.filter((task) => reviewStatuses.has(task.status)).length;
+  const blockedCount = tasks.filter((task) => blockedStatuses.has(task.status)).length;
+
+  if (unassignedCount > 0) {
+    suggestions.push({
+      title: `${unassignedCount} tasks are unassigned`,
+      detail: 'Assign these tasks first so the stage does not get stuck at the start.',
+    });
+  }
+
+  if (reviewCount > 0) {
+    suggestions.push({
+      title: `${reviewCount} tasks need review`,
+      detail: 'Review these first so members are not blocked waiting for feedback.',
+    });
+  }
+
+  if (blockedCount > 0) {
+    suggestions.push({
+      title: `${blockedCount} tasks need unblocking`,
+      detail: 'Check rejected or change-requested tasks and agree on the next action in discussions.',
+    });
+  }
+
+  if (suggestions.length === 0) {
+    suggestions.push({
+      title: 'Start from previous-stage handover',
+      detail: 'Review the handed-over documents and discussions, then split work by module, assignee, and deadline.',
+    });
+  }
+
+  return suggestions.slice(0, 5);
+}
+function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTask, suggestionData, loadingSuggestions }) {
+  const total = tasks.length;
+  const completed = tasks.filter((task) => completedStatuses.has(task.status)).length;
+  const active = tasks.filter((task) => activeStatuses.has(task.status)).length;
+  const review = tasks.filter((task) => reviewStatuses.has(task.status)).length;
+  const blocked = tasks.filter((task) => blockedStatuses.has(task.status)).length;
+  const unassigned = tasks.filter((task) => Number(task.assignee_count || 0) === 0 && (!task.assignees || task.assignees.length === 0)).length;
+  const progress = percent(completed, total);
+  const backendSuggestions = suggestionData?.suggestions || [];
+  const suggestions = backendSuggestions.length > 0 ? backendSuggestions : buildLeaderSuggestions(tasks, incomingPackage);
+  const backendAttentionTasks = suggestionData?.attention_tasks || [];
+  const attentionTasks = (backendAttentionTasks.length > 0 ? backendAttentionTasks : tasks
+    .filter((task) => reviewStatuses.has(task.status) || blockedStatuses.has(task.status) || Number(task.assignee_count || 0) === 0)
+    .slice(0, 6));
+  const workload = suggestionData?.workload || [];
+  const sourceDocuments = incomingPackage?.documents?.length || 0;
+  const sourceDiscussions = incomingPackage?.discussions?.length || 0;
+  const currentDocuments = currentPackage?.documents?.length || 0;
+  const currentDiscussions = currentPackage?.discussions?.length || 0;
+
+  return (
+    <div className="stage-leader-workspace">
+      <section className="leader-summary-grid">
+        <div className="leader-progress-card">
+          <div className="leader-progress-ring" style={{ '--progress': `${progress}%` }}>
+            <span>{progress}%</span>
+          </div>
+          <div>
+            <strong>Project progress</strong>
+            <small>{completed}/{total || 0} tasks completed</small>
+          </div>
+        </div>
+        <div className="leader-stat-card">
+          <span>{active}</span>
+          <small>In progress</small>
+        </div>
+        <div className="leader-stat-card attention">
+          <span>{review}</span>
+          <small>Need review</small>
+        </div>
+        <div className="leader-stat-card danger">
+          <span>{blocked}</span>
+          <small>Blocked</small>
+        </div>
+      </section>
+
+      <section className="leader-chart-section">
+        <div className="leader-section-title">
+          <BarChart3 size={16} />
+          <span>Task overview</span>
+        </div>
+        <div className="leader-bar-list">
+          {[
+            ['Completed', completed, '#16a34a'],
+            ['In progress', active, '#2563eb'],
+            ['Need review', review, '#f59e0b'],
+            ['Blocked', blocked, '#dc2626'],
+            ['Unassigned', unassigned, '#64748b'],
+          ].map(([label, value, color]) => (
+            <div key={label} className="leader-bar-row">
+              <span>{label}</span>
+              <div className="leader-bar-track">
+                <div style={{ width: `${percent(value, total)}%`, background: color }} />
+              </div>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="leader-suggestion-section">
+        <div className="leader-section-title">
+          <Lightbulb size={16} />
+          <span>Assignment suggestions from previous stage</span>
+          {loadingSuggestions && <em className="leader-loading-badge">{"\u0110ang c\u1eadp nh\u1eadt"}</em>}
+        </div>
+        <div className="leader-source-note">
+          Based on {sourceDocuments} previous documents and {sourceDiscussions} discussions. Current stage has {currentDocuments} documents and {currentDiscussions} discussions.
+        </div>
+        <div className="leader-suggestion-list">
+          {suggestions.map((suggestion) => (
+            <div key={suggestion.id || suggestion.title} className={`leader-suggestion-item priority-${suggestion.priority || 'medium'}`}>
+              <div className="leader-suggestion-title-row">
+                <strong>{suggestion.title}</strong>
+                <em>{suggestion.priority || 'medium'}</em>
+              </div>
+              <small>{suggestion.detail}</small>
+              {suggestion.recommended_member && (
+                <span className="leader-recommendation-pill">
+                  {suggestion.recommended_member.username || suggestion.recommended_member.email}
+                  <small>{suggestion.recommended_role || suggestion.recommended_member.role}</small>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {workload.length > 0 && (
+        <section className="leader-task-section">
+          <div className="leader-section-title">
+            <Users size={16} />
+            <span>Member workload</span>
+          </div>
+          <div className="leader-workload-list">
+            {workload.slice(0, 6).map((member) => (
+              <div key={member.user_id} className="leader-workload-row">
+                <span>
+                  <strong>{member.username || member.email}</strong>
+                  <small>{member.role}</small>
+                </span>
+                <em>{member.active_task_count} active</em>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="leader-task-section">
+        <div className="leader-section-title">
+          <Users size={16} />
+          <span>Tasks for leader attention</span>
+        </div>
+        {attentionTasks.length === 0 ? (
+          <p className="stage-muted">No urgent task needs leader attention right now.</p>
+        ) : (
+          <div className="leader-task-list">
+            {attentionTasks.map((task) => (
+              <button
+                key={task.task_id || task.id}
+                type="button"
+                className="leader-task-row"
+                onClick={() => setSelectedTask?.(task)}
+              >
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>{taskAssigneeNames(task)}</small>
+                </span>
+                <em>{getTaskStatusLabel(task.status)}</em>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
 
 const documentTypes = [
   { value: 'requirement_document', label: 'Requirement Document' },
@@ -103,6 +354,8 @@ export default function StageTaskPanel({
   const [activeTab, setActiveTab] = useState('tasks');
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [leaderSuggestionData, setLeaderSuggestionData] = useState(null);
+  const [leaderSuggestionLoading, setLeaderSuggestionLoading] = useState(false);
   const [panelError, setPanelError] = useState('');
   const [documentForm, setDocumentForm] = useState({
     title: '',
@@ -128,9 +381,24 @@ export default function StageTaskPanel({
     }
   };
 
+  const refreshLeaderSuggestions = async () => {
+    if (!projectId || !stageId) return;
+    setLeaderSuggestionLoading(true);
+    try {
+      const res = await api.get(`/projects/${projectId}/stages/${stageId}/leader-suggestions`);
+      setLeaderSuggestionData(res.data);
+    } catch (err) {
+      setLeaderSuggestionData(null);
+      console.error('Cannot load leader suggestions:', err);
+    } finally {
+      setLeaderSuggestionLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     setActiveTab('tasks');
+    setLeaderSuggestionData(null);
     refreshOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, projectId, stageId]);
@@ -139,12 +407,29 @@ export default function StageTaskPanel({
   const incomingPackage = overview?.incoming;
   const canComplete = Boolean(overview?.canCompleteStage);
   const canMoveStage = ['owner', 'leader'].includes(String(currentUserRole || '').toLowerCase());
+  const isLeaderWorkspaceVisible = canMoveStage && (Number(stage?.stage_order || currentPackage?.stage?.stage_order || 0) > 1 || Boolean(incomingPackage));
+  const visibleTabs = useMemo(
+    () => (isLeaderWorkspaceVisible ? [...tabs, leaderTab] : tabs),
+    [isLeaderWorkspaceVisible],
+  );
 
   const deliverableSummary = useMemo(() => {
     const docs = currentPackage?.documents?.length || 0;
     const discussions = currentPackage?.discussions?.length || 0;
     return `${docs} documents, ${discussions} discussions`;
   }, [currentPackage]);
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab('tasks');
+    }
+  }, [activeTab, visibleTabs]);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'leader' || !isLeaderWorkspaceVisible || leaderSuggestionData || leaderSuggestionLoading) return;
+    refreshLeaderSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isLeaderWorkspaceVisible, isOpen, leaderSuggestionData, leaderSuggestionLoading, projectId, stageId]);
 
   const submitDocument = async (event) => {
     event.preventDefault();
@@ -194,7 +479,7 @@ export default function StageTaskPanel({
       const missing = err.response?.data?.missing || [];
       setPanelError(
         missing.length > 0
-          ? `Không thể chuyển sang giai đoạn tiếp theo. Thiếu: ${missing.join(', ')}`
+          ? `Cannot move to the next stage. Missing: ${missing.join(', ')}`
           : err.response?.data?.message || 'Cannot complete stage.',
       );
       if (err.response?.data?.checklist) {
@@ -223,10 +508,10 @@ export default function StageTaskPanel({
         <div className="panel-body">
           {panelError && <div className="stage-panel-error">{panelError}</div>}
 
-          <KnowledgeSection title="Thông tin nhận từ giai đoạn trước" packageData={incomingPackage} />
+          <KnowledgeSection title="Information from previous stage" packageData={incomingPackage} />
 
           <div className="stage-tabs">
-            {tabs.map((tab) => {
+            {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
@@ -350,10 +635,23 @@ export default function StageTaskPanel({
                   )}
                 </div>
               )}
+
+              {activeTab === 'leader' && isLeaderWorkspaceVisible && (
+                <div className="stage-tab-panel leader-tab-panel">
+                  <LeaderWorkspace
+                    tasks={tasks}
+                    incomingPackage={incomingPackage}
+                    currentPackage={currentPackage}
+                    setSelectedTask={setSelectedTask}
+                    suggestionData={leaderSuggestionData}
+                    loadingSuggestions={leaderSuggestionLoading}
+                  />
+                </div>
+              )}
             </>
           )}
 
-          <KnowledgeSection title="Thông tin bàn giao cho giai đoạn tiếp theo" packageData={currentPackage} />
+          <KnowledgeSection title="Handover information for next stage" packageData={currentPackage} />
         </div>
 
         <div className="panel-footer">
@@ -363,10 +661,10 @@ export default function StageTaskPanel({
             className="stage-complete-btn"
             disabled={submitting || !canComplete || !canMoveStage}
             onClick={completeStage}
-            title={!canMoveStage ? 'Chỉ owner hoặc leader được chuyển stage' : !overview?.canCompleteStage ? 'Bạn chưa có quyền chuyển stage này' : 'Complete stage'}
+            title={!canMoveStage ? 'Only owner or leader can move stages' : !overview?.canCompleteStage ? 'You do not have permission to move this stage' : 'Complete stage'}
           >
             <CheckCircle2 size={17} />
-            Chuyển sang giai đoạn tiếp theo
+            Move to next stage
           </button>
         </div>
       </div>
