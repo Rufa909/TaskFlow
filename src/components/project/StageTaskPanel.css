@@ -268,6 +268,38 @@
   gap: 12px;
 }
 
+.leader-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.leader-language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #ece9e4;
+  border-radius: 9px;
+  background: #faf9f7;
+}
+
+.leader-language-switch button {
+  min-width: 38px;
+  height: 30px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #777;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.leader-language-switch button.active {
+  background: #3585db;
+  color: #ffffff;
+}
+
 .leader-summary-grid {
   display: grid;
   grid-template-columns: minmax(210px, 1.4fr) repeat(3, minmax(0, 1fr));

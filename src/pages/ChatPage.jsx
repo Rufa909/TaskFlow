@@ -128,13 +128,7 @@ export default function ChatPage() {
   const [loadingProjectMemberCandidates, setLoadingProjectMemberCandidates] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupMemberIds, setGroupMemberIds] = useState([]);
-  const [createGroupInviteEmail, setCreateGroupInviteEmail] = useState("");
-  const [createGroupInviteUser, setCreateGroupInviteUser] = useState(null);
-  const [createGroupEmailSuggestions, setCreateGroupEmailSuggestions] = useState([]);
   const [groupAddMemberIds, setGroupAddMemberIds] = useState([]);
-  const [groupInviteEmail, setGroupInviteEmail] = useState("");
-  const [groupInviteUser, setGroupInviteUser] = useState(null);
-  const [groupInviteEmailSuggestions, setGroupInviteEmailSuggestions] = useState([]);
   const [groupMemberCandidates, setGroupMemberCandidates] = useState([]);
   const [loadingGroupMemberCandidates, setLoadingGroupMemberCandidates] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -313,7 +307,7 @@ export default function ChatPage() {
     try {
       const res = await api.get("/projects");
       const nextProjects = res.data.projects || [];
-      const queryProjectId = new URLSearchParams(location.search).get("projectId");
+      const queryProjectId = silent ? null : new URLSearchParams(location.search).get("projectId");
       setProjects(nextProjects);
       setActiveProject((current) => {
         const queryProject = queryProjectId
@@ -336,8 +330,14 @@ export default function ChatPage() {
     if (!silent) setLoadingGroupChats(true);
     try {
       const res = await api.get("/projects/chat/group-conversations");
-      setGlobalGroupConversations(res.data.conversations || []);
+      const nextConversations = res.data.conversations || [];
+      setGlobalGroupConversations(nextConversations);
       setGlobalGroupUsers(res.data.chat_users || []);
+      setActiveConversation((current) => {
+        if (current?.type !== "group") return current;
+        const refreshed = nextConversations.find((item) => conversationKey(item) === conversationKey(current));
+        return refreshed || current;
+      });
     } catch (err) {
       console.error("Cannot load groups", err);
       setGlobalGroupConversations([]);
@@ -383,7 +383,12 @@ export default function ChatPage() {
           if (preferred) return preferred;
         }
         const currentKey = conversationKey(current);
-        return nextConversations.find((item) => conversationKey(item) === currentKey) || nextConversations[0] || null;
+        if (currentKey) {
+          const refreshed = nextConversations.find((item) => conversationKey(item) === currentKey);
+          if (refreshed) return refreshed;
+          if (silent) return current;
+        }
+        return nextConversations[0] || null;
       });
     } catch (err) {
       console.error("Cannot load project chat", err);
@@ -431,9 +436,6 @@ export default function ChatPage() {
     setActiveConversation(null);
     setMessages([]);
     setGroupMemberIds([]);
-    setCreateGroupInviteEmail("");
-    setCreateGroupInviteUser(null);
-    setCreateGroupEmailSuggestions([]);
     setGroupAddMemberIds([]);
     setGroupName("");
     setIsCreateGroupOpen(false);
@@ -505,9 +507,6 @@ export default function ChatPage() {
     setProjectMemberCandidates([]);
     setSelectedProjectMemberIds([]);
     setGroupAddMemberIds([]);
-    setGroupInviteEmail("");
-    setGroupInviteUser(null);
-    setGroupInviteEmailSuggestions([]);
     setGroupMemberCandidates([]);
     setOpenMemberMenuId(null);
     setSelectedAttachment(null);
@@ -518,73 +517,8 @@ export default function ChatPage() {
     setOpenMemberMenuId(null);
     if (chatPanelView !== "add") setSelectedProjectMemberIds([]);
     if (chatPanelView !== "add") setGroupAddMemberIds([]);
-    if (chatPanelView !== "add") setGroupInviteEmail("");
-    if (chatPanelView !== "add") setGroupInviteUser(null);
-    if (chatPanelView !== "add") setGroupInviteEmailSuggestions([]);
     if (chatPanelView !== "add") setGroupMemberCandidates([]);
   }, [chatPanelView]);
-
-  useEffect(() => {
-    let active = true;
-    const query = createGroupInviteEmail.trim();
-    setCreateGroupInviteUser((current) => (
-      current?.email && current.email.toLowerCase() === query ? current : null
-    ));
-
-    if (query.length < 2) {
-      setCreateGroupEmailSuggestions([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.get("/projects/chat/user-search", {
-          params: { q: query },
-        });
-        if (active) setCreateGroupEmailSuggestions(res.data.users || []);
-      } catch (err) {
-        if (active) setCreateGroupEmailSuggestions([]);
-      }
-    }, 220);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [createGroupInviteEmail]);
-
-  useEffect(() => {
-    let active = true;
-    const query = groupInviteEmail.trim();
-    setGroupInviteUser((current) => (
-      current?.email && current.email.toLowerCase() === query ? current : null
-    ));
-
-    if (query.length < 2) {
-      setGroupInviteEmailSuggestions([]);
-      return () => {
-        active = false;
-      };
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await api.get("/projects/chat/user-search", {
-          params: { q: query },
-        });
-        if (active) setGroupInviteEmailSuggestions(res.data.users || []);
-      } catch (err) {
-        if (active) setGroupInviteEmailSuggestions([]);
-      }
-    }, 220);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [groupInviteEmail]);
 
   useEffect(() => {
     if (chatPanelView !== "add" || activeConversation?.type !== "project" || !canManageProject || !activeProjectId) {
@@ -809,19 +743,15 @@ export default function ChatPage() {
 
   const handleCreateGroup = async (event) => {
     event.preventDefault();
-    if (!groupName.trim() || (groupMemberIds.length === 0 && !createGroupInviteEmail.trim())) return;
+    if (!groupName.trim() || groupMemberIds.length === 0) return;
     setCreatingGroup(true);
     try {
       const res = await api.post("/projects/chat/group-conversations", {
         name: groupName.trim(),
         member_ids: groupMemberIds,
-        invite_email: createGroupInviteUser?.email || createGroupInviteEmail.trim(),
       });
       setGroupName("");
       setGroupMemberIds([]);
-      setCreateGroupInviteEmail("");
-      setCreateGroupInviteUser(null);
-      setCreateGroupEmailSuggestions([]);
       setIsCreateGroupOpen(false);
       await loadGlobalGroupChats();
       openChatConversation(res.data.conversation);
@@ -896,52 +826,6 @@ export default function ChatPage() {
       showToast("Added to group", "success");
     } catch (err) {
       showToast(err.response?.data?.message || "Cannot add group member", "error");
-    } finally {
-      setAddingGroupMembers(false);
-    }
-  };
-
-  const handleInviteGroupMemberByEmail = async (event) => {
-    event.preventDefault();
-    if (!activeConversationId || !groupInviteEmail.trim() || addingGroupMembers) return;
-    setAddingGroupMembers(true);
-    try {
-      const res = await api.post(`/projects/chat/group-conversations/${activeConversationId}/members`, {
-        email: groupInviteUser?.email || groupInviteEmail.trim(),
-      });
-      const addedMember = res.data.member || groupInviteUser;
-      setGroupInviteEmail("");
-      setGroupInviteUser(null);
-      setGroupInviteEmailSuggestions([]);
-      setGroupAddMemberIds([]);
-      if (addedMember?.user_id) {
-        setGlobalGroupUsers((prev) => {
-          const byId = new Map(prev.map((member) => [Number(member.user_id), member]));
-          byId.set(Number(addedMember.user_id), addedMember);
-          return Array.from(byId.values());
-        });
-        setGroupMemberCandidates((prev) => (
-          prev.filter((member) => Number(member.user_id) !== Number(addedMember.user_id))
-        ));
-        setActiveConversation((current) => {
-          if (!current || conversationKey(current) !== activeConversationId) return current;
-          const nextParticipants = new Set((current.participants || []).map(Number));
-          nextParticipants.add(Number(addedMember.user_id));
-          return {
-            ...current,
-            participants: Array.from(nextParticipants),
-            participant_roles: {
-              ...(current.participant_roles || {}),
-              [String(addedMember.user_id)]: "member",
-            },
-            member_count: Math.max(Number(current.member_count || 0), nextParticipants.size),
-          };
-        });
-      }
-      await loadGlobalGroupChats({ silent: true });
-      showToast("Invited to group", "success");
-    } catch (err) {
-      showToast(err.response?.data?.message || "Cannot invite by email", "error");
     } finally {
       setAddingGroupMembers(false);
     }
@@ -1105,18 +989,6 @@ export default function ChatPage() {
     ));
   };
 
-  const selectCreateGroupInviteUser = (member) => {
-    setCreateGroupInviteUser(member);
-    setCreateGroupInviteEmail(member.email || "");
-    setCreateGroupEmailSuggestions([]);
-  };
-
-  const selectGroupInviteUser = (member) => {
-    setGroupInviteUser(member);
-    setGroupInviteEmail(member.email || "");
-    setGroupInviteEmailSuggestions([]);
-  };
-
   return (
     <div className="layout">
       <Sidebar
@@ -1211,58 +1083,6 @@ export default function ChatPage() {
               {isCreateGroupOpen && (
                 <form className="chat-create-group-form" onSubmit={handleCreateGroup}>
                   <input type="text" placeholder="Group name" value={groupName} onChange={(event) => setGroupName(event.target.value)} />
-                  <div className="chat-create-email-row">
-                    <Icon name="mail" size={14} />
-                    <input
-                      type="email"
-                      placeholder="Invite by email"
-                      value={createGroupInviteEmail}
-                      autoComplete="off"
-                      onChange={(event) => {
-                        setCreateGroupInviteEmail(event.target.value);
-                        setCreateGroupInviteUser(null);
-                      }}
-                    />
-                  </div>
-                  {createGroupInviteUser && (
-                    <div className="chat-email-selected-user">
-                      <span className="chat-avatar small">
-                        {createGroupInviteUser.user_photo ? (
-                          <img src={avatarUrl(createGroupInviteUser.user_photo)} alt="" />
-                        ) : (
-                          displayName(createGroupInviteUser).charAt(0).toUpperCase()
-                        )}
-                      </span>
-                      <span>
-                        <strong>{displayName(createGroupInviteUser)}</strong>
-                        <small>{createGroupInviteUser.email}</small>
-                      </span>
-                    </div>
-                  )}
-                  {!createGroupInviteUser && createGroupEmailSuggestions.length > 0 && (
-                    <div className="chat-email-suggestions">
-                      {createGroupEmailSuggestions.map((member) => (
-                        <button
-                          key={member.user_id}
-                          type="button"
-                          onClick={() => selectCreateGroupInviteUser(member)}
-                        >
-                          <span className="chat-avatar small">
-                            {member.user_photo ? (
-                              <img src={avatarUrl(member.user_photo)} alt="" />
-                            ) : (
-                              displayName(member).charAt(0).toUpperCase()
-                            )}
-                          </span>
-                          <span>
-                            <strong>{displayName(member)}</strong>
-                            <small>{member.email}</small>
-                          </span>
-                          {member.project_role && <em>{member.project_role}</em>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   <div className="chat-group-member-picker compact">
                     {selectableMembers.map((member) => (
                       <button
@@ -1285,14 +1105,15 @@ export default function ChatPage() {
                       className="secondary"
                       onClick={() => {
                         setIsCreateGroupOpen(false);
-                        setCreateGroupInviteEmail("");
+                        setGroupName("");
+                        setGroupMemberIds([]);
                       }}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      disabled={creatingGroup || !groupName.trim() || (groupMemberIds.length === 0 && !createGroupInviteEmail.trim())}
+                      disabled={creatingGroup || !groupName.trim() || groupMemberIds.length === 0}
                     >
                       Create group
                     </button>
@@ -1676,65 +1497,6 @@ export default function ChatPage() {
               {chatPanelView === "add" && activeConversation?.type === "group" && canManageActiveGroup && (
                 <>
                   <div className="chat-panel-title">Add member</div>
-                  <form className="chat-email-invite-form" onSubmit={handleInviteGroupMemberByEmail}>
-                    <label htmlFor="groupInviteEmail">Invite by email</label>
-                    <div className="chat-email-invite-row">
-                      <Icon name="mail" size={15} />
-                      <input
-                        id="groupInviteEmail"
-                        type="email"
-                        placeholder="member@email.com"
-                        value={groupInviteEmail}
-                        autoComplete="off"
-                        onChange={(event) => {
-                          setGroupInviteEmail(event.target.value);
-                          setGroupInviteUser(null);
-                        }}
-                      />
-                    </div>
-                    {groupInviteUser && (
-                      <div className="chat-email-selected-user">
-                        <span className="chat-avatar small">
-                          {groupInviteUser.user_photo ? (
-                            <img src={avatarUrl(groupInviteUser.user_photo)} alt="" />
-                          ) : (
-                            displayName(groupInviteUser).charAt(0).toUpperCase()
-                          )}
-                        </span>
-                        <span>
-                          <strong>{displayName(groupInviteUser)}</strong>
-                          <small>{groupInviteUser.email}</small>
-                        </span>
-                      </div>
-                    )}
-                    {!groupInviteUser && groupInviteEmailSuggestions.length > 0 && (
-                      <div className="chat-email-suggestions">
-                        {groupInviteEmailSuggestions.map((member) => (
-                          <button
-                            key={member.user_id}
-                            type="button"
-                            onClick={() => selectGroupInviteUser(member)}
-                          >
-                            <span className="chat-avatar small">
-                              {member.user_photo ? (
-                                <img src={avatarUrl(member.user_photo)} alt="" />
-                              ) : (
-                                displayName(member).charAt(0).toUpperCase()
-                              )}
-                            </span>
-                            <span>
-                              <strong>{displayName(member)}</strong>
-                              <small>{member.email}</small>
-                            </span>
-                            {member.project_role && <em>{member.project_role}</em>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <button type="submit" disabled={addingGroupMembers || !groupInviteEmail.trim()}>
-                      Invite email
-                    </button>
-                  </form>
                   <div className="chat-group-member-picker compact">
                     {loadingGroupMemberCandidates ? (
                       <div className="chat-empty">Loading members...</div>

@@ -2,6 +2,10 @@ const axios = require("axios");
 
 const DEFAULT_LLAMA_BASE_URL = "http://localhost:11434/v1";
 const DEFAULT_LLAMA_MODEL = "llama3.2:latest";
+const PREFERRED_OLLAMA_MODELS = ["qwen2.5:3b", "qwen2.5:7b", "llama3.2:latest", "llama3.2"];
+const AI_COOLDOWN_MS = 60000;
+
+let unavailableUntil = 0;
 
 function getNumberEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -15,12 +19,38 @@ function getAiConfig() {
     apiKey: process.env.LLAMA_API_KEY || process.env.GROQ_API_KEY || process.env.OPENROUTER_API_KEY || "ollama",
     baseUrl: (process.env.LEADER_SUGGESTIONS_AI_BASE_URL || process.env.LLAMA_API_BASE_URL || DEFAULT_LLAMA_BASE_URL).replace(/\/$/, ""),
     model: process.env.LEADER_SUGGESTIONS_AI_MODEL || process.env.LLAMA_MODEL || DEFAULT_LLAMA_MODEL,
-    timeoutMs: getNumberEnv("LEADER_SUGGESTIONS_AI_TIMEOUT_MS", getNumberEnv("LLAMA_TIMEOUT_MS", 30000)),
-    maxTokens: getNumberEnv("LEADER_SUGGESTIONS_AI_MAX_TOKENS", 900),
+    timeoutMs: getNumberEnv("LEADER_SUGGESTIONS_AI_TIMEOUT_MS", getNumberEnv("LLAMA_TIMEOUT_MS", getNumberEnv("LOCAL_AI_TIMEOUT_MS", 15000))),
+    maxTokens: getNumberEnv("LEADER_SUGGESTIONS_AI_MAX_TOKENS", getNumberEnv("LLAMA_MAX_TOKENS", 500)),
     temperature: Number.isFinite(Number(process.env.LEADER_SUGGESTIONS_AI_TEMPERATURE))
       ? Number(process.env.LEADER_SUGGESTIONS_AI_TEMPERATURE)
       : 0.2,
   };
+}
+
+function isLocalOllamaConfig(config) {
+  return (
+    config.apiKey === "ollama" ||
+    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(config.baseUrl)
+  );
+}
+
+function getOllamaRootUrl(baseUrl) {
+  return String(baseUrl || DEFAULT_LLAMA_BASE_URL).replace(/\/v1\/?$/, "").replace(/\/$/, "");
+}
+
+async function pickAvailableOllamaModel(config) {
+  if (!isLocalOllamaConfig(config)) return config.model;
+
+  const rootUrl = getOllamaRootUrl(config.baseUrl);
+  const response = await axios.get(`${rootUrl}/api/tags`, { timeout: Math.min(config.timeoutMs, 3000) });
+  const installedModels = (response.data?.models || [])
+    .map((model) => model.name || model.model)
+    .filter(Boolean);
+
+  if (installedModels.length === 0) return config.model;
+  if (installedModels.includes(config.model)) return config.model;
+
+  return PREFERRED_OLLAMA_MODELS.find((model) => installedModels.includes(model)) || installedModels[0];
 }
 
 function compactText(value, maxLength = 420) {
@@ -146,7 +176,7 @@ function sanitizeSuggestion(item, index, membersById) {
   };
 }
 
-function sanitizePlanItem(item, index, membersById) {
+function sanitizePlanItem(item, index, membersById, language = "en") {
   if (!item || typeof item !== "object") return null;
   const taskTitle = compactText(item.task_title || item.title, 180);
   const detail = compactText(item.detail || item.description, 420);
@@ -165,11 +195,18 @@ function sanitizePlanItem(item, index, membersById) {
     suggested_deadline: compactText(item.suggested_deadline || item.deadline || "Set after leader review", 80),
     recommended_role: compactText(item.recommended_role || recommendedMember?.role || "", 80),
     recommended_member: recommendedMember || null,
-    reason: compactText(item.reason || "Recommended from previous-stage context and current workload.", 260),
+    reason: compactText(
+      item.reason || (
+        normalizeLanguage(language) === "vi"
+          ? "Được đề xuất dựa trên ngữ cảnh giai đoạn trước và khối lượng công việc hiện tại."
+          : "Recommended from previous-stage context and current workload."
+      ),
+      260,
+    ),
   };
 }
 
-function sanitizeAiPayload(payload, members) {
+function sanitizeAiPayload(payload, members, language = "en") {
   const membersById = new Map((members || []).map((member) => [Number(member.user_id), member]));
   const suggestions = Array.isArray(payload?.suggestions)
     ? payload.suggestions
@@ -179,7 +216,7 @@ function sanitizeAiPayload(payload, members) {
     : [];
   const assignmentPlan = Array.isArray(payload?.assignment_plan)
     ? payload.assignment_plan
-        .map((item, index) => sanitizePlanItem(item, index, membersById))
+        .map((item, index) => sanitizePlanItem(item, index, membersById, language))
         .filter(Boolean)
         .slice(0, 8)
     : [];
@@ -192,18 +229,27 @@ function sanitizeAiPayload(payload, members) {
   };
 }
 
-function buildPrompt(context) {
+function normalizeLanguage(language) {
+  return String(language || "en").toLowerCase() === "vi" ? "vi" : "en";
+}
+
+function getLanguageName(language) {
+  return normalizeLanguage(language) === "vi" ? "Vietnamese" : "English";
+}
+
+function buildPrompt(context, language = "en") {
+  const outputLanguage = getLanguageName(language);
   return [
     {
       role: "system",
       content:
-        "You are TaskFlow's project leadership assistant. Return only valid JSON. Give practical, data-driven suggestions for a project leader. Use English only.",
+        `You are TaskFlow's project leadership assistant. Return only valid JSON. Give practical, data-driven suggestions for a project leader. Use ${outputLanguage} only for all user-facing text.`,
     },
     {
       role: "user",
       content: JSON.stringify({
         instruction:
-          "Analyze the previous-stage handover, current stage tasks, member roles, and workload. Suggest concrete task assignment/help for the leader. Prefer existing member roles and avoid inventing people. Return JSON with suggestions, risks, and next_actions.",
+          `Analyze the previous-stage handover, current stage tasks, member roles, and workload. Suggest concrete task assignment/help for the leader. Prefer existing member roles and avoid inventing people. Return JSON with assignment_plan, suggestions, risks, and next_actions. Use ${outputLanguage} for task_title, detail, title, reason, risks, and next_actions.`,
         output_schema: {
           assignment_plan: [
             {
@@ -239,9 +285,10 @@ function buildPrompt(context) {
   ];
 }
 
-async function generateLeaderSuggestionsWithAi({ stage, incomingPackage, currentPackage, tasks, members, metrics }) {
+async function generateLeaderSuggestionsWithAi({ stage, incomingPackage, currentPackage, tasks, members, metrics, language }) {
   const config = getAiConfig();
   if (!config.enabled) return null;
+  if (Date.now() < unavailableUntil) return null;
 
   const context = {
     stage: stage
@@ -259,13 +306,23 @@ async function generateLeaderSuggestionsWithAi({ stage, incomingPackage, current
     members: summarizeMembers(members),
   };
 
-  const response = await axios.post(
+  let model = config.model;
+  try {
+    model = await pickAvailableOllamaModel(config);
+  } catch (error) {
+    unavailableUntil = Date.now() + AI_COOLDOWN_MS;
+    throw new Error(`AI service unavailable: ${error.message}`);
+  }
+
+  let response;
+  try {
+    response = await axios.post(
     `${config.baseUrl}/chat/completions`,
     {
-      model: config.model,
+      model,
       temperature: config.temperature,
       max_tokens: config.maxTokens,
-      messages: buildPrompt(context),
+      messages: buildPrompt(context, language),
       response_format: { type: "json_object" },
     },
     {
@@ -279,11 +336,15 @@ async function generateLeaderSuggestionsWithAi({ stage, incomingPackage, current
         "X-Title": "TaskFlow",
       },
     },
-  );
+    );
+  } catch (error) {
+    unavailableUntil = Date.now() + AI_COOLDOWN_MS;
+    throw error;
+  }
 
   const content = response.data?.choices?.[0]?.message?.content || response.data?.message?.content || "";
   const parsed = extractJson(content);
-  const sanitized = sanitizeAiPayload(parsed, members);
+  const sanitized = sanitizeAiPayload(parsed, members, language);
 
   if (sanitized.suggestions.length === 0) {
     throw new Error("AI returned no usable leader suggestions");
@@ -291,7 +352,7 @@ async function generateLeaderSuggestionsWithAi({ stage, incomingPackage, current
 
   return {
     provider: "ai",
-    model: config.model,
+    model,
     ...sanitized,
   };
 }

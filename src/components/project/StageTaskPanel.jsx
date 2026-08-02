@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import api from '../../api/axiosInstance';
+import { useLanguage } from '../../context/LanguageContext';
 import TaskList from '../task/TaskList';
 import './StageTaskPanel.css';
 
@@ -29,6 +30,153 @@ const reviewStatuses = new Set(['SUBMITTED', 'LEADER_APPROVED']);
 const blockedStatuses = new Set(['REJECTED', 'CHANGES_REQUESTED']);
 const activeStatuses = new Set(['ACCEPTED', 'IN_PROGRESS']);
 
+const leaderCopy = {
+  en: {
+    languageLabel: 'Language selector',
+    projectProgress: 'Project progress',
+    tasksCompleted: 'tasks completed',
+    inProgress: 'In progress',
+    needReview: 'Need review',
+    blocked: 'Blocked',
+    taskOverview: 'Task overview',
+    completed: 'Completed',
+    unassigned: 'Unassigned',
+    assignmentSuggestions: 'Assignment suggestions from previous stage',
+    updating: 'Updating',
+    basedOn: 'Based on',
+    previousDocuments: 'previous documents',
+    and: 'and',
+    discussions: 'discussions',
+    currentStageHas: 'Current stage has',
+    documents: 'documents',
+    suggestedAssignmentPlan: 'Suggested assignment plan',
+    task: 'Task',
+    assignTo: 'Assign to',
+    priority: 'Priority',
+    setDeadline: 'Set deadline',
+    member: 'member',
+    aiRiskNotes: 'AI risk notes',
+    recommendedNextActions: 'Recommended next actions',
+    memberWorkload: 'Member workload',
+    active: 'active',
+    tasksForLeaderAttention: 'Tasks for leader attention',
+    noUrgentTask: 'No urgent task needs leader attention right now.',
+    high: 'High',
+    medium: 'Medium',
+    low: 'Low',
+    rules: 'Rules',
+    informationFromPreviousStage: 'Information from previous stage',
+    handoverForNextStage: 'Handover information for next stage',
+    noPreviousStageInformation: 'No previous stage information.',
+    noDocuments: 'No documents.',
+    noDiscussions: 'No discussions.',
+    moveToNextStage: 'Move to next stage',
+    documentSummary: (docs, discussions) => `${docs} documents, ${discussions} discussions`,
+  },
+  vi: {
+    languageLabel: 'Chọn ngôn ngữ',
+    projectProgress: 'Tiến độ dự án',
+    tasksCompleted: 'công việc đã hoàn thành',
+    inProgress: 'Đang làm',
+    needReview: 'Cần duyệt',
+    blocked: 'Đang bị kẹt',
+    taskOverview: 'Tổng quan công việc',
+    completed: 'Hoàn thành',
+    unassigned: 'Chưa giao',
+    assignmentSuggestions: 'Gợi ý phân công từ giai đoạn trước',
+    updating: 'Đang cập nhật',
+    basedOn: 'Dựa trên',
+    previousDocuments: 'tài liệu giai đoạn trước',
+    and: 'và',
+    discussions: 'thảo luận',
+    currentStageHas: 'Giai đoạn hiện tại có',
+    documents: 'tài liệu',
+    suggestedAssignmentPlan: 'Kế hoạch phân công gợi ý',
+    task: 'Công việc',
+    assignTo: 'Giao cho',
+    priority: 'Ưu tiên',
+    setDeadline: 'Đặt hạn',
+    member: 'thành viên',
+    aiRiskNotes: 'Rủi ro AI ghi nhận',
+    recommendedNextActions: 'Hành động nên làm tiếp',
+    memberWorkload: 'Khối lượng của thành viên',
+    active: 'đang làm',
+    tasksForLeaderAttention: 'Việc leader cần chú ý',
+    noUrgentTask: 'Hiện chưa có công việc khẩn cấp cần leader chú ý.',
+    high: 'Cao',
+    medium: 'Vừa',
+    low: 'Thấp',
+    rules: 'Luật',
+    informationFromPreviousStage: 'Thông tin từ giai đoạn trước',
+    handoverForNextStage: 'Thông tin bàn giao cho giai đoạn tiếp theo',
+    noPreviousStageInformation: 'Chưa có thông tin từ giai đoạn trước.',
+    noDocuments: 'Chưa có tài liệu.',
+    noDiscussions: 'Chưa có thảo luận.',
+    moveToNextStage: 'Chuyển sang giai đoạn tiếp theo',
+    documentSummary: (docs, discussions) => `${docs} tài liệu, ${discussions} thảo luận`,
+  },
+};
+
+function getLeaderCopy(language, key) {
+  return leaderCopy[language]?.[key] || leaderCopy.en[key] || key;
+}
+
+function getPriorityLabel(priority, language = 'en') {
+  const key = String(priority || 'medium').toLowerCase();
+  if (key === 'high') return getLeaderCopy(language, 'high');
+  if (key === 'low') return getLeaderCopy(language, 'low');
+  return getLeaderCopy(language, 'medium');
+}
+
+const leaderTextTranslations = {
+  'Turn previous-stage requirements into implementation tasks': 'Chuyển yêu cầu giai đoạn trước thành việc triển khai',
+  'Use the handed-over requirements, MVP scope, and use cases to create module-level tasks with acceptance criteria.': 'Dựa vào yêu cầu bàn giao, phạm vi MVP và use case để tạo các việc theo module kèm tiêu chí hoàn thành.',
+  'Separate API, database, and integration tasks': 'Tách riêng việc API, database và tích hợp',
+  'Data, API, and payment or integration work should have separate owners and early review checkpoints.': 'Các phần dữ liệu, API, thanh toán hoặc tích hợp nên có người phụ trách riêng và mốc review sớm.',
+  'Prepare QA in parallel with implementation': 'Chuẩn bị QA song song với triển khai',
+  'Create tasks for test cases, sample data, and performance checks early instead of pushing QA to the end.': 'Tạo việc cho test case, dữ liệu mẫu và kiểm tra hiệu năng từ sớm thay vì dồn QA về cuối.',
+  'Prioritize UI/UX tasks before development': 'Ưu tiên việc UI/UX trước khi phát triển',
+  'Assign ownership for screen flows, wireframes, and UI review to reduce rework after backend work is done.': 'Giao rõ người phụ trách luồng màn hình, wireframe và review UI để giảm việc làm lại sau khi backend hoàn tất.',
+  'Convert requirements into implementation backlog': 'Chuyển yêu cầu thành backlog triển khai',
+  'Break stage 1 scope, MVP items, and acceptance criteria into development-ready tasks.': 'Tách phạm vi giai đoạn 1, các mục MVP và tiêu chí hoàn thành thành những việc sẵn sàng để phát triển.',
+  'Prepare UI/UX flow for key screens': 'Chuẩn bị luồng UI/UX cho các màn hình chính',
+  'Draft screen flow, state handling, and review notes before implementation starts.': 'Phác thảo luồng màn hình, trạng thái xử lý và ghi chú review trước khi bắt đầu triển khai.',
+  'Design API, database, and integration plan': 'Thiết kế kế hoạch API, database và tích hợp',
+  'Define endpoints, schema changes, external integration risks, and review checkpoints.': 'Xác định endpoint, thay đổi schema, rủi ro tích hợp bên ngoài và các mốc review.',
+  'Create QA checklist and test data': 'Tạo checklist QA và dữ liệu kiểm thử',
+  'Prepare test cases, sample data, and performance checks in parallel with implementation.': 'Chuẩn bị test case, dữ liệu mẫu và kiểm tra hiệu năng song song với quá trình triển khai.',
+  '1-2 days': '1-2 ngày',
+  '2-3 days': '2-3 ngày',
+  '3-4 days': '3-4 ngày',
+  'Set after leader review': 'Đặt sau khi leader rà soát',
+  'Use the task deadline': 'Dùng hạn của công việc',
+  'Recommended from previous-stage context and current workload.': 'Được đề xuất dựa trên ngữ cảnh giai đoạn trước và khối lượng công việc hiện tại.',
+};
+
+function localizeLeaderText(value, language = 'en') {
+  if (language !== 'vi') return value;
+  const text = String(value || '').trim();
+  const activeMatch = text.match(/^(.+) has (\d+) active task\(s\), so this keeps workload balanced\.$/i);
+  if (activeMatch) {
+    return `${activeMatch[1]} đang có ${activeMatch[2]} công việc đang làm, nên phân công như vậy giúp cân bằng khối lượng.`;
+  }
+  return leaderTextTranslations[text] || value;
+}
+
+function localizeLeaderRole(role, language = 'en') {
+  if (language !== 'vi') return role;
+  const value = String(role || '').toLowerCase();
+  if (value === 'developer/devops') return 'Developer/DevOps';
+  if (value === 'developer/ba') return 'Developer/BA';
+  if (value === 'leader/member') return 'Leader/Thành viên';
+  if (value === 'member') return 'Thành viên';
+  if (value === 'owner') return 'Owner';
+  if (value === 'leader') return 'Leader';
+  if (value === 'qa') return 'QA';
+  if (value === 'ba') return 'BA';
+  return role;
+}
+
 function getTaskStatusLabel(status = '') {
   return String(status || 'DRAFT').replace(/_/g, ' ').toLowerCase();
 }
@@ -38,16 +186,16 @@ function percent(value, total) {
   return Math.round((value / total) * 100);
 }
 
-function taskAssigneeNames(task) {
+function taskAssigneeNames(task, language = 'en') {
   const assignees = Array.isArray(task?.assignees) ? task.assignees : [];
-  if (assignees.length === 0) return 'Unassigned';
+  if (assignees.length === 0) return getLeaderCopy(language, 'unassigned');
   return assignees
     .map((member) => member.username || member.email || member.name || 'Member')
     .filter(Boolean)
     .join(', ');
 }
 
-function buildLeaderSuggestions(tasks = [], incomingPackage = null) {
+function buildLeaderSuggestions(tasks = [], incomingPackage = null, language = 'en') {
   const documents = incomingPackage?.documents || [];
   const discussions = incomingPackage?.discussions || [];
   const deliverables = incomingPackage?.deliverables || [];
@@ -62,29 +210,37 @@ function buildLeaderSuggestions(tasks = [], incomingPackage = null) {
 
   if (sourceText.match(/require|srs|scope|mvp|user story|use case|stakeholder|survey/)) {
     suggestions.push({
-      title: 'Break down previous-stage requirements',
-      detail: 'Use previous documents and discussions to create clear tasks with acceptance criteria, prioritizing MVP items.',
+      title: language === 'vi' ? 'Tách yêu cầu từ giai đoạn trước' : 'Break down previous-stage requirements',
+      detail: language === 'vi'
+        ? 'Dựa vào tài liệu và thảo luận trước đó để tạo công việc rõ ràng kèm tiêu chí hoàn thành, ưu tiên các mục MVP.'
+        : 'Use previous documents and discussions to create clear tasks with acceptance criteria, prioritizing MVP items.',
     });
   }
 
   if (sourceText.match(/wireframe|ui|ux|prototype|screen|interface/)) {
     suggestions.push({
-      title: 'Assign UI/UX before development',
-      detail: 'Create tasks for screens, user flows, and stakeholder review before technical implementation starts.',
+      title: language === 'vi' ? 'Giao UI/UX trước khi phát triển' : 'Assign UI/UX before development',
+      detail: language === 'vi'
+        ? 'Tạo việc cho màn hình, luồng người dùng và review với stakeholder trước khi bắt đầu triển khai kỹ thuật.'
+        : 'Create tasks for screens, user flows, and stakeholder review before technical implementation starts.',
     });
   }
 
   if (sourceText.match(/api|database|erd|integration|payment|momo|cod|schema|backend/)) {
     suggestions.push({
-      title: 'Separate high-risk technical work',
-      detail: 'Create separate tasks for API, data, and integration work so blockers can be tracked early.',
+      title: language === 'vi' ? 'Tách riêng các việc kỹ thuật rủi ro cao' : 'Separate high-risk technical work',
+      detail: language === 'vi'
+        ? 'Tạo việc riêng cho API, dữ liệu và tích hợp để phát hiện blocker từ sớm.'
+        : 'Create separate tasks for API, data, and integration work so blockers can be tracked early.',
     });
   }
 
   if (sourceText.match(/test|qa|performance|load|bug|peak/)) {
     suggestions.push({
-      title: 'Prepare QA in parallel',
-      detail: 'Add QA tasks with test cases, sample data, and performance criteria instead of waiting until the end of the stage.',
+      title: language === 'vi' ? 'Chuẩn bị QA song song' : 'Prepare QA in parallel',
+      detail: language === 'vi'
+        ? 'Thêm việc QA với test case, dữ liệu mẫu và tiêu chí hiệu năng thay vì chờ đến cuối giai đoạn.'
+        : 'Add QA tasks with test cases, sample data, and performance criteria instead of waiting until the end of the stage.',
     });
   }
 
@@ -94,35 +250,38 @@ function buildLeaderSuggestions(tasks = [], incomingPackage = null) {
 
   if (unassignedCount > 0) {
     suggestions.push({
-      title: `${unassignedCount} tasks are unassigned`,
-      detail: 'Assign these tasks first so the stage does not get stuck at the start.',
+      title: language === 'vi' ? `${unassignedCount} công việc chưa được giao` : `${unassignedCount} tasks are unassigned`,
+      detail: language === 'vi' ? 'Hãy giao các việc này trước để giai đoạn không bị kẹt ngay từ đầu.' : 'Assign these tasks first so the stage does not get stuck at the start.',
     });
   }
 
   if (reviewCount > 0) {
     suggestions.push({
-      title: `${reviewCount} tasks need review`,
-      detail: 'Review these first so members are not blocked waiting for feedback.',
+      title: language === 'vi' ? `${reviewCount} công việc cần duyệt` : `${reviewCount} tasks need review`,
+      detail: language === 'vi' ? 'Duyệt các việc này trước để thành viên không bị kẹt khi chờ phản hồi.' : 'Review these first so members are not blocked waiting for feedback.',
     });
   }
 
   if (blockedCount > 0) {
     suggestions.push({
-      title: `${blockedCount} tasks need unblocking`,
-      detail: 'Check rejected or change-requested tasks and agree on the next action in discussions.',
+      title: language === 'vi' ? `${blockedCount} công việc đang bị kẹt` : `${blockedCount} tasks need unblocking`,
+      detail: language === 'vi' ? 'Kiểm tra các việc bị từ chối hoặc yêu cầu chỉnh sửa, rồi thống nhất bước tiếp theo trong thảo luận.' : 'Check rejected or change-requested tasks and agree on the next action in discussions.',
     });
   }
 
   if (suggestions.length === 0) {
     suggestions.push({
-      title: 'Start from previous-stage handover',
-      detail: 'Review the handed-over documents and discussions, then split work by module, assignee, and deadline.',
+      title: language === 'vi' ? 'Bắt đầu từ dữ liệu bàn giao giai đoạn trước' : 'Start from previous-stage handover',
+      detail: language === 'vi'
+        ? 'Rà soát tài liệu và thảo luận được bàn giao, sau đó tách việc theo module, người phụ trách và hạn hoàn thành.'
+        : 'Review the handed-over documents and discussions, then split work by module, assignee, and deadline.',
     });
   }
 
   return suggestions.slice(0, 5);
 }
-function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTask, suggestionData, loadingSuggestions }) {
+function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTask, suggestionData, loadingSuggestions, language, setLanguage }) {
+  const lt = (key) => getLeaderCopy(language, key);
   const total = tasks.length;
   const completed = tasks.filter((task) => completedStatuses.has(task.status)).length;
   const active = tasks.filter((task) => activeStatuses.has(task.status)).length;
@@ -131,8 +290,34 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
   const unassigned = tasks.filter((task) => Number(task.assignee_count || 0) === 0 && (!task.assignees || task.assignees.length === 0)).length;
   const progress = percent(completed, total);
   const backendSuggestions = suggestionData?.suggestions || [];
-  const suggestions = backendSuggestions.length > 0 ? backendSuggestions : buildLeaderSuggestions(tasks, incomingPackage);
+  const suggestions = backendSuggestions.length > 0 ? backendSuggestions : buildLeaderSuggestions(tasks, incomingPackage, language);
   const assignmentPlan = suggestionData?.assignment_plan || [];
+  const localizedSuggestions = suggestions.map((suggestion) => ({
+    ...suggestion,
+    title: localizeLeaderText(suggestion.title, language),
+    detail: localizeLeaderText(suggestion.detail, language),
+    recommended_role: localizeLeaderRole(suggestion.recommended_role, language),
+    recommended_member: suggestion.recommended_member
+      ? {
+          ...suggestion.recommended_member,
+          role: localizeLeaderRole(suggestion.recommended_member.role, language),
+        }
+      : suggestion.recommended_member,
+  }));
+  const localizedAssignmentPlan = assignmentPlan.map((item) => ({
+    ...item,
+    task_title: localizeLeaderText(item.task_title, language),
+    detail: localizeLeaderText(item.detail, language),
+    reason: localizeLeaderText(item.reason, language),
+    suggested_deadline: localizeLeaderText(item.suggested_deadline, language),
+    recommended_role: localizeLeaderRole(item.recommended_role, language),
+    recommended_member: item.recommended_member
+      ? {
+          ...item.recommended_member,
+          role: localizeLeaderRole(item.recommended_member.role, language),
+        }
+      : item.recommended_member,
+  }));
   const backendAttentionTasks = suggestionData?.attention_tasks || [];
   const attentionTasks = (backendAttentionTasks.length > 0 ? backendAttentionTasks : tasks
     .filter((task) => reviewStatuses.has(task.status) || blockedStatuses.has(task.status) || Number(task.assignee_count || 0) === 0)
@@ -148,42 +333,61 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
 
   return (
     <div className="stage-leader-workspace">
+      <div className="leader-toolbar">
+        <div className="leader-language-switch" aria-label={lt('languageLabel')}>
+          <button
+            type="button"
+            className={language === 'en' ? 'active' : ''}
+            onClick={() => setLanguage('en')}
+          >
+            EN
+          </button>
+          <button
+            type="button"
+            className={language === 'vi' ? 'active' : ''}
+            onClick={() => setLanguage('vi')}
+          >
+            VI
+          </button>
+        </div>
+      </div>
+
       <section className="leader-summary-grid">
         <div className="leader-progress-card">
           <div className="leader-progress-ring" style={{ '--progress': `${progress}%` }}>
             <span>{progress}%</span>
           </div>
           <div>
-            <strong>Project progress</strong>
-            <small>{completed}/{total || 0} tasks completed</small>
+            <strong>{lt('projectProgress')}</strong>
+            <small>{completed}/{total || 0} {lt('tasksCompleted')}</small>
           </div>
         </div>
         <div className="leader-stat-card">
           <span>{active}</span>
-          <small>In progress</small>
+          <small>{lt('inProgress')}</small>
         </div>
         <div className="leader-stat-card attention">
           <span>{review}</span>
-          <small>Need review</small>
+          <small>{lt('needReview')}</small>
         </div>
         <div className="leader-stat-card danger">
           <span>{blocked}</span>
-          <small>Blocked</small>
+          <small>{lt('blocked')}</small>
         </div>
       </section>
 
       <section className="leader-chart-section">
         <div className="leader-section-title">
           <BarChart3 size={16} />
-          <span>Task overview</span>
+          <span>{lt('taskOverview')}</span>
         </div>
         <div className="leader-bar-list">
           {[
-            ['Completed', completed, '#16a34a'],
-            ['In progress', active, '#2563eb'],
-            ['Need review', review, '#f59e0b'],
-            ['Blocked', blocked, '#dc2626'],
-            ['Unassigned', unassigned, '#64748b'],
+            [lt('completed'), completed, '#16a34a'],
+            [lt('inProgress'), active, '#2563eb'],
+            [lt('needReview'), review, '#f59e0b'],
+            [lt('blocked'), blocked, '#dc2626'],
+            [lt('unassigned'), unassigned, '#64748b'],
           ].map(([label, value, color]) => (
             <div key={label} className="leader-bar-row">
               <span>{label}</span>
@@ -199,19 +403,19 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
       <section className="leader-suggestion-section">
         <div className="leader-section-title">
           <Lightbulb size={16} />
-          <span>Assignment suggestions from previous stage</span>
-          {loadingSuggestions && <em className="leader-loading-badge">Updating</em>}
-          {!loadingSuggestions && <em className="leader-loading-badge">{suggestionSource === 'ai' ? 'AI' : 'Rules'}</em>}
+          <span>{lt('assignmentSuggestions')}</span>
+          {loadingSuggestions && <em className="leader-loading-badge">{lt('updating')}</em>}
+          {!loadingSuggestions && <em className="leader-loading-badge">{suggestionSource === 'ai' ? 'AI' : lt('rules')}</em>}
         </div>
         <div className="leader-source-note">
-          Based on {sourceDocuments} previous documents and {sourceDiscussions} discussions. Current stage has {currentDocuments} documents and {currentDiscussions} discussions.
+          {lt('basedOn')} {sourceDocuments} {lt('previousDocuments')} {lt('and')} {sourceDiscussions} {lt('discussions')}. {lt('currentStageHas')} {currentDocuments} {lt('documents')} {lt('and')} {currentDiscussions} {lt('discussions')}.
         </div>
         <div className="leader-suggestion-list">
-          {suggestions.map((suggestion) => (
+          {localizedSuggestions.map((suggestion) => (
             <div key={suggestion.id || suggestion.title} className={`leader-suggestion-item priority-${suggestion.priority || 'medium'}`}>
               <div className="leader-suggestion-title-row">
                 <strong>{suggestion.title}</strong>
-                <em>{suggestion.priority || 'medium'}</em>
+                <em>{getPriorityLabel(suggestion.priority, language)}</em>
               </div>
               <small>{suggestion.detail}</small>
               {suggestion.recommended_member && (
@@ -225,19 +429,19 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
         </div>
       </section>
 
-      {assignmentPlan.length > 0 && (
+      {localizedAssignmentPlan.length > 0 && (
         <section className="leader-task-section">
           <div className="leader-section-title">
             <ClipboardCheck size={16} />
-            <span>Suggested assignment plan</span>
+            <span>{lt('suggestedAssignmentPlan')}</span>
           </div>
           <div className="leader-assignment-table">
             <div className="leader-assignment-head">
-              <span>Task</span>
-              <span>Assign to</span>
-              <span>Priority</span>
+              <span>{lt('task')}</span>
+              <span>{lt('assignTo')}</span>
+              <span>{lt('priority')}</span>
             </div>
-            {assignmentPlan.slice(0, 8).map((item) => (
+            {localizedAssignmentPlan.slice(0, 8).map((item) => (
               <div key={item.id || item.task_id || item.task_title} className="leader-assignment-row">
                 <div className="leader-assignment-task">
                   <strong>{item.task_title}</strong>
@@ -246,15 +450,15 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
                 </div>
                 <div className="leader-assignment-member">
                   <strong>
-                    {item.recommended_member?.username || item.recommended_member?.email || 'Unassigned'}
+                    {item.recommended_member?.username || item.recommended_member?.email || lt('unassigned')}
                   </strong>
-                  <small>{item.recommended_role || item.recommended_member?.role || 'member'}</small>
+                  <small>{item.recommended_role || item.recommended_member?.role || lt('member')}</small>
                 </div>
                 <div className="leader-assignment-meta">
                   <span className={`leader-priority-pill priority-${item.priority || 'medium'}`}>
-                    {item.priority || 'medium'}
+                    {getPriorityLabel(item.priority, language)}
                   </span>
-                  <small>{item.suggested_deadline || 'Set deadline'}</small>
+                  <small>{item.suggested_deadline || lt('setDeadline')}</small>
                 </div>
               </div>
             ))}
@@ -268,7 +472,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
             <div>
               <div className="leader-section-title compact">
                 <AlertCircle size={15} />
-                <span>AI risk notes</span>
+                <span>{lt('aiRiskNotes')}</span>
               </div>
               <ul className="leader-note-list">
                 {risks.map((risk) => <li key={risk}>{risk}</li>)}
@@ -279,7 +483,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
             <div>
               <div className="leader-section-title compact">
                 <CheckCircle2 size={15} />
-                <span>Recommended next actions</span>
+                <span>{lt('recommendedNextActions')}</span>
               </div>
               <ul className="leader-note-list">
                 {nextActions.map((action) => <li key={action}>{action}</li>)}
@@ -293,7 +497,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
         <section className="leader-task-section">
           <div className="leader-section-title">
             <Users size={16} />
-            <span>Member workload</span>
+            <span>{lt('memberWorkload')}</span>
           </div>
           <div className="leader-workload-list">
             {workload.slice(0, 6).map((member) => (
@@ -302,7 +506,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
                   <strong>{member.username || member.email}</strong>
                   <small>{member.role}</small>
                 </span>
-                <em>{member.active_task_count} active</em>
+                <em>{member.active_task_count} {lt('active')}</em>
               </div>
             ))}
           </div>
@@ -312,10 +516,10 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
       <section className="leader-task-section">
         <div className="leader-section-title">
           <Users size={16} />
-          <span>Tasks for leader attention</span>
+          <span>{lt('tasksForLeaderAttention')}</span>
         </div>
         {attentionTasks.length === 0 ? (
-          <p className="stage-muted">No urgent task needs leader attention right now.</p>
+          <p className="stage-muted">{lt('noUrgentTask')}</p>
         ) : (
           <div className="leader-task-list">
             {attentionTasks.map((task) => (
@@ -327,7 +531,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
               >
                 <span>
                   <strong>{task.title}</strong>
-                  <small>{taskAssigneeNames(task)}</small>
+                  <small>{taskAssigneeNames(task, language)}</small>
                 </span>
                 <em>{getTaskStatusLabel(task.status)}</em>
               </button>
@@ -366,7 +570,8 @@ function EmptyState({ text }) {
   );
 }
 
-function KnowledgeSection({ title, packageData }) {
+function KnowledgeSection({ title, packageData, language }) {
+  const lt = (key) => getLeaderCopy(language, key);
   const documents = packageData?.documents || [];
   const discussions = packageData?.discussions || [];
 
@@ -374,13 +579,13 @@ function KnowledgeSection({ title, packageData }) {
     <section className="stage-knowledge-section">
       <div className="stage-knowledge-title">{title}</div>
       {!packageData ? (
-        <p className="stage-muted">No previous stage information.</p>
+        <p className="stage-muted">{lt('noPreviousStageInformation')}</p>
       ) : (
         <div className="stage-knowledge-grid">
           <div>
-            <span className="stage-mini-label">Documents</span>
+            <span className="stage-mini-label">{lt('documents')}</span>
             {documents.length === 0 ? (
-              <p className="stage-muted">No documents.</p>
+              <p className="stage-muted">{lt('noDocuments')}</p>
             ) : (
               documents.slice(0, 4).map((item) => (
                 <a key={item.document_id} className="stage-link-line" href={assetUrl(item.file_url)} target="_blank" rel="noreferrer">
@@ -390,9 +595,9 @@ function KnowledgeSection({ title, packageData }) {
             )}
           </div>
           <div>
-            <span className="stage-mini-label">Discussions</span>
+            <span className="stage-mini-label">{lt('discussions')}</span>
             {discussions.length === 0 ? (
-              <p className="stage-muted">No discussions.</p>
+              <p className="stage-muted">{lt('noDiscussions')}</p>
             ) : (
               discussions.slice(-3).map((item) => (
                 <p key={item.discussion_id} className="stage-line">{item.message}</p>
@@ -420,6 +625,7 @@ export default function StageTaskPanel({
   setSelectedTask,
   onWorkflowUpdated,
 }) {
+  const { language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('tasks');
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -454,7 +660,9 @@ export default function StageTaskPanel({
     if (!projectId || !stageId) return;
     setLeaderSuggestionLoading(true);
     try {
-      const res = await api.get(`/projects/${projectId}/stages/${stageId}/leader-suggestions`);
+      const res = await api.get(`/projects/${projectId}/stages/${stageId}/leader-suggestions`, {
+        params: { language },
+      });
       setLeaderSuggestionData(res.data);
     } catch (err) {
       setLeaderSuggestionData(null);
@@ -485,8 +693,9 @@ export default function StageTaskPanel({
   const deliverableSummary = useMemo(() => {
     const docs = currentPackage?.documents?.length || 0;
     const discussions = currentPackage?.discussions?.length || 0;
-    return `${docs} documents, ${discussions} discussions`;
-  }, [currentPackage]);
+    const summary = getLeaderCopy(language, 'documentSummary');
+    return typeof summary === 'function' ? summary(docs, discussions) : `${docs} documents, ${discussions} discussions`;
+  }, [currentPackage, language]);
 
   useEffect(() => {
     if (!visibleTabs.some((tab) => tab.key === activeTab)) {
@@ -499,6 +708,13 @@ export default function StageTaskPanel({
     refreshLeaderSuggestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, isLeaderWorkspaceVisible, isOpen, leaderSuggestionData, leaderSuggestionLoading, projectId, stageId]);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'leader' || !isLeaderWorkspaceVisible) return;
+    setLeaderSuggestionData(null);
+    refreshLeaderSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [language]);
 
   const submitDocument = async (event) => {
     event.preventDefault();
@@ -577,7 +793,7 @@ export default function StageTaskPanel({
         <div className="panel-body">
           {panelError && <div className="stage-panel-error">{panelError}</div>}
 
-          <KnowledgeSection title="Information from previous stage" packageData={incomingPackage} />
+          <KnowledgeSection title={getLeaderCopy(language, 'informationFromPreviousStage')} packageData={incomingPackage} language={language} />
 
           <div className="stage-tabs">
             {visibleTabs.map((tab) => {
@@ -714,13 +930,15 @@ export default function StageTaskPanel({
                     setSelectedTask={setSelectedTask}
                     suggestionData={leaderSuggestionData}
                     loadingSuggestions={leaderSuggestionLoading}
+                    language={language}
+                    setLanguage={setLanguage}
                   />
                 </div>
               )}
             </>
           )}
 
-          <KnowledgeSection title="Handover information for next stage" packageData={currentPackage} />
+          <KnowledgeSection title={getLeaderCopy(language, 'handoverForNextStage')} packageData={currentPackage} language={language} />
         </div>
 
         <div className="panel-footer">
@@ -733,7 +951,7 @@ export default function StageTaskPanel({
             title={!canMoveStage ? 'Only owner or leader can move stages' : !overview?.canCompleteStage ? 'You do not have permission to move this stage' : 'Complete stage'}
           >
             <CheckCircle2 size={17} />
-            Move to next stage
+            {getLeaderCopy(language, 'moveToNextStage')}
           </button>
         </div>
       </div>
