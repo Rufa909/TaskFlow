@@ -196,6 +196,37 @@ function countBy(items, getKey) {
   }, {});
 }
 
+function deadlineDateFromTask(task) {
+  if (!task?.deadline) return null;
+  const deadline = task.deadline instanceof Date ? task.deadline : new Date(task.deadline);
+  return Number.isNaN(deadline.getTime()) ? null : deadline;
+}
+
+function buildDueSoonTasks(tasks, windowDays = 3) {
+  const now = new Date();
+  const windowEnd = new Date(now);
+  windowEnd.setDate(windowEnd.getDate() + windowDays);
+  const doneStatuses = new Set(["COMPLETED", "OWNER_APPROVED"]);
+
+  return tasks
+    .map((task) => {
+      const deadline = deadlineDateFromTask(task);
+      if (!deadline || doneStatuses.has(task.status)) return null;
+      const msRemaining = deadline.getTime() - now.getTime();
+      const isOverdue = msRemaining < 0;
+      if (!isOverdue && deadline > windowEnd) return null;
+
+      return {
+        ...task,
+        days_remaining: Math.ceil(msRemaining / (24 * 60 * 60 * 1000)),
+        deadline_status: isOverdue ? "overdue" : "due_soon",
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => deadlineDateFromTask(a) - deadlineDateFromTask(b))
+    .slice(0, 8);
+}
+
 function pickMemberForRole(members, roleHints = []) {
   const normalizedHints = roleHints.map(normalizeText);
   const preferred = members.filter((member) => {
@@ -461,7 +492,25 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
   const reviewTasks = tasks.filter((task) => ["SUBMITTED", "LEADER_APPROVED"].includes(task.status));
   const blockedTasks = tasks.filter((task) => ["REJECTED", "CHANGES_REQUESTED"].includes(task.status));
   const completedTasks = tasks.filter((task) => ["COMPLETED", "OWNER_APPROVED"].includes(task.status));
+  const dueSoonTasks = buildDueSoonTasks(tasks);
   const statusCounts = countBy(tasks, (task) => task.status || "DRAFT");
+
+  if (dueSoonTasks.length > 0) {
+    addSuggestion({
+      type: "deadline",
+      title: leaderText(language, `${dueSoonTasks.length} tasks are close to deadline`, `${dueSoonTasks.length} cÃ´ng viá»‡c sáº¯p háº¿t háº¡n`),
+      detail: leaderText(
+        language,
+        `Check these deadlines first: ${dueSoonTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
+        `HÃ£y kiá»ƒm tra háº¡n cÃ¡c viá»‡c nÃ y trÆ°á»›c: ${dueSoonTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
+      ),
+      source: "deadline",
+      recommended_role: "leader",
+      recommended_member: pickMemberForRole(members, ["leader"]),
+      priority: "high",
+      related_task_ids: dueSoonTasks.slice(0, 5).map((task) => task.task_id),
+    });
+  }
 
   if (unassignedTasks.length > 0) {
     addSuggestion({
@@ -573,6 +622,7 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       unassigned_tasks: unassignedTasks.length,
       review_tasks: reviewTasks.length,
       blocked_tasks: blockedTasks.length,
+      due_soon_tasks: dueSoonTasks.length,
       status_counts: statusCounts,
       previous_documents: incomingDocuments.length,
       previous_discussions: incomingDiscussions.length,
@@ -583,7 +633,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
     suggestions: suggestions.slice(0, 8),
     assignment_plan: buildAssignmentPlan({ tasks, incomingPackage, members, language }),
     workload: members.map(memberPayload),
-    attention_tasks: [...unassignedTasks, ...reviewTasks, ...blockedTasks]
+    due_soon_tasks: dueSoonTasks,
+    attention_tasks: [...dueSoonTasks, ...unassignedTasks, ...reviewTasks, ...blockedTasks]
       .filter((task, index, list) => list.findIndex((item) => item.task_id === task.task_id) === index)
       .slice(0, 8),
   };

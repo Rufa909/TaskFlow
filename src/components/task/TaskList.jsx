@@ -334,21 +334,22 @@ export default function TaskList({
                 </a>
               )}
 
-              {task.deadline && (
-                <div
-                  className="task-meta"
-                  style={{
-                    color: "rgb(5, 133, 39)",
-                    marginTop: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <Icon name="calendar" size={12} />
-                  {formatLocalDate(task.deadline)}
-                  {task.time && (
-                    <span className="task-time">{task.time.slice(0, 5)}</span>
+              {(task.assigned_at || task.deadline) && (
+                <div className="task-date-row">
+                  {task.assigned_at && (
+                    <span className="task-date-chip assigned">
+                      <Icon name="calendar" size={12} />
+                      <span>Giao {formatLocalDate(task.assigned_at)}</span>
+                    </span>
+                  )}
+                  {task.deadline && (
+                    <span className="task-date-chip deadline">
+                      <Icon name="clock" size={12} />
+                      <span>Hạn {formatLocalDate(task.deadline)}</span>
+                      {task.time && (
+                        <span className="task-time">{task.time.slice(0, 5)}</span>
+                      )}
+                    </span>
                   )}
                 </div>
               )}

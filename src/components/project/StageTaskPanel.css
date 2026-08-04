@@ -657,6 +657,45 @@
   background: #f8fbff;
 }
 
+.leader-deadline-section {
+  border-color: #fed7aa;
+  background: #fffaf3;
+}
+
+.leader-deadline-section .leader-section-title svg {
+  color: #c2410c;
+}
+
+.leader-task-row.deadline-due_soon {
+  border-color: #fed7aa;
+  background: #fffaf3;
+}
+
+.leader-task-row.deadline-due_soon:hover {
+  border-color: #fb923c;
+  background: #fff7ed;
+}
+
+.leader-task-row.deadline-due_soon em {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.leader-task-row.deadline-overdue {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.leader-task-row.deadline-overdue:hover {
+  border-color: #f87171;
+  background: #fee2e2;
+}
+
+.leader-task-row.deadline-overdue em {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .leader-task-row span {
   min-width: 0;
   display: grid;

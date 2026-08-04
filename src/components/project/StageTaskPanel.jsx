@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   BarChart3,
+  CalendarClock,
   CheckCircle2,
   ClipboardCheck,
   FileText,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import api from '../../api/axiosInstance';
 import { useLanguage } from '../../context/LanguageContext';
+import { formatLocalDate, parseLocalDate } from '../../utils/dateTime';
 import TaskList from '../task/TaskList';
 import './StageTaskPanel.css';
 
@@ -59,6 +61,10 @@ const leaderCopy = {
     recommendedNextActions: 'Recommended next actions',
     memberWorkload: 'Member workload',
     active: 'active',
+    deadlineReminder: 'Tasks close to deadline',
+    overdue: 'Overdue',
+    dueToday: 'Due today',
+    daysLeft: (days) => `${days} day${days === 1 ? '' : 's'} left`,
     tasksForLeaderAttention: 'Tasks for leader attention',
     noUrgentTask: 'No urgent task needs leader attention right now.',
     high: 'High',
@@ -116,6 +122,11 @@ const leaderCopy = {
     documentSummary: (docs, discussions) => `${docs} tài liệu, ${discussions} thảo luận`,
   },
 };
+
+leaderCopy.vi.deadlineReminder = 'Công việc sắp hết hạn';
+leaderCopy.vi.overdue = 'Quá hạn';
+leaderCopy.vi.dueToday = 'Hạn hôm nay';
+leaderCopy.vi.daysLeft = (days) => `Còn ${days} ngày`;
 
 function getLeaderCopy(language, key) {
   return leaderCopy[language]?.[key] || leaderCopy.en[key] || key;
@@ -188,11 +199,51 @@ function percent(value, total) {
 
 function taskAssigneeNames(task, language = 'en') {
   const assignees = Array.isArray(task?.assignees) ? task.assignees : [];
+  if (assignees.length === 0 && task?.assignee_names) return task.assignee_names;
   if (assignees.length === 0) return getLeaderCopy(language, 'unassigned');
   return assignees
     .map((member) => member.username || member.email || member.name || 'Member')
     .filter(Boolean)
     .join(', ');
+}
+
+function buildDueSoonTasks(tasks = [], windowDays = 3) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(today);
+  windowEnd.setDate(windowEnd.getDate() + windowDays);
+
+  return tasks
+    .map((task) => {
+      const deadline = parseLocalDate(task.deadline);
+      if (!deadline || completedStatuses.has(task.status)) return null;
+      if (deadline > windowEnd) return null;
+      const daysRemaining = Math.ceil((deadline - today) / (24 * 60 * 60 * 1000));
+      return {
+        ...task,
+        days_remaining: daysRemaining,
+        deadline_status: daysRemaining < 0 ? 'overdue' : 'due_soon',
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => parseLocalDate(a.deadline) - parseLocalDate(b.deadline))
+    .slice(0, 8);
+}
+
+function getDeadlineReminderLabel(task, language = 'en') {
+  let days = Number(task.days_remaining);
+  if (!Number.isFinite(days)) {
+    const deadline = parseLocalDate(task.deadline);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    days = deadline ? Math.ceil((deadline - today) / (24 * 60 * 60 * 1000)) : 0;
+  }
+  if (task.deadline_status === 'overdue' || days < 0) return getLeaderCopy(language, 'overdue');
+  if (days === 0) return getLeaderCopy(language, 'dueToday');
+  if (typeof getLeaderCopy(language, 'daysLeft') === 'function') {
+    return getLeaderCopy(language, 'daysLeft')(days);
+  }
+  return `${days} days left`;
 }
 
 function buildLeaderSuggestions(tasks = [], incomingPackage = null, language = 'en') {
@@ -319,9 +370,15 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
       : item.recommended_member,
   }));
   const backendAttentionTasks = suggestionData?.attention_tasks || [];
-  const attentionTasks = (backendAttentionTasks.length > 0 ? backendAttentionTasks : tasks
-    .filter((task) => reviewStatuses.has(task.status) || blockedStatuses.has(task.status) || Number(task.assignee_count || 0) === 0)
-    .slice(0, 6));
+  const backendDueSoonTasks = suggestionData?.due_soon_tasks || [];
+  const dueSoonTasks = backendDueSoonTasks.length > 0
+    ? backendDueSoonTasks
+    : buildDueSoonTasks(tasks);
+  const fallbackAttentionTasks = [
+    ...dueSoonTasks,
+    ...tasks.filter((task) => reviewStatuses.has(task.status) || blockedStatuses.has(task.status) || Number(task.assignee_count || 0) === 0),
+  ].filter((task, index, list) => list.findIndex((item) => item.task_id === task.task_id) === index);
+  const attentionTasks = (backendAttentionTasks.length > 0 ? backendAttentionTasks : fallbackAttentionTasks.slice(0, 6));
   const workload = suggestionData?.workload || [];
   const risks = suggestionData?.risks || [];
   const nextActions = suggestionData?.next_actions || [];
@@ -490,6 +547,34 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
               </ul>
             </div>
           )}
+        </section>
+      )}
+
+      {dueSoonTasks.length > 0 && (
+        <section className="leader-task-section leader-deadline-section">
+          <div className="leader-section-title">
+            <CalendarClock size={16} />
+            <span>{lt('deadlineReminder')}</span>
+          </div>
+          <div className="leader-task-list">
+            {dueSoonTasks.map((task) => (
+              <button
+                key={task.task_id || task.id}
+                type="button"
+                className={`leader-task-row deadline-${task.deadline_status || 'due_soon'}`}
+                onClick={() => setSelectedTask?.(task)}
+              >
+                <span>
+                  <strong>{task.title}</strong>
+                  <small>
+                    {taskAssigneeNames(task, language)}
+                    {task.deadline && ` - ${formatLocalDate(task.deadline)}`}
+                  </small>
+                </span>
+                <em>{getDeadlineReminderLabel(task, language)}</em>
+              </button>
+            ))}
+          </div>
         </section>
       )}
 
@@ -684,7 +769,7 @@ export default function StageTaskPanel({
   const incomingPackage = overview?.incoming;
   const canComplete = Boolean(overview?.canCompleteStage);
   const canMoveStage = ['owner', 'leader'].includes(String(currentUserRole || '').toLowerCase());
-  const isLeaderWorkspaceVisible = canMoveStage && (Number(stage?.stage_order || currentPackage?.stage?.stage_order || 0) > 1 || Boolean(incomingPackage));
+  const isLeaderWorkspaceVisible = canMoveStage;
   const visibleTabs = useMemo(
     () => (isLeaderWorkspaceVisible ? [...tabs, leaderTab] : tabs),
     [isLeaderWorkspaceVisible],

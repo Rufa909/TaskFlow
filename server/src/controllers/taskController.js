@@ -131,6 +131,19 @@ async function ensureTaskWorkflowSchema() {
         `,
       );
 
+      const [taskAssigneeColumns] = await pool.query(
+        `
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'task_assignees'
+          AND COLUMN_NAME = 'created_at'
+        `,
+      );
+      if (taskAssigneeColumns.length === 0) {
+        await pool.query("ALTER TABLE task_assignees ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP");
+      }
+
       await pool.query(
         `
         INSERT IGNORE INTO task_assignees (task_id, user_id, accepted_at, submitted_at)
@@ -541,6 +554,7 @@ function formatDateTimeForApi(value) {
 function normalizeTaskRows(rows) {
   return rows.map((task) => ({
     ...task,
+    assigned_at: formatDateTimeForApi(task.assigned_at),
     deadline: formatDateTimeForApi(task.deadline),
     labels: parseTaskLabels(task.labels),
   }));
@@ -555,7 +569,7 @@ async function enrichTaskRows(rows) {
 
   const [assignees] = await pool.query(
     `
-    SELECT ta.task_id, ta.user_id, ta.accepted_at, ta.submitted_at,
+    SELECT ta.task_id, ta.user_id, ta.accepted_at, ta.submitted_at, ta.created_at,
            u.username, u.email, u.user_photo
     FROM task_assignees ta
     JOIN users u ON u.user_id = ta.user_id
@@ -592,6 +606,14 @@ async function enrichTaskRows(rows) {
       status: shouldRepairDraftStatus ? "ASSIGNED" : task.status,
       assignment_status: shouldRepairDraftStatus ? "approved" : task.assignment_status,
       assigned_to: shouldRepairDraftStatus ? taskAssignees[0].user_id : task.assigned_to,
+      assigned_at: formatDateTimeForApi(
+        taskAssignees.length > 0
+          ? taskAssignees
+              .map((assignee) => assignee.created_at)
+              .filter(Boolean)
+              .sort((a, b) => new Date(a) - new Date(b))[0]
+          : task.assigned_at,
+      ),
       assignees: taskAssignees,
       assignee_ids: taskAssignees.map((assignee) => assignee.user_id),
       assignee_count: taskAssignees.length,
