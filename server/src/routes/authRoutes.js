@@ -11,7 +11,8 @@ const {
   updateEmail,
   updatePassword,
   sendVerificationEmail,
-  verifyEmail
+  verifyEmail,
+  getAdminStats
 } = require('../controllers/authController');
 // Import middleware (bảo vệ route)
 const auth = require('../middleware/authMiddleware');
@@ -32,5 +33,6 @@ router.put('/username', auth, updateUsername);
 router.put('/email', auth, updateEmail);
 router.put('/password', auth, updatePassword);
 router.post('/send-verification-email', auth, sendVerificationEmail);
+router.get('/admin/stats', auth, getAdminStats);
 
 module.exports = router;

@@ -9,6 +9,7 @@ import InboxPage from './pages/InboxPage';
 import InboxDetailPage from './pages/InboxDetailPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ChatPage from './pages/ChatPage';
+import AdminPage from './pages/AdminPage';
 import { FiltersProvider } from './context/FiltersContext';
 import { TeamsProvider } from './context/TeamsContext';
 import { ToastProvider } from './context/ToastContext';
@@ -97,6 +98,14 @@ export default function App() {
                     element={
                       <ProtectedRoute>
                         <ChatPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute>
+                        <AdminPage />
                       </ProtectedRoute>
                     }
                   />

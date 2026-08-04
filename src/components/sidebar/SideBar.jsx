@@ -538,6 +538,7 @@ export default function Sidebar({
           {/* Profile Dropdown Menu */}
           {isProfileMenuOpen && (
             <ProfileDropdown
+              user={user}
               handleLogout={handleLogout}
               setIsSettingsModalOpen={setIsSettingsModalOpen}
               setIsProfileMenuOpen={setIsProfileMenuOpen}
@@ -981,6 +982,7 @@ export default function Sidebar({
 
         {isProfileMenuOpen && (
           <ProfileDropdown
+            user={user}
             handleLogout={handleLogout}
             setIsSettingsModalOpen={setIsSettingsModalOpen}
             setIsProfileMenuOpen={setIsProfileMenuOpen}
@@ -998,6 +1000,7 @@ export default function Sidebar({
           {t("helpResources")}
         </button>
       </div>
+
     </aside>
   );
 }

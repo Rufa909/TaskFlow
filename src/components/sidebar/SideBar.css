@@ -120,6 +120,15 @@
   background: #ef4444;
 }
 
+.profile-dropdown-item.admin-item {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.profile-dropdown-item.admin-item:hover {
+  background: #eff6ff;
+}
+
 .project-item .project-name {
   min-width: 0;
   overflow: hidden;

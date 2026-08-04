@@ -1,16 +1,30 @@
 import Icon from "../common/Icon";
 import { useTeams } from "../../context/TeamsContext";
+import { useNavigate } from "react-router-dom";
 
 export default function ProfileDropdown({
+  user,
   handleLogout,
   setIsSettingsModalOpen,
   setIsProfileMenuOpen,
   t,
 }) {
   const { openTeamModal, activeProject } = useTeams();
+  const navigate = useNavigate();
 
   return (
     <div className="profile-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="profile-dropdown-item admin-item"
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate("/admin");
+          setIsProfileMenuOpen(false);
+        }}
+      >
+        <Icon name="activity" size={14} /> Admin panel
+      </div>
+
       <div
         className="profile-dropdown-item"
         onClick={(e) => {
