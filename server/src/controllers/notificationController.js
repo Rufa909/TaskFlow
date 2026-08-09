@@ -54,6 +54,8 @@ exports.getMyNotifications = async (req, res) => {
         CASE
           WHEN n.type = 'role_updated' THEN CONCAT('Role updated in ', COALESCE(p.name, 'project'))
           WHEN n.type = 'task_assigned' THEN CONCAT('New task assigned: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'deadline_due_24h' THEN CONCAT('Due in 24 hours: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'deadline_due_1h' THEN CONCAT('Due in 1 hour: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'deadline_overdue' THEN CONCAT('Deadline overdue: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'assignment_request' THEN CONCAT('Task assignment waiting for approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'assignment_pending' THEN CONCAT('Task pending owner approval: ', COALESCE(t.title, 'Task'))
@@ -75,7 +77,7 @@ exports.getMyNotifications = async (req, res) => {
         ON n.type = 'role_updated'
        AND p.project_id = n.reference_id
       LEFT JOIN tasks t
-        ON n.type IN ('task_assigned', 'deadline_overdue', 'assignment_request', 'assignment_pending', 'assignment_rejected', 'task_submitted', 'leader_approved_task', 'task_changes_requested')
+        ON n.type IN ('task_assigned', 'deadline_due_24h', 'deadline_due_1h', 'deadline_overdue', 'assignment_request', 'assignment_pending', 'assignment_rejected', 'task_submitted', 'leader_approved_task', 'task_changes_requested')
        AND t.task_id = n.reference_id
       LEFT JOIN projects tp ON tp.project_id = t.project_id
       LEFT JOIN project_chat_messages ccm

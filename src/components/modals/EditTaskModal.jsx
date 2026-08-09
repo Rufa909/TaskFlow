@@ -22,7 +22,13 @@ const priorities = [
 
 function formatTaskDate(value, taskTime) {
   if (!value) return "Add date";
-  return format(value, taskTime ? "d MMM HH:mm" : "d MMM");
+  if (!taskTime) return format(value, "d MMM");
+
+  const [hours = "00", minutes = "00"] = String(taskTime).split(":");
+  const dateWithTime = new Date(value);
+  dateWithTime.setHours(Number(hours), Number(minutes), 0, 0);
+
+  return format(dateWithTime, "d MMM HH:mm");
 }
 
 export default function EditTaskModal({

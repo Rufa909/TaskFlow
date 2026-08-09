@@ -78,7 +78,10 @@ httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
 
-const overdueIntervalMs = Number(process.env.OVERDUE_TASK_CHECK_INTERVAL_MS || 15 * 60 * 1000);
+const overdueIntervalMs = Number(process.env.OVERDUE_TASK_CHECK_INTERVAL_MS || 60 * 1000);
+checkOverdueTasks().catch((err) => {
+    console.error('Loi kiem tra task qua han:', err.message);
+});
 setInterval(() => {
     checkOverdueTasks().catch((err) => {
         console.error('Loi kiem tra task qua han:', err.message);

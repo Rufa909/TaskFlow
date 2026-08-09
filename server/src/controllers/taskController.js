@@ -8,9 +8,36 @@ let labelsColumnReady;
 let workflowSchemaReady;
 let taskDetailSchemaReady;
 let stageDocumentAttachmentSchemaReady;
+let deadlineReminderSchemaReady;
 const PROJECT_MEMBER_ROLE_ENUM = "ENUM('owner','leader','member','ba','developer','qa','devops','viewer')";
 const TASK_ASSIGNABLE_ROLES = ["member", "ba", "developer", "qa", "devops"];
 const TASK_MANAGER_ROLES = ["owner", "leader", "ba", "developer", "qa", "devops"];
+const DEADLINE_REMINDER_BLOCKED_STATUSES = new Set([
+  "SUBMITTED",
+  "LEADER_APPROVED",
+  "OWNER_APPROVED",
+  "COMPLETED",
+]);
+const DEADLINE_REMINDERS = [
+  {
+    milestone: "24h",
+    offsetHours: 24,
+    notificationType: "deadline_due_24h",
+    subjectPrefix: "Task sắp đến hạn",
+  },
+  {
+    milestone: "1h",
+    offsetHours: 1,
+    notificationType: "deadline_due_1h",
+    subjectPrefix: "Task còn 1 giờ đến hạn",
+  },
+  {
+    milestone: "overdue",
+    offsetHours: 0,
+    notificationType: "deadline_overdue",
+    subjectPrefix: "Task đã quá hạn",
+  },
+];
 
 function getMailTransporter() {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -19,6 +46,9 @@ function getMailTransporter() {
 
   return nodemailer.createTransport({
     service: "gmail",
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
@@ -338,30 +368,213 @@ async function canAccessTask(projectId, taskId, userId) {
   return Boolean(task);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function buildTaskUrl(task) {
+  const baseUrl = String(process.env.CLIENT_URL || "http://localhost:5173").split("#")[0].trim();
+  const url = new URL(baseUrl || "http://localhost:5173");
+  url.searchParams.set("projectId", task.project_id);
+  url.searchParams.set("taskId", task.task_id);
+  return url.toString();
+}
+
+function canSendDeadlineReminderForStatus(status) {
+  return !DEADLINE_REMINDER_BLOCKED_STATUSES.has(String(status || "").toUpperCase());
+}
+
+function formatOverdueDuration(deadline) {
+  const deadlineDate = deadline instanceof Date ? deadline : new Date(deadline);
+  if (Number.isNaN(deadlineDate.getTime())) return "Chưa xác định";
+
+  const diffMs = Math.max(0, Date.now() - deadlineDate.getTime());
+  const totalHours = Math.max(1, Math.floor(diffMs / (60 * 60 * 1000)));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+
+  if (days > 0 && hours > 0) return `${days} ngày ${hours} giờ`;
+  if (days > 0) return `${days} ngày`;
+  return `${totalHours} giờ`;
+}
+
+function formatPriorityLabel(priority) {
+  const labels = {
+    urgent: "Khẩn cấp",
+    high: "Cao",
+    medium: "Trung bình",
+    low: "Thấp",
+  };
+
+  return labels[String(priority || "").toLowerCase()] || priority || "Không có";
+}
+
+function buildDeadlineMailHtml({
+  milestone,
+  assigneeName,
+  taskTitle,
+  projectName,
+  deadlineText,
+  priority,
+  assignerName,
+  overdueText,
+  taskUrl,
+}) {
+  const safe = {
+    assigneeName: escapeHtml(assigneeName),
+    taskTitle: escapeHtml(taskTitle),
+    projectName: escapeHtml(projectName),
+    deadlineText: escapeHtml(deadlineText),
+    priority: escapeHtml(priority),
+    assignerName: escapeHtml(assignerName),
+    overdueText: escapeHtml(overdueText),
+    taskUrl: escapeHtml(taskUrl),
+  };
+
+  let body;
+  if (milestone === "24h") {
+    body = `
+      <p>Xin chào ${safe.assigneeName},</p>
+      <p>Công việc "<strong>${safe.taskTitle}</strong>" trong dự án "<strong>${safe.projectName}</strong>" của bạn sẽ đến hạn trong 24 giờ.</p>
+      <p><strong>Dự án:</strong> ${safe.projectName}<br>
+      <strong>Trạng thái thời gian:</strong> Đến hạn trong 24 giờ tới<br>
+      <strong>Hạn hoàn thành:</strong> ${safe.deadlineText}<br>
+      <strong>Người giao việc:</strong> ${safe.assignerName}</p>
+      <p>Vui lòng kiểm tra và hoàn thành công việc trước thời hạn.</p>
+    `;
+  } else if (milestone === "1h") {
+    body = `
+      <p>Xin chào ${safe.assigneeName},</p>
+      <p>Công việc "<strong>${safe.taskTitle}</strong>" trong dự án "<strong>${safe.projectName}</strong>" của bạn sẽ đến hạn trong 1 giờ.</p>
+      <p><strong>Dự án:</strong> ${safe.projectName}<br>
+      <strong>Trạng thái thời gian:</strong> Đến hạn trong 1 giờ tới<br>
+      <strong>Hạn hoàn thành:</strong> ${safe.deadlineText}</p>
+      <p>Vui lòng hoàn thành hoặc cập nhật tiến độ công việc sớm nhất có thể.</p>
+    `;
+  } else {
+    body = `
+      <p>Xin chào ${safe.assigneeName},</p>
+      <p>Công việc "<strong>${safe.taskTitle}</strong>" trong dự án "<strong>${safe.projectName}</strong>" đã vượt quá thời hạn hoàn thành.</p>
+      <p><strong>Dự án:</strong> ${safe.projectName}<br>
+      <strong>Trạng thái thời gian:</strong> Đã quá hạn<br>
+      <strong>Hạn hoàn thành:</strong> ${safe.deadlineText}<br>
+      <strong>Người giao việc:</strong> ${safe.assignerName}</p>
+      <p>Vui lòng kiểm tra và cập nhật tiến độ công việc sớm nhất có thể.</p>
+    `;
+  }
+
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #222; max-width: 640px;">
+      ${body}
+      <p style="margin-top: 24px;">
+        <a href="${safe.taskUrl}" style="display: inline-block; background: #1e88e5; color: #fff; text-decoration: none; padding: 10px 16px; border-radius: 6px;">
+          Xem công việc
+        </a>
+      </p>
+    </div>
+  `;
+}
+
 async function sendDeadlineMail(task) {
-  const recipients = [task.assigned_email, task.leader_email]
-    .filter(Boolean)
-    .filter((email, index, emails) => emails.indexOf(email) === index);
+  const recipients = [task.assignee_email].filter(Boolean);
 
-  if (recipients.length === 0) return false;
-
-  const transporter = getMailTransporter();
-  await transporter.sendMail({
-    from: `"TaskFlow" <${process.env.EMAIL_USER}>`,
-    to: recipients,
-    subject: `Task quá hạn: ${task.title}`,
-    html: `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #222;">
-        <h2>Task quá hạn deadline</h2>
-        <p><strong>Task:</strong> ${task.title}</p>
-        <p><strong>Project:</strong> ${task.project_name}</p>
-        <p><strong>Deadline:</strong> ${new Date(task.deadline).toLocaleString("vi-VN")}</p>
-        <p>Mail này được gửi cho member phụ trách và leader/người tạo task.</p>
-      </div>
-    `,
+  if (recipients.length === 0) {
+    console.warn(`Khong gui mail deadline task ${task.task_id}: task khong co email assignee`);
+    return false;
+  }
+  const reminder = DEADLINE_REMINDERS.find((item) => item.milestone === task.milestone)
+    || DEADLINE_REMINDERS[DEADLINE_REMINDERS.length - 1];
+  const deadlineText = new Date(task.deadline).toLocaleString("vi-VN");
+  const assigneeName = task.assignee_name || "ban";
+  const assignerName = task.assigner_name || "Leader/Manager";
+  const priority = formatPriorityLabel(task.priority);
+  const taskUrl = buildTaskUrl(task);
+  const overdueText = formatOverdueDuration(task.deadline);
+  const html = buildDeadlineMailHtml({
+    milestone: task.milestone,
+    assigneeName,
+    taskTitle: task.title,
+    projectName: task.project_name,
+    deadlineText,
+    priority,
+    assignerName,
+    overdueText,
+    taskUrl,
   });
 
+  const transporter = getMailTransporter();
+  const info = await transporter.sendMail({
+    from: `"TaskFlow" <${process.env.EMAIL_USER}>`,
+    to: recipients,
+    subject: `${reminder.subjectPrefix}: ${task.title}`,
+    html,
+  });
+
+  const accepted = Array.isArray(info.accepted) ? info.accepted : [];
+  const rejected = Array.isArray(info.rejected) ? info.rejected : [];
+  console.log(
+    `Ket qua gui mail ${task.milestone} task ${task.task_id}: accepted=${accepted.join(",") || "none"} rejected=${rejected.join(",") || "none"}`,
+  );
+
+  if (accepted.length === 0) {
+    console.warn(`Khong danh dau da gui mail task ${task.task_id} vi SMTP khong accepted recipient nao`);
+    return false;
+  }
+
   return true;
+}
+
+async function ensureTaskDeadlineReminderSchema() {
+  if (!deadlineReminderSchemaReady) {
+    deadlineReminderSchemaReady = pool.query(
+      `
+      CREATE TABLE IF NOT EXISTS task_deadline_reminders (
+        reminder_id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        user_id INT NULL,
+        milestone ENUM('24h','1h','overdue') NOT NULL,
+        scheduled_for DATETIME NOT NULL,
+        deadline_snapshot DATETIME NOT NULL,
+        sent_at DATETIME NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_task_deadline_reminder_milestone (task_id, milestone),
+        UNIQUE KEY uniq_task_deadline_reminder_user_milestone (task_id, user_id, milestone),
+        INDEX idx_task_deadline_reminders_due (scheduled_for, sent_at),
+        FOREIGN KEY (task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+      )
+      `,
+    );
+    deadlineReminderSchemaReady = deadlineReminderSchemaReady.then(async (result) => {
+      const [columns] = await pool.query(
+        `
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'task_deadline_reminders'
+          AND COLUMN_NAME = 'user_id'
+        `,
+      );
+
+      if (columns.length === 0) {
+        await pool.query("ALTER TABLE task_deadline_reminders ADD COLUMN user_id INT NULL AFTER task_id");
+      }
+
+      await pool.query("ALTER TABLE task_deadline_reminders DROP INDEX uniq_task_deadline_reminder_milestone").catch(() => {});
+      await pool.query(
+        "ALTER TABLE task_deadline_reminders ADD UNIQUE KEY uniq_task_deadline_reminder_user_milestone (task_id, user_id, milestone)",
+      ).catch(() => {});
+
+      return result;
+    });
+  }
+
+  return deadlineReminderSchemaReady;
 }
 
 async function ensureTaskCompletionColumn() {
@@ -657,20 +870,244 @@ function hasBodyField(req, field) {
   return Object.prototype.hasOwnProperty.call(req.body || {}, field);
 }
 
+function normalizeDeadlineTime(deadline, time) {
+  if (time) {
+    const [hours = "00", minutes = "00", seconds = "00"] = String(time).split(":");
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds || "00").padStart(2, "0")}`;
+  }
+
+  if (!deadline || !String(deadline).includes("T")) return null;
+
+  const deadlineDate = new Date(deadline);
+  if (Number.isNaN(deadlineDate.getTime())) return null;
+
+  const hours = deadlineDate.getHours();
+  const minutes = deadlineDate.getMinutes();
+  const seconds = deadlineDate.getSeconds();
+  if (hours === 0 && minutes === 0 && seconds === 0) return null;
+
+  return [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    String(seconds).padStart(2, "0"),
+  ].join(":");
+}
+
 function buildDeadlineDate(deadline, time) {
   if (!deadline) return null;
 
   const deadlineDate = new Date(deadline);
   if (Number.isNaN(deadlineDate.getTime())) return null;
 
-  if (time) {
-    const [hours, minutes] = String(time).split(":");
+  const normalizedTime = normalizeDeadlineTime(deadline, time);
+  if (normalizedTime) {
+    const [hours, minutes] = normalizedTime.split(":");
     deadlineDate.setHours(Number(hours), Number(minutes), 0, 0);
   } else {
     deadlineDate.setHours(0, 0, 0, 0);
   }
 
   return deadlineDate;
+}
+
+function datesEqual(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+
+  const first = a instanceof Date ? a : new Date(a);
+  const second = b instanceof Date ? b : new Date(b);
+  if (Number.isNaN(first.getTime()) || Number.isNaN(second.getTime())) return false;
+
+  return first.getTime() === second.getTime();
+}
+
+function addHours(date, hours) {
+  const nextDate = new Date(date);
+  nextDate.setHours(nextDate.getHours() + hours);
+  return nextDate;
+}
+
+function effectiveDeadlineDateFromTask(task) {
+  if (!task?.deadline) return null;
+
+  const deadline = task.deadline instanceof Date ? new Date(task.deadline) : new Date(task.deadline);
+  if (Number.isNaN(deadline.getTime())) return null;
+
+  if (task.time && String(task.time) !== "00:00:00") {
+    const [hours = "00", minutes = "00", seconds = "00"] = String(task.time).split(":");
+    deadline.setHours(Number(hours), Number(minutes), Number(seconds), 0);
+  } else {
+    deadline.setHours(0, 0, 0, 0);
+    deadline.setDate(deadline.getDate() + 1);
+  }
+
+  return deadline;
+}
+
+async function syncTaskDeadlineReminders(taskId, baselineDate = null, options = {}) {
+  await ensureTaskDeadlineReminderSchema();
+  const preserveSent = Boolean(options.preserveSent);
+  const now = options.now ? new Date(options.now) : new Date();
+
+  const [[task]] = await pool.query(
+    `
+    SELECT task_id, deadline, time, created_at, completed_at, status, deleted_at
+    FROM tasks
+    WHERE task_id = ?
+    `,
+    [taskId],
+  );
+
+  const sentMilestones = new Set();
+  const globallySentMilestones = new Set();
+  if (preserveSent) {
+    const [sentRows] = await pool.query(
+      "SELECT user_id, milestone FROM task_deadline_reminders WHERE task_id = ? AND sent_at IS NOT NULL",
+      [taskId],
+    );
+    sentRows.forEach((row) => {
+      if (row.user_id) {
+        sentMilestones.add(`${row.user_id}:${row.milestone}`);
+      } else {
+        globallySentMilestones.add(row.milestone);
+      }
+    });
+    await pool.query(
+      "DELETE FROM task_deadline_reminders WHERE task_id = ? AND sent_at IS NULL",
+      [taskId],
+    );
+  } else {
+    await pool.query("DELETE FROM task_deadline_reminders WHERE task_id = ?", [taskId]);
+  }
+
+  const effectiveDeadline = effectiveDeadlineDateFromTask(task);
+  if (
+    !task ||
+    !effectiveDeadline ||
+    task.deleted_at ||
+    task.completed_at ||
+    !canSendDeadlineReminderForStatus(task.status)
+  ) {
+    return;
+  }
+
+  const baseline = baselineDate ? new Date(baselineDate) : new Date(task.created_at || Date.now());
+  const [assignees] = await pool.query(
+    "SELECT user_id FROM task_assignees WHERE task_id = ?",
+    [taskId],
+  );
+  const assigneeIds = assignees.map((assignee) => Number(assignee.user_id)).filter((userId) => Number.isInteger(userId) && userId > 0);
+  if (assigneeIds.length === 0) return;
+
+  const reminders = DEADLINE_REMINDERS
+    .filter((reminder) => effectiveDeadline > now || reminder.milestone === "overdue")
+    .filter((reminder) => reminder.offsetHours === 0 || addHours(baseline, reminder.offsetHours) <= effectiveDeadline)
+    .flatMap((reminder) =>
+      assigneeIds
+        .filter(() => !globallySentMilestones.has(reminder.milestone))
+        .filter((userId) => !sentMilestones.has(`${userId}:${reminder.milestone}`))
+        .map((userId) => [
+          taskId,
+          userId,
+          reminder.milestone,
+          addHours(effectiveDeadline, -reminder.offsetHours),
+          effectiveDeadline,
+        ]),
+    );
+
+  for (const reminder of reminders) {
+    await pool.query(
+      `
+      INSERT INTO task_deadline_reminders
+      (task_id, user_id, milestone, scheduled_for, deadline_snapshot)
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      reminder,
+    );
+  }
+}
+
+async function backfillTaskDeadlineReminders() {
+  await ensureTaskDeadlineReminderSchema();
+
+  const [tasks] = await pool.query(
+    `
+    SELECT t.task_id
+    FROM tasks t
+    JOIN projects p ON p.project_id = t.project_id
+    WHERE t.deleted_at IS NULL
+      AND p.deleted_at IS NULL
+      AND t.completed_at IS NULL
+      AND t.status NOT IN ('SUBMITTED','LEADER_APPROVED','OWNER_APPROVED','COMPLETED')
+      AND t.deadline IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM task_assignees ta
+        WHERE ta.task_id = t.task_id
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM task_assignees ta
+        JOIN task_deadline_reminders tdr
+          ON tdr.task_id = ta.task_id
+         AND tdr.user_id = ta.user_id
+        WHERE ta.task_id = t.task_id
+      )
+    LIMIT 100
+    `,
+  );
+
+  for (const task of tasks) {
+    await syncTaskDeadlineReminders(task.task_id, null, { preserveSent: true });
+  }
+}
+
+async function repairPendingTaskDeadlineReminders() {
+  await ensureTaskDeadlineReminderSchema();
+
+  const [tasks] = await pool.query(
+    `
+    SELECT DISTINCT t.task_id, t.deadline, t.time
+    FROM tasks t
+    JOIN task_deadline_reminders tdr ON tdr.task_id = t.task_id
+    JOIN projects p ON p.project_id = t.project_id
+    WHERE tdr.sent_at IS NULL
+      AND t.deleted_at IS NULL
+      AND p.deleted_at IS NULL
+      AND t.completed_at IS NULL
+      AND t.status NOT IN ('SUBMITTED','LEADER_APPROVED','OWNER_APPROVED','COMPLETED')
+      AND t.deadline IS NOT NULL
+    LIMIT 100
+    `,
+  );
+
+  for (const task of tasks) {
+    const effectiveDeadline = effectiveDeadlineDateFromTask(task);
+    if (!effectiveDeadline) continue;
+
+    const [[snapshot]] = await pool.query(
+      `
+      SELECT deadline_snapshot
+      FROM task_deadline_reminders
+      WHERE task_id = ?
+        AND sent_at IS NULL
+      ORDER BY reminder_id ASC
+      LIMIT 1
+      `,
+      [task.task_id],
+    );
+
+    if (!snapshot || datesEqual(snapshot.deadline_snapshot, effectiveDeadline)) continue;
+
+    const [[taskMeta]] = await pool.query(
+      "SELECT created_at FROM tasks WHERE task_id = ?",
+      [task.task_id],
+    );
+
+    await syncTaskDeadlineReminders(task.task_id, taskMeta?.created_at || new Date(), {
+      preserveSent: true,
+    });
+  }
 }
 
 function isPastDeadlineDate(deadlineDate) {
@@ -1032,7 +1469,8 @@ exports.createTask = async (req, res) => {
       });
     }
 
-    const deadlineDate = buildDeadlineDate(deadline, time);
+    const normalizedDeadlineTime = normalizeDeadlineTime(deadline, time);
+    const deadlineDate = buildDeadlineDate(deadline, normalizedDeadlineTime);
     if (isPastDeadlineDate(deadlineDate)) {
       return res.status(400).json({
         success: false,
@@ -1080,7 +1518,7 @@ exports.createTask = async (req, res) => {
         title,
         description || null,
         deadlineDate,
-        time || null,
+        normalizedDeadlineTime,
         priority || "medium",
         JSON.stringify(parseTaskLabels(labels)),
         projectId,
@@ -1096,6 +1534,7 @@ exports.createTask = async (req, res) => {
     if (assignmentStatus === "pending") {
       await pool.query("UPDATE tasks SET status = 'DRAFT' WHERE task_id = ?", [taskId]);
     }
+    await syncTaskDeadlineReminders(taskId);
 
     if (assigneeIds.length > 0 && assignmentStatus === "pending") {
       await pool.query(
@@ -1203,7 +1642,8 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    const deadlineDate = buildDeadlineDate(deadline, time);
+    const normalizedDeadlineTime = normalizeDeadlineTime(deadline, time);
+    const deadlineDate = buildDeadlineDate(deadline, normalizedDeadlineTime);
     if (isPastDeadlineDate(deadlineDate)) {
       return res.status(400).json({
         success: false,
@@ -1229,11 +1669,13 @@ exports.updateTask = async (req, res) => {
       taskStageId = stageId;
     }
 
+    const [[existingTask]] = await pool.query(
+      "SELECT deadline, time, stage_id FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL",
+      [taskId, projectId],
+    );
+    const previousEffectiveDeadline = effectiveDeadlineDateFromTask(existingTask);
+
     if (taskStageId === undefined) {
-      const [[existingTask]] = await pool.query(
-        "SELECT stage_id FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL",
-        [taskId, projectId],
-      );
       taskStageId = existingTask ? existingTask.stage_id : null;
     }
 
@@ -1265,7 +1707,7 @@ exports.updateTask = async (req, res) => {
         title.trim(),
         description || null,
         deadlineDate,
-        time || null,
+        normalizedDeadlineTime,
         priority || "medium",
         JSON.stringify(parseTaskLabels(labels)),
         taskStageId,
@@ -1280,6 +1722,14 @@ exports.updateTask = async (req, res) => {
         success: false,
         message: "Task not found",
       });
+    }
+
+    const nextEffectiveDeadline = effectiveDeadlineDateFromTask({
+      deadline: deadlineDate,
+      time: normalizedDeadlineTime,
+    });
+    if (!datesEqual(previousEffectiveDeadline, nextEffectiveDeadline)) {
+      await syncTaskDeadlineReminders(taskId, new Date());
     }
 
     await insertTaskAttachments(taskId, getUploadedTaskFiles(req), req.user.id);
@@ -2416,6 +2866,7 @@ exports.reviewTaskAssignmentRequest = async (req, res) => {
         "INSERT IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)",
         [request.task_id, request.assigned_to],
       );
+      await syncTaskDeadlineReminders(request.task_id);
       await pool.query(
         "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
         [request.assigned_to, request.task_id],
@@ -2764,60 +3215,76 @@ exports.reviewTaskSubmission = async (req, res) => {
 exports.checkOverdueTasks = async () => {
   await ensureTaskWorkflowSchema();
   await ensureTaskCompletionColumn();
+  await ensureTaskDeadlineReminderSchema();
+  await backfillTaskDeadlineReminders();
+  await repairPendingTaskDeadlineReminders();
 
-  const [tasks] = await pool.query(
+  const [reminders] = await pool.query(
     `
-    SELECT t.task_id, t.title,
-           CASE
-             WHEN t.time IS NULL OR t.time = '00:00:00'
-               THEN DATE_ADD(DATE(t.deadline), INTERVAL 1 DAY)
-             ELSE t.deadline
-           END AS deadline,
-           p.name AS project_name,
-           assigned.user_id AS assigned_user_id,
-           assigned.email AS assigned_email,
-           leader.user_id AS leader_user_id,
-           leader.email AS leader_email
-    FROM tasks t
+    SELECT
+      tdr.reminder_id,
+      tdr.milestone,
+      t.task_id,
+      t.project_id,
+      t.title,
+      t.priority,
+      tdr.deadline_snapshot AS deadline,
+      p.name AS project_name,
+      assignee.user_id AS assignee_user_id,
+      assignee.email AS assignee_email,
+      COALESCE(assignee.username, assignee.email) AS assignee_name,
+      COALESCE(assigner.username, assigner.email, 'Leader/Manager') AS assigner_name
+    FROM task_deadline_reminders tdr
+    JOIN tasks t ON t.task_id = tdr.task_id
     JOIN projects p ON p.project_id = t.project_id
-    LEFT JOIN users assigned ON assigned.user_id = t.assigned_to
-    LEFT JOIN users leader ON leader.user_id = t.created_by
-    WHERE t.deleted_at IS NULL
+    JOIN task_assignees ta ON ta.task_id = t.task_id AND ta.user_id = tdr.user_id
+    JOIN users assignee ON assignee.user_id = tdr.user_id
+    LEFT JOIN users assigner ON assigner.user_id = t.created_by
+    WHERE tdr.sent_at IS NULL
+      AND tdr.scheduled_for <= NOW()
+      AND t.deleted_at IS NULL
       AND p.deleted_at IS NULL
       AND t.completed_at IS NULL
+      AND t.status NOT IN ('SUBMITTED','LEADER_APPROVED','OWNER_APPROVED','COMPLETED')
       AND t.assignment_status IN ('none', 'approved')
       AND t.deadline IS NOT NULL
-      AND (
-        CASE
-          WHEN t.time IS NULL OR t.time = '00:00:00'
-            THEN DATE_ADD(DATE(t.deadline), INTERVAL 1 DAY)
-          ELSE t.deadline
-        END
-      ) < NOW()
-      AND t.deadline_notified_at IS NULL
-      AND t.assigned_to IS NOT NULL
+    GROUP BY
+      tdr.reminder_id,
+      tdr.milestone,
+      t.task_id,
+      t.project_id,
+      t.title,
+      t.priority,
+      tdr.deadline_snapshot,
+      p.name,
+      assignee.user_id,
+      assignee.email,
+      assignee.username,
+      assigner.username,
+      assigner.email
+    ORDER BY tdr.scheduled_for ASC
     LIMIT 50
     `,
   );
 
   let sent = 0;
-  for (const task of tasks) {
+  for (const reminderRow of reminders) {
     try {
-      const wasSent = await sendDeadlineMail(task);
+      const wasSent = await sendDeadlineMail(reminderRow);
       if (wasSent) {
         sent += 1;
-        const recipients = [task.assigned_user_id, task.leader_user_id]
-          .filter(Boolean)
-          .filter((id, index, ids) => ids.indexOf(id) === index);
-        for (const userId of recipients) {
+        const reminder = DEADLINE_REMINDERS.find((item) => item.milestone === reminderRow.milestone)
+          || DEADLINE_REMINDERS[DEADLINE_REMINDERS.length - 1];
+        const userId = Number(reminderRow.assignee_user_id);
+        if (Number.isInteger(userId) && userId > 0) {
           await pool.query(
-            "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'deadline_overdue', ?)",
-            [userId, task.task_id],
+            "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, ?, ?)",
+            [userId, reminder.notificationType, reminderRow.task_id],
           );
         }
         await pool.query(
-          "UPDATE tasks SET deadline_notified_at = NOW() WHERE task_id = ?",
-          [task.task_id],
+          "UPDATE task_deadline_reminders SET sent_at = NOW() WHERE reminder_id = ? AND sent_at IS NULL",
+          [reminderRow.reminder_id],
         );
       }
     } catch (err) {
