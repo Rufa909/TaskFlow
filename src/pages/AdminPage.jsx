@@ -14,7 +14,6 @@ const ADMIN_NAV = [
   { id: "tasks", label: "Tasks", icon: "check", description: "Search and inspect all active system tasks." },
   { id: "workflows", label: "Workflows", icon: "share", description: "Identify delayed stages and current workflow bottlenecks." },
   { id: "monitoring", label: "Monitoring", icon: "flag", description: "Operational issue queue by severity." },
-  { id: "reports", label: "Reports", icon: "sliders", description: "Completion, overdue, workload, and performance analytics." },
   { id: "activity", label: "Activity Logs", icon: "clock", description: "System audit trail with searchable actions." },
   { id: "settings", label: "Settings", icon: "setting", description: "System-level configuration surfaces." },
 ];
@@ -70,6 +69,7 @@ const ADMIN_VI = {
   "Task Status": "Trạng thái công việc",
   "Project Progress": "Tiến độ dự án",
   "User Workload": "Khối lượng người dùng",
+  "Assigned Tasks by User": "Task đang giao theo người",
   "Recent Activities": "Hoạt động gần đây",
   "Overdue / Blocked Tasks": "Công việc quá hạn / bị kẹt",
   "No monthly trend data": "Chưa có dữ liệu xu hướng theo tháng",
@@ -333,8 +333,33 @@ function normalizeDeadlineProject(project, progressPercent = 0) {
   };
 }
 
+function getProjectProgressPercent(project) {
+  const stages = project.workflowStages || project.workflow_stages || [];
+  if (stages.length > 0) {
+    const completedStages = stages.filter((stage) => String(stage.status || "").toLowerCase() === "completed").length;
+    return Math.round((completedStages / stages.length) * 100);
+  }
+  const total = Number(project.total_tasks || 0);
+  const completed = Number(project.completed_tasks || 0);
+  if (total > 0) return Math.round((completed / total) * 100);
+  return Number(project.progress_percent || 0);
+}
+
+function getProjectProgressMeta(project, language = "en") {
+  const stages = project.workflowStages || project.workflow_stages || [];
+  if (stages.length > 0) {
+    const completedStages = stages.filter((stage) => String(stage.status || "").toLowerCase() === "completed").length;
+    return language === "vi"
+      ? `${completedStages}/${stages.length} bước quy trình`
+      : `${completedStages}/${stages.length} workflow stages`;
+  }
+  return language === "vi"
+    ? `${Number(project.completed_tasks || 0)}/${Number(project.total_tasks || 0)} công việc`
+    : `${Number(project.completed_tasks || 0)}/${Number(project.total_tasks || 0)} tasks`;
+}
+
 function getHealth(project) {
-  const progress = Number(project.progress_percent || 0);
+  const progress = getProjectProgressPercent(project);
   const deadlineProject = normalizeDeadlineProject(project, progress);
   if (deadlineProject.is_overdue || isProjectDeadlineOverdue(project.deadline, progress)) return "delayed";
   if (Number(project.overdue_tasks || 0) > 0) return "delayed";
@@ -404,7 +429,7 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
 
   const projectProgress = stats?.projectProgress || [];
   const projects = projectProgress.map((project) => {
-    const progress = Number(project.progress_percent || 0);
+    const progress = getProjectProgressPercent(project);
     const deadlineProject = normalizeDeadlineProject(project, progress);
     const health = getHealth(project);
     return {
@@ -452,7 +477,7 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
   tasks.forEach((task) => {
     const key = task.assignee_email || task.assignee || "Unassigned";
     const current = userTaskCounts.get(key) || { name: task.assignee, email: task.assignee_email, tasks: 0, overdue: 0 };
-    current.tasks += 1;
+    if (!DONE_STATUSES.has(String(task.status || "").toUpperCase())) current.tasks += 1;
     if (task.overdue) current.overdue += 1;
     userTaskCounts.set(key, current);
   });
@@ -580,7 +605,7 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
     },
     taskStatus: stats?.taskStatus || [],
     monthlyStats: stats?.monthlyStats || [],
-    workload: [...userTaskCounts.values()].sort((a, b) => b.tasks - a.tasks).slice(0, 8),
+    workload: [...userTaskCounts.values()].filter((item) => Number(item.tasks || 0) > 0).sort((a, b) => b.tasks - a.tasks).slice(0, 8),
     monitoring: [
       ...overdueTasks.slice(0, 8).map((task) => ({ id: `overdue-${task.id}`, type: "Overdue Task", title: task.title, scope: task.project_name, level: "Critical" })),
       ...blockedTasks.slice(0, 8).map((task) => ({ id: `blocked-${task.id}`, type: "Blocked Task", title: task.title, scope: task.project_name, level: "Warning" })),
@@ -592,8 +617,8 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
       taskCompletionRate: taskTotal > 0 ? Math.round((completed / taskTotal) * 100) : 0,
       projectCompletionRate: allProjects.length > 0 ? Math.round((allProjects.filter((project) => project.progress_percent >= 100).length / allProjects.length) * 100) : 0,
       overdueRate: taskTotal > 0 ? Math.round((overdue / taskTotal) * 100) : 0,
-      avgTaskCompletionTime: completed > 0 ? "2.4 days" : "-",
-      avgWorkflowProcessingTime: workflows.length > 0 ? "4.1 days" : "-",
+      blockedTasks: blockedTasks.length,
+      projectsAtRisk: projectsAtRisk.length,
     },
     dataQuality: {
       coreApi: Boolean(stats),
@@ -604,14 +629,18 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
   };
 }
 
-function StatCard({ label, value, tone = "default", icon = "activity" }) {
+function StatCard({ label, value, tone = "default", icon = "activity", showIcon = true, unit, hint }) {
   return (
     <div className={`admin-stat-card ${tone}`}>
       <div>
-        <span>{value}</span>
+        <div className="admin-stat-value">
+          <span>{value}</span>
+          {unit && value !== "-" ? <em>{unit}</em> : null}
+        </div>
         <small>{label}</small>
+        {hint ? <p>{hint}</p> : null}
       </div>
-      <Icon name={icon} size={18} />
+      {showIcon ? <Icon name={icon} size={18} /> : null}
     </div>
   );
 }
@@ -956,6 +985,7 @@ export default function AdminPage() {
 
       <div className="admin-dashboard-grid">
         <SectionCard title={t("Monthly Trend")} icon="activity"><MonthlyLineChart items={model.monthlyStats} t={t} /></SectionCard>
+        <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} t={t} /></SectionCard>
         <SectionCard title={t("Task Status")} icon="activity"><ChartBars items={model.taskStatus} language={language} emptyLabel={t("No chart data")} /></SectionCard>
         <SectionCard title={t("Project Progress")} icon="grid">
           <div className="admin-list-stack">
@@ -963,22 +993,11 @@ export default function AdminPage() {
               <div key={project.id} className="admin-compact-row">
                 <span>
                   <strong>{project.name}</strong>
-                  <small>{t("Deadline:")} {formatDate(project.deadline)}</small>
+                  <small>{getProjectProgressMeta(project, language)} · {t("Deadline:")} {formatDate(project.deadline)}</small>
                 </span>
                 <ProgressBar value={project.progress_percent} tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "blue"} />
               </div>
             )) : <EmptyState label={t("No projects")} />}
-          </div>
-        </SectionCard>
-        <SectionCard title={t("User Workload")} icon="users">
-          <div className="admin-list-stack">
-            {model.workload.length ? model.workload.map((item) => (
-              <div key={item.email || item.name} className="admin-workload-row">
-                <span>{item.name}</span>
-                <strong>{item.tasks}</strong>
-                <small>{item.overdue} {t("overdue")}</small>
-              </div>
-            )) : <EmptyState label={t("No workload data")} />}
           </div>
         </SectionCard>
         <SectionCard title={t("Recent Activities")} icon="clock">
@@ -1285,7 +1304,20 @@ export default function AdminPage() {
     </SectionCard>
   );
 
-  const renderReports = () => (
+  const renderReports = () => {
+    const isVi = language === "vi";
+    const avgTaskCopy = {
+      label: isVi ? "Trung bình cho 1 công việc hoàn thành" : "Average per completed task",
+      unit: isVi ? "ngày / công việc" : "days / task",
+      hint: isVi ? "Tính từ các công việc đã hoàn thành" : "Calculated from completed tasks",
+    };
+    const avgWorkflowCopy = {
+      label: isVi ? "Trung bình cho 1 bước quy trình" : "Average per workflow stage",
+      unit: isVi ? "ngày / bước" : "days / stage",
+      hint: isVi ? "Tính từ các bước quy trình đang có dữ liệu" : "Calculated from workflow stages with data",
+    };
+
+    return (
     <div className="admin-view">
       <SectionCard
         title={t("Reports & Analytics")}
@@ -1297,11 +1329,11 @@ export default function AdminPage() {
         )}
       >
         <div className="admin-report-grid">
-          <StatCard label={t("Task Completion Rate")} value={`${model.reports.taskCompletionRate}%`} tone="green" />
-          <StatCard label={t("Project Completion Rate")} value={`${model.reports.projectCompletionRate}%`} tone="blue" />
-          <StatCard label={t("Overdue Rate")} value={`${model.reports.overdueRate}%`} tone={model.reports.overdueRate > 0 ? "red" : "green"} />
-          <StatCard label={t("Average Task Completion Time")} value={model.reports.avgTaskCompletionTime} />
-          <StatCard label={t("Average Workflow Processing Time")} value={model.reports.avgWorkflowProcessingTime} />
+          <StatCard label={t("Task Completion Rate")} value={`${model.reports.taskCompletionRate}%`} tone="green" showIcon={false} />
+          <StatCard label={t("Project Completion Rate")} value={`${model.reports.projectCompletionRate}%`} tone="blue" showIcon={false} />
+          <StatCard label={t("Overdue Rate")} value={`${model.reports.overdueRate}%`} tone={model.reports.overdueRate > 0 ? "red" : "green"} showIcon={false} />
+          <StatCard label={t("Blocked Tasks")} value={model.reports.blockedTasks} tone={model.reports.blockedTasks > 0 ? "orange" : "green"} showIcon={false} />
+          <StatCard label={t("Projects At Risk")} value={model.reports.projectsAtRisk} tone={model.reports.projectsAtRisk > 0 ? "red" : "green"} showIcon={false} />
         </div>
       </SectionCard>
       <div className="admin-dashboard-grid">
@@ -1321,7 +1353,8 @@ export default function AdminPage() {
         </SectionCard>
       </div>
     </div>
-  );
+    );
+  };
 
   const renderActivity = () => (
     <SectionCard title={t("Activity Logs")} icon="clock">
@@ -1375,7 +1408,6 @@ export default function AdminPage() {
     if (activeView === "tasks") return renderTasks();
     if (activeView === "workflows") return renderWorkflows();
     if (activeView === "monitoring") return renderMonitoring();
-    if (activeView === "reports") return renderReports();
     if (activeView === "activity") return renderActivity();
     return renderSettings();
   };

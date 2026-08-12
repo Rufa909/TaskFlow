@@ -308,11 +308,32 @@
   font-weight: 900;
 }
 
+.admin-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.admin-stat-value em {
+  color: #475569;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .admin-stat-card small {
   display: block;
   margin-top: 8px;
   color: #64748b;
   font-size: 13px;
+}
+
+.admin-stat-card p {
+  margin: 7px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .admin-stat-card svg {
@@ -561,15 +582,18 @@
 }
 
 .admin-compact-row > span,
-.admin-risk-row > span {
+.admin-risk-row > span,
+.admin-workload-row > span {
   display: grid;
   gap: 2px;
 }
 
 .admin-compact-row > span strong,
 .admin-risk-row > span strong,
+.admin-workload-row > span strong,
 .admin-compact-row > span small,
-.admin-risk-row > span small {
+.admin-risk-row > span small,
+.admin-workload-row > span small {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -577,14 +601,15 @@
 }
 
 .admin-compact-row > span small,
-.admin-risk-row > span small {
+.admin-risk-row > span small,
+.admin-workload-row > span small {
   color: #64748b;
   font-size: 11px;
   font-weight: 700;
 }
 
 .admin-workload-row {
-  grid-template-columns: minmax(0, 1fr) 52px 86px;
+  grid-template-columns: minmax(0, 1fr) 58px 94px;
 }
 
 .admin-workload-row strong {

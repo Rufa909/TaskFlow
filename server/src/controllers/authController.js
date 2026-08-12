@@ -1024,9 +1024,16 @@ exports.getAdminStats = async (req, res) => {
                 recentUsers: recentUsers.map(getPublicUser),
                 tasksByStatus,
                 projectProgress: projectProgressRows.map((project) => {
+                    const stages = workflowStagesByProjectId.get(Number(project.project_id)) || [];
+                    const totalStages = stages.length;
+                    const completedStages = stages.filter((stage) => String(stage.status || '').toLowerCase() === 'completed').length;
                     const total = Number(project.total_tasks || 0);
                     const completed = Number(project.completed_tasks || 0);
-                    const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    const progressPercent = totalStages > 0
+                        ? Math.round((completedStages / totalStages) * 100)
+                        : total > 0
+                            ? Math.round((completed / total) * 100)
+                            : 0;
                     const linkedGroup = groupByProjectId.get(Number(project.project_id));
                     return {
                         project_id: Number(project.project_id),
@@ -1039,7 +1046,9 @@ exports.getAdminStats = async (req, res) => {
                         created_at: project.created_at,
                         deadline: project.deadline,
                         deadlineProject: buildDeadlineProject(project.deadline, progressPercent),
-                        workflowStages: workflowStagesByProjectId.get(Number(project.project_id)) || [],
+                        workflowStages: stages,
+                        total_stages: totalStages,
+                        completed_stages: completedStages,
                         member_count: Number(project.member_count || 1),
                         total_tasks: total,
                         completed_tasks: completed,
