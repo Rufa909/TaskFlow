@@ -919,6 +919,7 @@ export default function AdminPage() {
   const [localUsers, setLocalUsers] = useState([]);
   const [deletedUserIds, setDeletedUserIds] = useState(new Set());
   const [savingProjectDeadlineIds, setSavingProjectDeadlineIds] = useState(new Set());
+  const [projectDeadlineDrafts, setProjectDeadlineDrafts] = useState({});
 
   const loadAdminData = async () => {
     setLoading(true);
@@ -1059,6 +1060,11 @@ export default function AdminPage() {
           ? { ...item, deadline: nextDeadline, deadlineProject: nextDeadlineProject }
           : item
       )));
+      setProjectDeadlineDrafts((current) => {
+        const next = { ...current };
+        delete next[projectId];
+        return next;
+      });
     } catch (err) {
       setError(err.response?.data?.message || "Cannot update project deadline.");
     } finally {
@@ -1251,9 +1257,14 @@ export default function AdminPage() {
               <span>{t("Project Name")}</span><span>{t("Owner")}</span><span>{t("Group")}</span><span>{t("Members")}</span><span>{t("Progress")}</span><span>{t("Status")}</span><span>{t("Deadline")}</span><span>{t("Created At")}</span>
             </div>
             {visibleProjects.map((project) => {
+              const projectId = project.project_id || project.id;
               const deadlineValue = project.deadlineProject?.date || project.deadline || "";
+              const deadlineDraft = Object.prototype.hasOwnProperty.call(projectDeadlineDrafts, projectId)
+                ? projectDeadlineDrafts[projectId]
+                : deadlineValue;
               const deadlineTone = deadlineProjectTone(project.deadlineProject);
-              const isSavingDeadline = savingProjectDeadlineIds.has(project.project_id || project.id);
+              const isSavingDeadline = savingProjectDeadlineIds.has(projectId);
+              const hasDeadlineDraft = deadlineDraft !== deadlineValue;
               const projectInitial = String(project.name || "P").trim().charAt(0).toUpperCase();
 
               return (
@@ -1286,11 +1297,24 @@ export default function AdminPage() {
                         </span>
                         <input
                           type="date"
-                          value={deadlineValue}
+                          value={deadlineDraft}
                           disabled={isSavingDeadline}
-                          onChange={(event) => saveProjectDeadline(project, event.target.value)}
+                          onChange={(event) => setProjectDeadlineDrafts((current) => ({
+                            ...current,
+                            [projectId]: event.target.value,
+                          }))}
                         />
                       </label>
+                      {hasDeadlineDraft && (
+                        <button
+                          className="admin-deadline-save"
+                          type="button"
+                          disabled={isSavingDeadline}
+                          onClick={() => saveProjectDeadline(project, deadlineDraft)}
+                        >
+                          {language === "vi" ? "Lưu" : "Save"}
+                        </button>
+                      )}
                       {deadlineValue && (
                         <button
                           className="admin-deadline-clear"
