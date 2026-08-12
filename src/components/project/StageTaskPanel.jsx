@@ -128,8 +128,27 @@ leaderCopy.vi.overdue = 'Quá hạn';
 leaderCopy.vi.dueToday = 'Hạn hôm nay';
 leaderCopy.vi.daysLeft = (days) => `Còn ${days} ngày`;
 
+function repairMojibake(value) {
+  if (typeof value !== 'string') return value;
+  if (!/[ÃÄÆÂÅ]|[\u0080-\u009f]/.test(value)) return value;
+
+  try {
+    const bytes = Uint8Array.from(value, (char) => char.charCodeAt(0) & 0xff);
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const originalBadness = (value.match(/[ÃÄÆÂÅ]|[\u0080-\u009f]/g) || []).length;
+    const decodedBadness = (decoded.match(/[ÃÄÆÂÅ]|[\u0080-\u009f]/g) || []).length;
+    return decodedBadness < originalBadness ? decoded : value;
+  } catch {
+    return value;
+  }
+}
+
 function getLeaderCopy(language, key) {
-  return leaderCopy[language]?.[key] || leaderCopy.en[key] || key;
+  const value = leaderCopy[language]?.[key] || leaderCopy.en[key] || key;
+  if (typeof value === 'function') {
+    return (...args) => repairMojibake(value(...args));
+  }
+  return repairMojibake(value);
 }
 
 function getPriorityLabel(priority, language = 'en') {
@@ -165,18 +184,20 @@ const leaderTextTranslations = {
 };
 
 function localizeLeaderText(value, language = 'en') {
-  if (language !== 'vi') return value;
-  const text = String(value || '').trim();
+  const repaired = repairMojibake(value);
+  if (language !== 'vi') return repaired;
+  const text = String(repaired || '').trim();
   const activeMatch = text.match(/^(.+) has (\d+) active task\(s\), so this keeps workload balanced\.$/i);
   if (activeMatch) {
-    return `${activeMatch[1]} đang có ${activeMatch[2]} công việc đang làm, nên phân công như vậy giúp cân bằng khối lượng.`;
+    return repairMojibake(`${activeMatch[1]} đang có ${activeMatch[2]} công việc đang làm, nên phân công như vậy giúp cân bằng khối lượng.`);
   }
-  return leaderTextTranslations[text] || value;
+  return repairMojibake(leaderTextTranslations[text] || repaired);
 }
 
 function localizeLeaderRole(role, language = 'en') {
-  if (language !== 'vi') return role;
-  const value = String(role || '').toLowerCase();
+  const repaired = repairMojibake(role);
+  if (language !== 'vi') return repaired;
+  const value = String(repaired || '').toLowerCase();
   if (value === 'developer/devops') return 'Developer/DevOps';
   if (value === 'developer/ba') return 'Developer/BA';
   if (value === 'leader/member') return 'Leader/Thành viên';
@@ -185,7 +206,7 @@ function localizeLeaderRole(role, language = 'en') {
   if (value === 'leader') return 'Leader';
   if (value === 'qa') return 'QA';
   if (value === 'ba') return 'BA';
-  return role;
+  return repaired;
 }
 
 function getTaskStatusLabel(status = '') {
@@ -382,6 +403,8 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
   const workload = suggestionData?.workload || [];
   const risks = suggestionData?.risks || [];
   const nextActions = suggestionData?.next_actions || [];
+  const localizedRisks = risks.map((risk) => localizeLeaderText(risk, language));
+  const localizedNextActions = nextActions.map((action) => localizeLeaderText(action, language));
   const suggestionSource = suggestionData?.suggestion_source || (backendSuggestions.length > 0 ? 'data' : 'fallback');
   const sourceDocuments = incomingPackage?.documents?.length || 0;
   const sourceDiscussions = incomingPackage?.discussions?.length || 0;
@@ -523,27 +546,27 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
         </section>
       )}
 
-      {(risks.length > 0 || nextActions.length > 0) && (
+      {(localizedRisks.length > 0 || localizedNextActions.length > 0) && (
         <section className="leader-ai-section">
-          {risks.length > 0 && (
+          {localizedRisks.length > 0 && (
             <div>
               <div className="leader-section-title compact">
                 <AlertCircle size={15} />
                 <span>{lt('aiRiskNotes')}</span>
               </div>
               <ul className="leader-note-list">
-                {risks.map((risk) => <li key={risk}>{risk}</li>)}
+                {localizedRisks.map((risk) => <li key={risk}>{risk}</li>)}
               </ul>
             </div>
           )}
-          {nextActions.length > 0 && (
+          {localizedNextActions.length > 0 && (
             <div>
               <div className="leader-section-title compact">
                 <CheckCircle2 size={15} />
                 <span>{lt('recommendedNextActions')}</span>
               </div>
               <ul className="leader-note-list">
-                {nextActions.map((action) => <li key={action}>{action}</li>)}
+                {localizedNextActions.map((action) => <li key={action}>{action}</li>)}
               </ul>
             </div>
           )}

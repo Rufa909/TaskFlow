@@ -521,15 +521,19 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
     const realStages = (project.workflowStages || [])
       .slice()
       .sort((a, b) => Number(a.stage_order || 0) - Number(b.stage_order || 0));
+    const currentStageIndex = realStages.findIndex((stage) => normalizeWorkflowStageStatus(stage.status) !== "completed");
     const stages = realStages.map((stage, index) => {
       const normalizedStatus = normalizeWorkflowStageStatus(stage.status);
       const status = isProjectOverdue && normalizedStatus !== "completed" ? "delayed" : normalizedStatus;
       return {
         id: stage.id || `${project.project_id}-${index}`,
+        stage_id: stage.id || stage.stage_id,
+        project_id: Number(stage.project_id || project.project_id),
         order: Number(stage.stage_order || index + 1),
         name: stage.stage_name || stage.name || `Stage ${index + 1}`,
         owner: stage.assignee_email || stage.assignee_name || project.owner_email || project.owner_name || "Owner",
         status,
+        canMovePrevious: index === currentStageIndex && Boolean(stage.can_move_previous),
         processingTime: "-",
         deadline: stage.deadline || project.deadlineProject?.date || project.deadline,
         deadlineProject: stage.deadline ? normalizeDeadlineProject({ deadline: stage.deadline }, status === "completed" ? 100 : 0) : project.deadlineProject || null,
@@ -919,6 +923,7 @@ export default function AdminPage() {
   const [localUsers, setLocalUsers] = useState([]);
   const [deletedUserIds, setDeletedUserIds] = useState(new Set());
   const [savingProjectDeadlineIds, setSavingProjectDeadlineIds] = useState(new Set());
+  const [savingPreviousStageIds, setSavingPreviousStageIds] = useState(new Set());
   const [projectDeadlineDrafts, setProjectDeadlineDrafts] = useState({});
 
   const loadAdminData = async () => {
@@ -1340,6 +1345,34 @@ export default function AdminPage() {
     );
   };
 
+  const handleAdminMovePrevious = async (workflow, stage) => {
+    const projectId = workflow.id || stage.project_id;
+    const stageId = stage.stage_id || stage.id;
+    if (!projectId || !stageId || savingPreviousStageIds.has(stageId)) return;
+
+    setSavingPreviousStageIds((current) => new Set(current).add(stageId));
+    setError("");
+    try {
+      await api.post(`/projects/${projectId}/stages/previous`, { stageId });
+      await loadAdminData();
+    } catch (err) {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const previousErrorMessages = {
+        "You can only move back once after moving to a new stage": "Chỉ được quay lại 1 lần sau khi chuyển sang giai đoạn mới",
+        "You can only move back within 12 hours after moving to a new stage": "Chỉ được quay lại trong vòng 12 tiếng kể từ khi chuyển sang giai đoạn mới",
+        "Cannot move back from the first stage": "Không thể quay lại từ giai đoạn đầu tiên",
+        "Only project owner or admin can move a stage back": "Chỉ chủ dự án hoặc admin được quay lại giai đoạn trước",
+      };
+      setError(previousErrorMessages[msg] || msg);
+    } finally {
+      setSavingPreviousStageIds((current) => {
+        const next = new Set(current);
+        next.delete(stageId);
+        return next;
+      });
+    }
+  };
+
   const renderTasks = () => (
     <SectionCard title={t("Tasks")} icon="check">
       <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")}>
@@ -1415,6 +1448,19 @@ export default function AdminPage() {
                     <strong>{stage.name}</strong>
                   </div>
                   <small>{workflowStatusLabel(stage.status, language)}</small>
+                  {stage.canMovePrevious && (
+                    <button
+                      type="button"
+                      className="admin-stage-previous"
+                      onClick={() => handleAdminMovePrevious(workflow, stage)}
+                      disabled={savingPreviousStageIds.has(stage.stage_id || stage.id)}
+                      title={language === "vi" ? "Quay lại stage trước" : "Move to previous stage"}
+                      aria-label={language === "vi" ? "Quay lại stage trước" : "Move to previous stage"}
+                    >
+                      <Icon name="chevronLeft" size={13} />
+                      <span>{savingPreviousStageIds.has(stage.stage_id || stage.id) ? "..." : "Previous"}</span>
+                    </button>
+                  )}
                 </div>
                 {index < workflow.stages.length - 1 && <span className="admin-stage-connector" aria-hidden="true"><Icon name="chevronRight" size={14} /></span>}
               </span>

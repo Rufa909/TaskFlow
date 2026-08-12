@@ -861,8 +861,36 @@ exports.getAdminStats = async (req, res) => {
         let chatGroups = [];
         let chatUsers = [];
         let workflowStages = [];
+        const latestWorkflowActions = new Map();
         const hasProjectStages = await tableExists('project_stages');
         if (hasProjectStages) {
+            const hasStageActivities = await tableExists('stage_activities');
+            if (hasStageActivities) {
+                const [activityRows] = await pool.query(`
+                    SELECT
+                      ps.project_id,
+                      sa.action,
+                      sa.created_at
+                    FROM stage_activities sa
+                    JOIN project_stages ps
+                      ON ps.id = sa.project_stage_id
+                    JOIN projects p
+                      ON p.project_id = ps.project_id
+                     AND p.deleted_at IS NULL
+                    ORDER BY ps.project_id ASC, sa.created_at DESC
+                `);
+
+                activityRows.forEach((row) => {
+                    const projectId = Number(row.project_id);
+                    if (!latestWorkflowActions.has(projectId)) {
+                        latestWorkflowActions.set(projectId, {
+                            action: row.action,
+                            created_at: row.created_at,
+                        });
+                    }
+                });
+            }
+
             const [stageRows] = await pool.query(`
                 SELECT
                   ps.id,
@@ -885,6 +913,17 @@ exports.getAdminStats = async (req, res) => {
             `);
 
             workflowStages = stageRows.map((stage) => ({
+                ...(() => {
+                    const latestAction = latestWorkflowActions.get(Number(stage.project_id));
+                    const movedAt = latestAction?.created_at ? new Date(latestAction.created_at) : null;
+                    const isWithinPreviousWindow = movedAt && Date.now() - movedAt.getTime() <= 12 * 60 * 60 * 1000;
+                    return {
+                        can_move_previous: Number(stage.stage_order || 0) > 1,
+                        owner_can_move_previous: Number(stage.stage_order || 0) > 1
+                            && latestAction?.action === 'approve'
+                            && Boolean(isWithinPreviousWindow),
+                    };
+                })(),
                 id: Number(stage.id),
                 project_id: Number(stage.project_id),
                 stage_order: Number(stage.stage_order || 0),

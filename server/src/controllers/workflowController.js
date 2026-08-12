@@ -134,11 +134,12 @@ async function ensureWorkflowHandoverSchema() {
 
 async function getProjectAccess(projectId, userId) {
   const [projectRows] = await db.query(
-    `SELECT p.owner_id, pm.role
+    `SELECT p.owner_id, pm.role, u.role AS system_role
      FROM projects p
+     JOIN users u ON u.user_id = ?
      LEFT JOIN project_members pm ON p.project_id = pm.project_id AND pm.user_id = ?
      WHERE p.project_id = ? AND p.deleted_at IS NULL`,
-    [userId, projectId],
+    [userId, userId, projectId],
   );
 
   if (projectRows.length === 0) return null;
@@ -146,8 +147,10 @@ async function getProjectAccess(projectId, userId) {
   return {
     ownerId: projectRows[0].owner_id,
     role: projectRows[0].role,
+    systemRole: projectRows[0].system_role,
     isOwner: Number(projectRows[0].owner_id) === Number(userId),
     isMember: projectRows[0].role !== null,
+    isAdmin: String(projectRows[0].system_role || "").toLowerCase() === "admin",
   };
 }
 
@@ -161,7 +164,7 @@ async function requireProjectAccess(req, res) {
     return null;
   }
 
-  if (!access.isOwner && !access.isMember) {
+  if (!access.isOwner && !access.isMember && !access.isAdmin) {
     res.status(403).json({ success: false, message: "You cannot access this project" });
     return null;
   }
@@ -178,7 +181,7 @@ async function getStage(projectId, stageId) {
 }
 
 function canMoveStage(access) {
-  return access?.isOwner || String(access?.role || "").toLowerCase() === "leader";
+  return access?.isAdmin || access?.isOwner || String(access?.role || "").toLowerCase() === "leader";
 }
 
 function normalizeText(value) {
@@ -498,11 +501,11 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
   if (dueSoonTasks.length > 0) {
     addSuggestion({
       type: "deadline",
-      title: leaderText(language, `${dueSoonTasks.length} tasks are close to deadline`, `${dueSoonTasks.length} cÃ´ng viá»‡c sáº¯p háº¿t háº¡n`),
+      title: leaderText(language, `${dueSoonTasks.length} tasks are close to deadline`, `${dueSoonTasks.length} công việc sắp hết hạn`),
       detail: leaderText(
         language,
         `Check these deadlines first: ${dueSoonTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
-        `HÃ£y kiá»ƒm tra háº¡n cÃ¡c viá»‡c nÃ y trÆ°á»›c: ${dueSoonTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
+        `Hãy kiểm tra hạn các việc này trước: ${dueSoonTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
       ),
       source: "deadline",
       recommended_role: "leader",
@@ -744,6 +747,23 @@ async function buildCompletionChecklist(stage) {
 
 async function normalizeWorkflow(projectId) {
   const stages = await ProjectStage.getByProjectId(projectId);
+  let latestStageAction = null;
+
+  try {
+    const [latestActivities] = await db.query(
+      `SELECT sa.action, sa.created_at
+       FROM stage_activities sa
+       JOIN project_stages ps ON ps.id = sa.project_stage_id
+       WHERE ps.project_id = ?
+       ORDER BY sa.created_at DESC
+       LIMIT 1`,
+      [projectId],
+    );
+    latestStageAction = latestActivities[0] || null;
+  } catch (error) {
+    latestStageAction = null;
+  }
+
   if (stages.length > 0) {
     for (let index = 0; index < stages.length; index += 1) {
       if (stages[index].status !== "completed") {
@@ -752,6 +772,15 @@ async function normalizeWorkflow(projectId) {
       }
     }
   }
+
+  for (const stage of stages) {
+    const movedAt = latestStageAction?.created_at ? new Date(latestStageAction.created_at) : null;
+    const isWithinPreviousWindow = movedAt && Date.now() - movedAt.getTime() <= 12 * 60 * 60 * 1000;
+    stage.can_move_previous = Number(stage.stage_order) > 1
+      && latestStageAction?.action === "approve"
+      && isWithinPreviousWindow;
+  }
+
   return stages;
 }
 
@@ -1186,11 +1215,13 @@ const workflowController = {
       const context = await requireProjectAccess(req, res);
       if (!context) return;
 
-      if (!context.access.isOwner) {
-        return res.status(403).json({ success: false, message: "Only project owner can move a stage back" });
+      if (!context.access.isOwner && !context.access.isAdmin) {
+        return res.status(403).json({ success: false, message: "Only project owner or admin can move a stage back" });
       }
 
-      await ProjectStage.movePrevious(req.body.stageId, context.userId);
+      await ProjectStage.movePrevious(req.body.stageId, context.userId, {
+        bypassPreviousLimits: context.access.isAdmin,
+      });
       const stages = await normalizeWorkflow(context.projectId);
 
       res.json({

@@ -130,7 +130,13 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
       setError(null);
     } catch (err) {
       const msg = err.response?.data?.message || err.response?.data?.error || err.message;
-      setError('Lỗi khi quay lại giai đoạn trước: ' + msg);
+      const previousErrorMessages = {
+        'You can only move back once after moving to a new stage': 'Chỉ được quay lại 1 lần sau khi chuyển sang giai đoạn mới',
+        'You can only move back within 12 hours after moving to a new stage': 'Chỉ được quay lại trong vòng 12 tiếng kể từ khi chuyển sang giai đoạn mới',
+        'Cannot move back from the first stage': 'Không thể quay lại từ giai đoạn đầu tiên',
+      };
+      const translatedMsg = previousErrorMessages[msg] || msg;
+      setError('Lỗi khi quay lại giai đoạn trước: ' + translatedMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -240,7 +246,7 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                         <button
                           className="btn-previous"
                           onClick={() => handleMovePrevious(stage.id)}
-                          disabled={isSubmitting || Number(stage.stage_order) === 1}
+                          disabled={isSubmitting || !stage.can_move_previous}
                           type="button"
                           aria-label="Previous stage"
                           title="Previous stage"
