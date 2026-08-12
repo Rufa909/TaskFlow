@@ -657,7 +657,7 @@
 
 .admin-table.projects .admin-table-head,
 .admin-table.projects .admin-table-row {
-  grid-template-columns: 1.1fr 1.1fr 0.75fr 64px 0.95fr 106px 136px 96px;
+  grid-template-columns: 1.25fr 1.05fr 0.72fr 76px 1.05fr 108px 174px 86px;
 }
 
 .admin-table.tasks .admin-table-head,
@@ -713,52 +713,348 @@
   color: #64748b;
 }
 
-.admin-deadline-cell {
+.admin-project-management {
   display: grid;
-  gap: 4px;
+  gap: 14px;
+}
+
+.admin-project-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-project-summary-card {
+  min-height: 72px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.admin-project-summary-card span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.admin-project-summary-card strong {
+  color: #0f172a;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.admin-project-summary-card.blue {
+  border-color: #bfdbfe;
+}
+
+.admin-project-summary-card.green {
+  border-color: #bbf7d0;
+}
+
+.admin-project-summary-card.orange {
+  border-color: #fed7aa;
+}
+
+.admin-project-summary-card.red {
+  border-color: #fecaca;
+}
+
+.admin-project-table {
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.admin-project-table .admin-table-head {
+  min-height: 46px;
+  background: #f8fafc;
+}
+
+.admin-project-row {
+  min-height: 82px;
+  border-left: 3px solid transparent;
+}
+
+.admin-project-row:hover {
+  background: #fbfdff;
+}
+
+.admin-project-row.on_track {
+  border-left-color: #22c55e;
+}
+
+.admin-project-row.at_risk {
+  border-left-color: #f59e0b;
+}
+
+.admin-project-row.delayed {
+  border-left-color: #ef4444;
+}
+
+.admin-project-identity,
+.admin-owner-cell {
+  display: flex;
   align-items: center;
-  justify-items: start;
-}
-
-.admin-deadline-cell .admin-badge {
-  width: fit-content;
-  max-width: 100%;
-}
-
-.admin-project-deadline-control,
-.admin-project-deadline-control input {
-  width: 100%;
+  gap: 10px;
   min-width: 0;
 }
 
-.admin-project-deadline-control input {
-  height: 28px;
-  border: 1px solid #dbe3ef;
-  border-radius: 7px;
-  padding: 0 6px;
+.admin-project-identity > i {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.admin-project-identity > span,
+.admin-owner-cell {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-group-pill,
+.admin-members-pill {
+  min-height: 28px;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
   color: #334155;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
   font-size: 12px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-members-pill {
+  background: #eef2ff;
+  color: #3730a3;
+  border-color: #c7d2fe;
+}
+
+.admin-project-progress-cell {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-project-progress-cell > small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.admin-created-cell {
+  color: #475569;
   font-weight: 750;
+}
+
+.admin-deadline-cell {
+  min-width: 0;
+  overflow: visible;
+}
+
+.admin-table-row > span.admin-deadline-cell {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.admin-deadline-capsule {
+  position: relative;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   background: #ffffff;
+  display: block;
+  align-items: center;
+  padding: 6px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  cursor: pointer;
+}
+
+.admin-deadline-cell.empty .admin-deadline-capsule {
+  background: #f8fafc;
+}
+
+.admin-deadline-cell.blue .admin-deadline-capsule {
+  border-color: #bfdbfe;
+}
+
+.admin-deadline-cell.orange .admin-deadline-capsule {
+  border-color: #fed7aa;
+}
+
+.admin-deadline-cell.red .admin-deadline-capsule {
+  border-color: #fecaca;
+}
+
+.admin-deadline-cell.green .admin-deadline-capsule {
+  border-color: #bbf7d0;
+}
+
+.admin-deadline-capsule:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.1);
+}
+
+.admin-project-deadline-control {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  min-height: 30px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding-right: 24px;
+  cursor: pointer;
+}
+
+.admin-deadline-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #f1f5f9;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-deadline-cell.blue .admin-deadline-icon {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.admin-deadline-cell.orange .admin-deadline-icon {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.admin-deadline-cell.red .admin-deadline-icon {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.admin-deadline-cell.green .admin-deadline-icon {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.admin-deadline-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.admin-deadline-text strong,
+.admin-deadline-text small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-deadline-text strong {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.admin-deadline-text small {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.admin-deadline-cell.blue .admin-deadline-text small {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.admin-deadline-cell.orange .admin-deadline-text small {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.admin-deadline-cell.red .admin-deadline-text small {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.admin-deadline-cell.green .admin-deadline-text small {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.admin-project-deadline-control input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .admin-project-deadline-control input:disabled {
   cursor: wait;
-  background: #f8fafc;
-  color: #94a3b8;
 }
 
 .admin-deadline-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 22px;
+  height: 22px;
   border: 0;
-  background: transparent;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 850;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   padding: 0;
+  opacity: 0;
+  transform: translateY(-50%);
+  z-index: 2;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.admin-deadline-cell.has-date:hover .admin-deadline-clear,
+.admin-deadline-clear:focus-visible {
+  opacity: 1;
 }
 
 .admin-deadline-clear:hover {
+  background: #fef2f2;
   color: #dc2626;
 }
 

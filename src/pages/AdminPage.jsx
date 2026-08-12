@@ -1038,60 +1038,106 @@ export default function AdminPage() {
     </SectionCard>
   );
 
-  const renderProjects = () => (
-    <SectionCard title={t("Projects")} icon="grid">
-      <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")}>
-        <select value={filters.projectStatus} onChange={(event) => updateFilter("projectStatus", event.target.value)}>
-          <option value="all">{t("All projects")}</option>
-          <option value="active">{t("Active")}</option>
-          <option value="completed">{t("Completed")}</option>
-          <option value="delayed">{t("Overdue Tasks")}</option>
-          <option value="archived">{t("Archived")}</option>
-          <option value="at_risk">{t("At Risk")}</option>
-        </select>
-      </SearchFilter>
-      <div className="admin-table projects">
-        <div className="admin-table-head">
-          <span>{t("Project Name")}</span><span>{t("Owner")}</span><span>{t("Group")}</span><span>{t("Members")}</span><span>{t("Progress")}</span><span>{t("Status")}</span><span>{t("Deadline")}</span><span>{t("Created At")}</span>
-        </div>
-        {visibleProjects.map((project) => (
-          <div key={project.id} className="admin-table-row">
-            <span><strong>{project.name}</strong><small>{project.owner_email || project.owner_name}</small></span>
-            <span>{project.owner_email || project.owner_name || "-"}</span>
-            <span>{project.group}</span>
-            <span>{project.members}</span>
-            <span><ProgressBar value={project.progress_percent} tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "blue"} /></span>
-            <span><Badge tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "green"}><i className={`admin-health-dot ${project.health}`} />{healthLabel(project.health, language)}</Badge></span>
-            <span className="admin-deadline-cell">
-              <label className="admin-project-deadline-control">
-                <input
-                  type="date"
-                  value={project.deadlineProject?.date || project.deadline || ""}
-                  disabled={savingProjectDeadlineIds.has(project.project_id || project.id)}
-                  onChange={(event) => saveProjectDeadline(project, event.target.value)}
-                />
-              </label>
-              <Badge tone={deadlineProjectTone(project.deadlineProject)}>
-                {deadlineProjectLabel(project.deadlineProject, language)}
-              </Badge>
-              {(project.deadlineProject?.date || project.deadline) && (
-                <button
-                  className="admin-deadline-clear"
-                  type="button"
-                  disabled={savingProjectDeadlineIds.has(project.project_id || project.id)}
-                  onClick={() => saveProjectDeadline(project, null)}
-                >
-                  {t("Clear")}
-                </button>
-              )}
-            </span>
-            <span>{formatDate(project.created_at)}</span>
+  const renderProjects = () => {
+    const summaryItems = [
+      { label: t("All projects"), value: model.projects.length, tone: "blue" },
+      { label: t("On Track"), value: model.projects.filter((project) => project.health === "on_track").length, tone: "green" },
+      { label: t("At Risk"), value: model.projects.filter((project) => project.health === "at_risk").length, tone: "orange" },
+      { label: t("Delayed"), value: model.projects.filter((project) => project.health === "delayed").length, tone: "red" },
+    ];
+
+    return (
+      <SectionCard title={t("Projects")} icon="grid">
+        <div className="admin-project-management">
+          <div className="admin-project-summary-grid">
+            {summaryItems.map((item) => (
+              <div key={item.label} className={`admin-project-summary-card ${item.tone}`}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      {visibleProjects.length === 0 && <EmptyState label={t("No projects found")} />}
-    </SectionCard>
-  );
+
+          <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")}>
+            <select value={filters.projectStatus} onChange={(event) => updateFilter("projectStatus", event.target.value)}>
+              <option value="all">{t("All projects")}</option>
+              <option value="active">{t("Active")}</option>
+              <option value="completed">{t("Completed")}</option>
+              <option value="delayed">{t("Overdue Tasks")}</option>
+              <option value="archived">{t("Archived")}</option>
+              <option value="at_risk">{t("At Risk")}</option>
+            </select>
+          </SearchFilter>
+
+          <div className="admin-table projects admin-project-table">
+            <div className="admin-table-head">
+              <span>{t("Project Name")}</span><span>{t("Owner")}</span><span>{t("Group")}</span><span>{t("Members")}</span><span>{t("Progress")}</span><span>{t("Status")}</span><span>{t("Deadline")}</span><span>{t("Created At")}</span>
+            </div>
+            {visibleProjects.map((project) => {
+              const deadlineValue = project.deadlineProject?.date || project.deadline || "";
+              const deadlineTone = deadlineProjectTone(project.deadlineProject);
+              const isSavingDeadline = savingProjectDeadlineIds.has(project.project_id || project.id);
+              const projectInitial = String(project.name || "P").trim().charAt(0).toUpperCase();
+
+              return (
+                <div key={project.id} className={`admin-table-row admin-project-row ${project.health}`}>
+                  <span className="admin-project-identity">
+                    <i>{projectInitial}</i>
+                    <span>
+                      <strong>{project.name}</strong>
+                      <small>{project.owner_email || project.owner_name || "-"}</small>
+                    </span>
+                  </span>
+                  <span className="admin-owner-cell">
+                    <strong>{project.owner_name || t("Owner")}</strong>
+                    <small>{project.owner_email || "-"}</small>
+                  </span>
+                  <span><span className="admin-group-pill">{project.group || "Workspace"}</span></span>
+                  <span><span className="admin-members-pill"><Icon name="users" size={13} />{project.members}</span></span>
+                  <span className="admin-project-progress-cell">
+                    <small>{project.completed_tasks || 0}/{project.total_tasks || 0} {t("Tasks")}</small>
+                    <ProgressBar value={project.progress_percent} tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "blue"} />
+                  </span>
+                  <span><Badge tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "green"}><i className={`admin-health-dot ${project.health}`} />{healthLabel(project.health, language)}</Badge></span>
+                  <span className={`admin-deadline-cell ${deadlineTone} ${deadlineValue ? "has-date" : "empty"}`}>
+                    <span className="admin-deadline-capsule">
+                      <label className="admin-project-deadline-control" title={language === "vi" ? "Chọn hạn chót" : "Choose deadline"}>
+                        <span className="admin-deadline-icon"><Icon name="calendar" size={13} /></span>
+                        <span className="admin-deadline-text">
+                          <strong>{deadlineValue ? formatDate(deadlineValue) : (language === "vi" ? "Đặt hạn" : "Set date")}</strong>
+                          <small>{deadlineProjectLabel(project.deadlineProject, language)}</small>
+                        </span>
+                        <input
+                          type="date"
+                          value={deadlineValue}
+                          disabled={isSavingDeadline}
+                          onChange={(event) => saveProjectDeadline(project, event.target.value)}
+                        />
+                      </label>
+                      {deadlineValue && (
+                        <button
+                          className="admin-deadline-clear"
+                          type="button"
+                          disabled={isSavingDeadline}
+                          onClick={() => saveProjectDeadline(project, null)}
+                          title={t("Clear")}
+                          aria-label={t("Clear")}
+                        >
+                          <Icon name="x" size={12} />
+                        </button>
+                      )}
+                    </span>
+                  </span>
+                  <span className="admin-created-cell">{formatDate(project.created_at)}</span>
+                </div>
+              );
+            })}
+          </div>
+          {visibleProjects.length === 0 && <EmptyState label={t("No projects found")} />}
+        </div>
+      </SectionCard>
+    );
+  };
 
   const renderTasks = () => (
     <SectionCard title={t("Tasks")} icon="check">
