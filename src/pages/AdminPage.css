@@ -1200,19 +1200,38 @@
 }
 
 .admin-pipeline {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
-  gap: 12px;
-  overflow-x: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 8px;
+  align-items: center;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 12px;
+  overflow: visible;
+}
+
+.admin-stage-flow-item {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .admin-stage {
+  position: relative;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #ffffff;
-  display: grid;
-  gap: 8px;
-  padding: 12px;
+  min-width: 0;
+  width: clamp(176px, 20vw, 260px);
+  min-height: 48px;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 9px 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .admin-stage.completed {
@@ -1225,22 +1244,77 @@
   background: #eff6ff;
 }
 
+.admin-stage.delayed {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
 .admin-stage.bottleneck {
   border-color: #fed7aa;
   box-shadow: inset 0 0 0 1px #fdba74;
 }
 
-.admin-stage > div {
+.admin-stage-connector {
+  width: 28px;
+  height: 2px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.admin-stage-connector svg {
+  margin-right: -6px;
+  background: #fbfdff;
+}
+
+.admin-stage-topline {
+  min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 7px;
+}
+
+.admin-stage-topline > span {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.admin-stage.completed .admin-stage-topline > span {
+  background: #bbf7d0;
+  color: #047857;
+}
+
+.admin-stage.in_progress .admin-stage-topline > span {
+  background: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.admin-stage.delayed .admin-stage-topline > span {
+  background: #fed7aa;
+  color: #b45309;
 }
 
 .admin-stage strong {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #111827;
+  font-size: 13px;
 }
 
 .admin-stage small {
@@ -1248,7 +1322,61 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.admin-stage.completed small {
+  color: #047857;
+}
+
+.admin-stage.in_progress small {
+  color: #1d4ed8;
+}
+
+.admin-stage.delayed small {
+  color: #b45309;
+}
+
+.admin-workflow-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: #64748b;
   font-size: 12px;
+  font-weight: 850;
+}
+
+.admin-workflow-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-workflow-legend span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.admin-workflow-legend .completed {
+  color: #047857;
+}
+
+.admin-workflow-legend .in_progress {
+  color: #1d4ed8;
+}
+
+.admin-workflow-legend .pending {
+  color: #64748b;
+}
+
+.admin-workflow-legend .delayed {
+  color: #b45309;
 }
 
 .admin-workflow-summary {
@@ -1490,5 +1618,27 @@
 
   .admin-progress {
     grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
+  .admin-stage-flow-item {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-stage {
+    width: 100%;
+  }
+
+  .admin-stage-connector {
+    width: 2px;
+    height: 22px;
+    align-self: center;
+    justify-content: center;
+  }
+
+  .admin-stage-connector svg {
+    transform: rotate(90deg);
+    margin: 0 0 -8px;
   }
 }

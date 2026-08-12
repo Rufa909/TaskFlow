@@ -370,6 +370,24 @@ function deadlineProjectTone(deadlineProject) {
   return "blue";
 }
 
+function workflowStatusLabel(status, language = "en") {
+  const labels = {
+    completed: language === "vi" ? "Hoàn thành" : "Completed",
+    in_progress: language === "vi" ? "Đang xử lý" : "In progress",
+    pending: language === "vi" ? "Đang chờ" : "Waiting",
+    delayed: language === "vi" ? "Bị trễ" : "Delayed",
+  };
+  return labels[status] || status;
+}
+
+function normalizeWorkflowStageStatus(status) {
+  const value = String(status || "pending").toLowerCase();
+  if (["approved", "complete", "completed", "done"].includes(value)) return "completed";
+  if (["in_progress", "in progress", "active", "current"].includes(value)) return "in_progress";
+  if (["delayed", "overdue"].includes(value)) return "delayed";
+  return "pending";
+}
+
 function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversations = [], chatUsers = []) {
   const taskGroups = stats?.tasksByStatus || {};
   const tasks = Object.values(taskGroups).flat().map((task) => ({
@@ -398,6 +416,7 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
       status: progress >= 100 ? "Completed" : "Active",
       deadline: deadlineProject?.date || project.deadline || null,
       deadlineProject,
+      workflowStages: project.workflowStages || project.workflow_stages || [],
       health,
     };
   });
@@ -422,6 +441,7 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
         status: "Active",
         deadline: project.deadlineProject?.date || project.deadline_project?.date || project.deadline || null,
         deadlineProject: normalizeDeadlineProject(project, 0),
+        workflowStages: project.workflowStages || project.workflow_stages || [],
         health: "on_track",
       });
     }
@@ -472,27 +492,39 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
 
   const workflows = allProjects.map((project) => {
     const progress = Number(project.progress_percent || 0);
-    const stages = ["Content", "Design", "Review", "Publish"].map((name, index) => {
-      const threshold = (index + 1) * 25;
-      const done = progress >= threshold;
-      const current = progress < threshold && progress >= index * 25;
-      const delayed = (project.health === "delayed" || project.health === "at_risk") && current;
+    const projectDeadlineState = project.deadlineProject || normalizeDeadlineProject(project, progress);
+    const isProjectOverdue = Boolean(projectDeadlineState?.is_overdue);
+    const realStages = (project.workflowStages || [])
+      .slice()
+      .sort((a, b) => Number(a.stage_order || 0) - Number(b.stage_order || 0));
+    const stages = realStages.map((stage, index) => {
+      const normalizedStatus = normalizeWorkflowStageStatus(stage.status);
+      const status = isProjectOverdue && normalizedStatus !== "completed" ? "delayed" : normalizedStatus;
       return {
-        id: `${project.project_id}-${index}`,
-        name,
-        owner: project.owner_email || project.owner_name || "Owner",
-        status: done ? "completed" : current ? "in_progress" : "pending",
-        processingTime: `${Math.max(1, index + Math.ceil(progress / 25))}d`,
-        deadline: project.deadlineProject?.date || project.deadline,
-        deadlineProject: project.deadlineProject || null,
-        delayStatus: delayed ? "Delayed" : done ? "Normal" : "Pending",
-        bottleneck: delayed,
+        id: stage.id || `${project.project_id}-${index}`,
+        order: Number(stage.stage_order || index + 1),
+        name: stage.stage_name || stage.name || `Stage ${index + 1}`,
+        owner: stage.assignee_email || stage.assignee_name || project.owner_email || project.owner_name || "Owner",
+        status,
+        processingTime: "-",
+        deadline: stage.deadline || project.deadlineProject?.date || project.deadline,
+        deadlineProject: stage.deadline ? normalizeDeadlineProject({ deadline: stage.deadline }, status === "completed" ? 100 : 0) : project.deadlineProject || null,
+        delayStatus: status,
+        bottleneck: status === "delayed" || (status === "in_progress" && project.health !== "on_track"),
       };
     });
     return {
       id: project.project_id,
       name: project.name,
       health: project.health,
+      progress,
+      owner: project.owner_email || project.owner_name || "Owner",
+      deadline: project.deadlineProject?.date || project.deadline,
+      deadlineProject: project.deadlineProject || null,
+      totalTasks: Number(project.total_tasks || 0),
+      completedTasks: Number(project.completed_tasks || 0),
+      overdueTasks: Number(project.overdue_tasks || 0),
+      dueSoonTasks: Number(project.due_soon_tasks || 0),
       currentBottleneck: stages.find((stage) => stage.bottleneck)?.name || "-",
       avgProcessingTime: `${Math.max(1, Math.round((project.total_tasks || 1) / 2))}d`,
       stages,
@@ -1192,22 +1224,36 @@ export default function AdminPage() {
   const renderWorkflows = () => (
     <div className="admin-workflow-list">
       {model.workflows.map((workflow) => (
-        <SectionCard key={workflow.id} title={workflow.name} icon="share" actions={<Badge tone={workflow.health === "delayed" ? "red" : workflow.health === "at_risk" ? "orange" : "green"}>{workflow.currentBottleneck === "-" ? t("No bottleneck") : `${t("Bottleneck")}: ${workflow.currentBottleneck}`}</Badge>}>
-          <div className="admin-pipeline">
-            {workflow.stages.map((stage) => (
-              <div key={stage.id} className={`admin-stage ${stage.status} ${stage.bottleneck ? "bottleneck" : ""}`}>
-                <div>
-                  <strong>{stage.name}</strong>
-                  <Badge tone={stage.bottleneck ? "orange" : stage.status === "completed" ? "green" : stage.status === "in_progress" ? "blue" : "neutral"}>{t(stage.delayStatus)}</Badge>
-                </div>
-                <small>{t("Owner:")} {stage.owner}</small>
-                <small>{t("Processing:")} {stage.processingTime}</small>
-                <small>{t("Deadline:")} {formatDate(stage.deadline)}</small>
-              </div>
-            ))}
+        <SectionCard
+          key={workflow.id}
+          title={workflow.name}
+          icon="share"
+          actions={<Badge tone={workflow.health === "delayed" ? "red" : workflow.health === "at_risk" ? "orange" : "green"}>{workflow.currentBottleneck === "-" ? t("No bottleneck") : `${t("Bottleneck")}: ${workflow.currentBottleneck}`}</Badge>}
+        >
+          <div className="admin-workflow-legend">
+            <span className="completed">{workflowStatusLabel("completed", language)}</span>
+            <span className="in_progress">{workflowStatusLabel("in_progress", language)}</span>
+            <span className="pending">{workflowStatusLabel("pending", language)}</span>
+            <span className="delayed">{workflowStatusLabel("delayed", language)}</span>
           </div>
+
+          <div className="admin-pipeline">
+            {workflow.stages.length ? workflow.stages.map((stage, index) => (
+              <span key={stage.id} className="admin-stage-flow-item">
+                <div className={`admin-stage ${stage.status} ${stage.bottleneck ? "bottleneck" : ""}`}>
+                  <div className="admin-stage-topline">
+                    <span>{stage.order}</span>
+                    <strong>{stage.name}</strong>
+                  </div>
+                  <small>{workflowStatusLabel(stage.status, language)}</small>
+                </div>
+                {index < workflow.stages.length - 1 && <span className="admin-stage-connector" aria-hidden="true"><Icon name="chevronRight" size={14} /></span>}
+              </span>
+            )) : <EmptyState label={language === "vi" ? "Project này chưa có quy trình" : "No workflow stages for this project"} />}
+          </div>
+
           <div className="admin-workflow-summary">
-            <span>{t("Average processing time:")} <strong>{workflow.avgProcessingTime}</strong></span>
+            <span>{t("Progress")}: <strong>{workflow.progress}%</strong></span>
             <span>{t("Current bottleneck:")} <strong>{workflow.currentBottleneck}</strong></span>
           </div>
         </SectionCard>

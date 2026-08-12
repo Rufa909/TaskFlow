@@ -860,6 +860,50 @@ exports.getAdminStats = async (req, res) => {
 
         let chatGroups = [];
         let chatUsers = [];
+        let workflowStages = [];
+        const hasProjectStages = await tableExists('project_stages');
+        if (hasProjectStages) {
+            const [stageRows] = await pool.query(`
+                SELECT
+                  ps.id,
+                  ps.project_id,
+                  ps.stage_order,
+                  ps.stage_name,
+                  ps.description,
+                  COALESCE(ps.status, 'pending') AS status,
+                  ps.deadline,
+                  ps.assigned_to,
+                  assignee.username AS assignee_name,
+                  assignee.email AS assignee_email
+                FROM project_stages ps
+                JOIN projects p
+                  ON p.project_id = ps.project_id
+                 AND p.deleted_at IS NULL
+                LEFT JOIN users assignee
+                  ON assignee.user_id = ps.assigned_to
+                ORDER BY ps.project_id ASC, ps.stage_order ASC
+            `);
+
+            workflowStages = stageRows.map((stage) => ({
+                id: Number(stage.id),
+                project_id: Number(stage.project_id),
+                stage_order: Number(stage.stage_order || 0),
+                stage_name: stage.stage_name,
+                description: stage.description,
+                status: stage.status || 'pending',
+                deadline: formatDateOnly(stage.deadline),
+                assigned_to: stage.assigned_to ? Number(stage.assigned_to) : null,
+                assignee_name: stage.assignee_name,
+                assignee_email: stage.assignee_email,
+            }));
+        }
+
+        const workflowStagesByProjectId = workflowStages.reduce((groups, stage) => {
+            if (!groups.has(stage.project_id)) groups.set(stage.project_id, []);
+            groups.get(stage.project_id).push(stage);
+            return groups;
+        }, new Map());
+
         const hasChatTables = await Promise.all([
             tableExists('project_chat_conversations'),
             tableExists('project_chat_participants'),
@@ -995,6 +1039,7 @@ exports.getAdminStats = async (req, res) => {
                         created_at: project.created_at,
                         deadline: project.deadline,
                         deadlineProject: buildDeadlineProject(project.deadline, progressPercent),
+                        workflowStages: workflowStagesByProjectId.get(Number(project.project_id)) || [],
                         member_count: Number(project.member_count || 1),
                         total_tasks: total,
                         completed_tasks: completed,
@@ -1005,6 +1050,7 @@ exports.getAdminStats = async (req, res) => {
                     };
                 }),
                 monthlyStats: [...monthlyMap.values()].sort((a, b) => String(b.month).localeCompare(String(a.month))).slice(0, 12),
+                workflowStages,
                 chatGroups,
                 chatUsers,
             },
