@@ -1548,6 +1548,12 @@
   background: conic-gradient(#047857 var(--value), #e5e7eb 0);
 }
 
+.admin-donut-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
 .admin-donut > div {
   width: 118px;
   aspect-ratio: 1;
@@ -1565,6 +1571,29 @@
 .admin-donut span {
   color: #64748b;
   font-size: 12px;
+}
+
+.admin-donut-note {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 9px 12px;
+  text-align: center;
+}
+
+.admin-donut-note strong {
+  display: block;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.admin-donut-note span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .admin-setting-row {

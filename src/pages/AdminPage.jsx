@@ -705,15 +705,21 @@ function ChartBars({ items, valueKey = "count", labelKey = "status", language = 
   );
 }
 
-function DonutChart({ items, t = (text) => text }) {
+function DonutChart({ items, language = "en", t = (text) => text }) {
   const total = items.reduce((sum, item) => sum + Number(item.count || 0), 0);
   const completed = items.find((item) => DONE_STATUSES.has(String(item.status || "").toUpperCase()))?.count || 0;
   const value = total > 0 ? Math.round((Number(completed) / total) * 100) : 0;
   return (
-    <div className="admin-donut" style={{ "--value": `${value}%` }}>
-      <div>
-        <strong>{value}%</strong>
-        <span>{t("Completed")}</span>
+    <div className="admin-donut-wrap">
+      <div className="admin-donut" style={{ "--value": `${value}%` }}>
+        <div>
+          <strong>{value}%</strong>
+          <span>{t("Completed")}</span>
+        </div>
+      </div>
+      <div className="admin-donut-note">
+        <strong>{completed}/{total} {t("Tasks")}</strong>
+        <span>{t("Completed")} {language === "vi" ? "trên" : "of"} {total} {t("Tasks")}</span>
       </div>
     </div>
   );
@@ -1105,7 +1111,7 @@ export default function AdminPage() {
         >
           <MonthlyAreaChart items={model.monthlyStats} range={trendRange} language={language} t={t} />
         </SectionCard>
-        <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} t={t} /></SectionCard>
+        <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} language={language} t={t} /></SectionCard>
         <SectionCard title={t("Task Status")} icon="activity"><ChartBars items={model.taskStatus} language={language} emptyLabel={t("No chart data")} /></SectionCard>
         <SectionCard title={t("Project Progress")} icon="grid">
           <div className="admin-list-stack">
@@ -1457,7 +1463,7 @@ export default function AdminPage() {
         </div>
       </SectionCard>
       <div className="admin-dashboard-grid">
-        <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} t={t} /></SectionCard>
+        <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} language={language} t={t} /></SectionCard>
         <SectionCard title={t("Project Performance")} icon="grid">
           <div className="admin-list-stack">
             {model.projects.slice(0, 8).map((project) => (
