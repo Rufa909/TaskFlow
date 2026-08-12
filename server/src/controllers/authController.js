@@ -53,6 +53,86 @@ const ensureEmailVerificationColumns = async () => {
     }
 };
 
+let projectDeadlineColumnReady;
+const ensureProjectDeadlineColumn = async () => {
+    if (!projectDeadlineColumnReady) {
+        projectDeadlineColumnReady = (async () => {
+            const connection = await pool.getConnection();
+            try {
+                await connection.query("SELECT GET_LOCK('taskflow_projects_deadline_column', 10)");
+                const [columns] = await connection.query("SHOW COLUMNS FROM projects WHERE Field = 'deadline'");
+                if (columns.length === 0) {
+                    try {
+                        await connection.query("ALTER TABLE projects ADD COLUMN deadline DATE NULL");
+                    } catch (err) {
+                        if (err.code !== "ER_DUP_FIELDNAME" && err.errno !== 1060) throw err;
+                    }
+                }
+            } finally {
+                await connection.query("SELECT RELEASE_LOCK('taskflow_projects_deadline_column')").catch(() => {});
+                connection.release();
+            }
+        })().catch((err) => {
+            projectDeadlineColumnReady = null;
+            throw err;
+        });
+    }
+
+    return projectDeadlineColumnReady;
+};
+
+function buildDeadlineProject(deadline, progressPercent = 0) {
+    if (!deadline) {
+        return {
+            date: null,
+            status: "none",
+            days_remaining: null,
+            is_overdue: false,
+            is_due_soon: false,
+        };
+    }
+
+    const value = String(deadline).slice(0, 10);
+    const target = new Date(value);
+    if (Number.isNaN(target.getTime())) {
+        return {
+            date: null,
+            status: "invalid",
+            days_remaining: null,
+            is_overdue: false,
+            is_due_soon: false,
+        };
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const deadlineDate = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+    const daysRemaining = Math.ceil((deadlineDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    const completed = Number(progressPercent || 0) >= 100;
+    const isOverdue = !completed && daysRemaining < 0;
+    const isDueSoon = !completed && daysRemaining >= 0 && daysRemaining <= 3;
+
+    return {
+        date: value,
+        status: completed ? "completed" : isOverdue ? "overdue" : isDueSoon ? "due_soon" : "active",
+        days_remaining: daysRemaining,
+        is_overdue: isOverdue,
+        is_due_soon: isDueSoon,
+    };
+}
+
+const tableExists = async (tableName) => {
+    const [rows] = await pool.query(
+        `SELECT TABLE_NAME
+         FROM INFORMATION_SCHEMA.TABLES
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = ?
+         LIMIT 1`,
+        [tableName]
+    );
+    return rows.length > 0;
+};
+
 const getMailTransporter = () => {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
         throw new Error('Missing EMAIL_USER or EMAIL_PASS');
@@ -546,6 +626,7 @@ exports.updatePassword = async (req, res) => {
 exports.getAdminStats = async (req, res) => {
     try {
         await ensureEmailVerificationColumns();
+        await ensureProjectDeadlineColumn();
 
         const [[adminRows]] = await pool.query(
             'SELECT role FROM users WHERE user_id = ? LIMIT 1',
@@ -594,8 +675,8 @@ exports.getAdminStats = async (req, res) => {
                   COUNT(*) AS total_tasks,
                   COUNT(*) AS active_tasks,
                   SUM(status IN ('COMPLETED','OWNER_APPROVED')) AS completed_tasks,
-                  SUM(deadline IS NOT NULL AND deadline < NOW() AND status NOT IN ('COMPLETED','OWNER_APPROVED')) AS overdue_tasks,
-                  SUM(deadline IS NOT NULL AND deadline >= NOW() AND deadline <= DATE_ADD(NOW(), INTERVAL 3 DAY) AND status NOT IN ('COMPLETED','OWNER_APPROVED')) AS due_soon_tasks
+                  SUM(t.deadline IS NOT NULL AND t.deadline < NOW() AND t.status NOT IN ('COMPLETED','OWNER_APPROVED')) AS overdue_tasks,
+                  SUM(t.deadline IS NOT NULL AND t.deadline >= NOW() AND t.deadline <= DATE_ADD(NOW(), INTERVAL 3 DAY) AND t.status NOT IN ('COMPLETED','OWNER_APPROVED')) AS due_soon_tasks
                 FROM tasks t
                 JOIN projects p ON p.project_id = t.project_id
                 WHERE t.deleted_at IS NULL
@@ -651,9 +732,15 @@ exports.getAdminStats = async (req, res) => {
                   p.project_id,
                   p.name,
                   p.created_at,
+                  p.deadline,
                   p.owner_id,
                   u.username AS owner_name,
                   u.email AS owner_email,
+                  (
+                    SELECT COUNT(DISTINCT pm.user_id)
+                    FROM project_members pm
+                    WHERE pm.project_id = p.project_id
+                  ) + 1 AS member_count,
                   COUNT(t.task_id) AS total_tasks,
                   SUM(CASE WHEN t.status IN ('COMPLETED','OWNER_APPROVED') THEN 1 ELSE 0 END) AS completed_tasks,
                   SUM(CASE WHEN t.task_id IS NOT NULL AND t.status NOT IN ('COMPLETED','OWNER_APPROVED') THEN 1 ELSE 0 END) AS active_tasks,
@@ -663,7 +750,7 @@ exports.getAdminStats = async (req, res) => {
                 LEFT JOIN users u ON u.user_id = p.owner_id
                 LEFT JOIN tasks t ON t.project_id = p.project_id AND t.deleted_at IS NULL
                 WHERE p.deleted_at IS NULL
-                GROUP BY p.project_id, p.name, p.created_at, p.owner_id, u.username, u.email
+                GROUP BY p.project_id, p.name, p.created_at, p.deadline, p.owner_id, u.username, u.email
                 ORDER BY p.created_at DESC
             `),
             pool.query(`
@@ -729,6 +816,96 @@ exports.getAdminStats = async (req, res) => {
         putMonthly(monthlyTaskRows, 'tasks');
         putMonthly(monthlyCompletedRows, 'completed_tasks');
 
+        let chatGroups = [];
+        let chatUsers = [];
+        const hasChatTables = await Promise.all([
+            tableExists('project_chat_conversations'),
+            tableExists('project_chat_participants'),
+            tableExists('project_chat_messages'),
+        ]);
+
+        if (hasChatTables.every(Boolean)) {
+            const [chatGroupRows] = await pool.query(`
+                SELECT
+                  c.conversation_id,
+                  c.project_id,
+                  p.name AS project_name,
+                  c.type,
+                  c.name,
+                  c.created_by,
+                  creator.username AS creator_name,
+                  creator.email AS creator_email,
+                  c.created_at,
+                  c.disbanded_at,
+                  COUNT(DISTINCT cp.user_id) AS member_count,
+                  GROUP_CONCAT(DISTINCT cp.user_id) AS participant_ids,
+                  GROUP_CONCAT(DISTINCT CONCAT(cp.user_id, ':', cp.role)) AS participant_roles,
+                  MAX(m.created_at) AS last_message_at
+                FROM project_chat_conversations c
+                LEFT JOIN projects p
+                  ON p.project_id = c.project_id
+                 AND p.deleted_at IS NULL
+                LEFT JOIN users creator
+                  ON creator.user_id = c.created_by
+                LEFT JOIN project_chat_participants cp
+                  ON cp.conversation_id = c.conversation_id
+                 AND cp.removed_at IS NULL
+                LEFT JOIN project_chat_messages m
+                  ON m.conversation_id = c.conversation_id
+                WHERE c.type = 'group'
+                  AND c.disbanded_at IS NULL
+                GROUP BY c.conversation_id, c.project_id, p.name, c.type, c.name, c.created_by, creator.username, creator.email, c.created_at, c.disbanded_at
+                ORDER BY COALESCE(MAX(m.created_at), c.created_at) DESC
+            `);
+
+            const [chatUserRows] = await pool.query(`
+                SELECT DISTINCT u.user_id, u.username, u.email, u.user_photo
+                FROM project_chat_conversations c
+                JOIN project_chat_participants cp
+                  ON cp.conversation_id = c.conversation_id
+                 AND cp.removed_at IS NULL
+                JOIN users u
+                  ON u.user_id = cp.user_id
+                WHERE c.type = 'group'
+                  AND c.disbanded_at IS NULL
+                ORDER BY u.username ASC, u.email ASC
+            `);
+
+            chatGroups = chatGroupRows.map((group) => {
+                const participantRoles = {};
+                String(group.participant_roles || '')
+                    .split(',')
+                    .filter(Boolean)
+                    .forEach((entry) => {
+                        const [userId, role] = entry.split(':');
+                        if (userId && role) participantRoles[userId] = role;
+                    });
+
+                return {
+                    ...group,
+                    conversation_id: Number(group.conversation_id),
+                    project_id: group.project_id ? Number(group.project_id) : null,
+                    created_by: Number(group.created_by),
+                    member_count: Number(group.member_count || 0),
+                    participants: String(group.participant_ids || '')
+                        .split(',')
+                        .map(Number)
+                        .filter(Boolean),
+                    participant_roles: participantRoles,
+                };
+            });
+            chatUsers = chatUserRows.map((chatUser) => ({
+                ...chatUser,
+                user_id: Number(chatUser.user_id),
+            }));
+        }
+
+        const groupByProjectId = new Map();
+        chatGroups.forEach((group) => {
+            if (!group.project_id || groupByProjectId.has(Number(group.project_id))) return;
+            groupByProjectId.set(Number(group.project_id), group);
+        });
+
         return res.json({
             success: true,
             stats: {
@@ -763,22 +940,31 @@ exports.getAdminStats = async (req, res) => {
                 projectProgress: projectProgressRows.map((project) => {
                     const total = Number(project.total_tasks || 0);
                     const completed = Number(project.completed_tasks || 0);
+                    const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    const linkedGroup = groupByProjectId.get(Number(project.project_id));
                     return {
                         project_id: Number(project.project_id),
                         name: project.name,
                         owner_id: Number(project.owner_id),
                         owner_name: project.owner_name,
                         owner_email: project.owner_email,
+                        group_id: linkedGroup?.conversation_id || null,
+                        group_name: linkedGroup?.name || null,
                         created_at: project.created_at,
+                        deadline: project.deadline,
+                        deadlineProject: buildDeadlineProject(project.deadline, progressPercent),
+                        member_count: Number(project.member_count || 1),
                         total_tasks: total,
                         completed_tasks: completed,
                         active_tasks: Number(project.active_tasks || 0),
                         overdue_tasks: Number(project.overdue_tasks || 0),
                         due_soon_tasks: Number(project.due_soon_tasks || 0),
-                        progress_percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+                        progress_percent: progressPercent,
                     };
                 }),
                 monthlyStats: [...monthlyMap.values()].sort((a, b) => String(b.month).localeCompare(String(a.month))).slice(0, 12),
+                chatGroups,
+                chatUsers,
             },
         });
     } catch (err) {

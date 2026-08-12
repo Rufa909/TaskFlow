@@ -9,7 +9,7 @@ import "./AdminPage.css";
 const ADMIN_NAV = [
   { id: "dashboard", label: "Dashboard", icon: "activity", description: "System-wide health, workload, risk, and recent movement." },
   { id: "users", label: "Users", icon: "users", description: "Manage accounts, access state, workload, projects, and tasks." },
-  { id: "groups", label: "Groups", icon: "teamAdd", description: "Review teams and role groups across the workspace." },
+  { id: "groups", label: "Groups", icon: "teamAdd", description: "Review active chat groups visible in TaskFlow." },
   { id: "projects", label: "Projects", icon: "grid", description: "Track project ownership, health, deadline risk, and progress." },
   { id: "tasks", label: "Tasks", icon: "check", description: "Search and inspect all active system tasks." },
   { id: "workflows", label: "Workflows", icon: "share", description: "Identify delayed stages and current workflow bottlenecks." },
@@ -36,7 +36,7 @@ const ADMIN_VI = {
   "Settings": "Cài đặt",
   "System-wide health, workload, risk, and recent movement.": "Theo dõi sức khỏe hệ thống, khối lượng công việc, rủi ro và hoạt động gần đây.",
   "Manage accounts, access state, workload, projects, and tasks.": "Quản lý tài khoản, trạng thái truy cập, khối lượng việc, dự án và công việc.",
-  "Review teams and role groups across the workspace.": "Xem các nhóm và vai trò trong toàn bộ workspace.",
+  "Review active chat groups visible in TaskFlow.": "Xem các nhóm chat đang tồn tại trên website.",
   "Track project ownership, health, deadline risk, and progress.": "Theo dõi chủ sở hữu, sức khỏe, rủi ro deadline và tiến độ dự án.",
   "Search and inspect all active system tasks.": "Tìm kiếm và kiểm tra toàn bộ công việc trong hệ thống.",
   "Identify delayed stages and current workflow bottlenecks.": "Xác định stage bị trễ và điểm nghẽn hiện tại của workflow.",
@@ -93,7 +93,6 @@ const ADMIN_VI = {
   "Active": "Đang hoạt động",
   "Pending": "Đang chờ",
   "Locked": "Đã khóa",
-  "All roles": "Tất cả vai trò",
   "Admin": "Quản trị",
   "Owner": "Chủ sở hữu",
   "Member": "Thành viên",
@@ -109,7 +108,11 @@ const ADMIN_VI = {
   "Unlock": "Mở khóa",
   "Delete": "Xóa",
   "No users found": "Không tìm thấy người dùng",
-  "Create Group": "Tạo nhóm",
+  "Chat group": "Nhóm chat",
+  "Open chat": "Mở chat",
+  "Last message": "Tin nhắn cuối",
+  "Disbanded": "Đã giải tán",
+  "No chat groups found": "Không tìm thấy nhóm chat",
   "All types": "Tất cả loại",
   "members": "thành viên",
   "projects": "dự án",
@@ -197,7 +200,6 @@ const ADMIN_VI = {
   "User Detail": "Chi tiết người dùng",
   "Task Detail": "Chi tiết công việc",
   "Group Members": "Thành viên nhóm",
-  "Group Projects": "Dự án của nhóm",
   "Save User": "Lưu người dùng",
   "Save Group": "Lưu nhóm",
   "New user": "Người dùng mới",
@@ -273,9 +275,70 @@ function isDueSoon(deadline, status) {
   return diff >= 0 && diff <= 3 * 24 * 60 * 60 * 1000;
 }
 
+function getDateOnly(value) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isProjectDeadlineOverdue(deadline, progress) {
+  const date = getDateOnly(deadline);
+  if (!date || Number(progress || 0) >= 100) return false;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return date < today;
+}
+
+function isProjectDeadlineDueSoon(deadline, progress) {
+  const date = getDateOnly(deadline);
+  if (!date || Number(progress || 0) >= 100) return false;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.ceil((date.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  return diffDays >= 0 && diffDays <= 3;
+}
+
+function normalizeDeadlineProject(project, progressPercent = 0) {
+  const existing = project?.deadlineProject || project?.deadline_project || null;
+  if (existing) return existing;
+
+  const date = getDateOnly(project?.deadline);
+  if (!date) {
+    return {
+      date: null,
+      status: "none",
+      days_remaining: null,
+      is_overdue: false,
+      is_due_soon: false,
+    };
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const daysRemaining = Math.ceil((date.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  const completed = Number(progressPercent || 0) >= 100;
+  const isOverdue = !completed && daysRemaining < 0;
+  const isDueSoon = !completed && daysRemaining >= 0 && daysRemaining <= 3;
+
+  return {
+    date: String(project.deadline).slice(0, 10),
+    status: completed ? "completed" : isOverdue ? "overdue" : isDueSoon ? "due_soon" : "active",
+    days_remaining: daysRemaining,
+    is_overdue: isOverdue,
+    is_due_soon: isDueSoon,
+  };
+}
+
 function getHealth(project) {
+  const progress = Number(project.progress_percent || 0);
+  const deadlineProject = normalizeDeadlineProject(project, progress);
+  if (deadlineProject.is_overdue || isProjectDeadlineOverdue(project.deadline, progress)) return "delayed";
   if (Number(project.overdue_tasks || 0) > 0) return "delayed";
-  if (Number(project.due_soon_tasks || 0) > 0 || Number(project.progress_percent || 0) < 40) return "at_risk";
+  if (deadlineProject.is_due_soon || isProjectDeadlineDueSoon(project.deadline, progress)) return "at_risk";
+  if (Number(project.due_soon_tasks || 0) > 0 || progress < 40) return "at_risk";
   return "on_track";
 }
 
@@ -285,7 +348,28 @@ function healthLabel(health, language = "en") {
   return language === "vi" ? "Đúng tiến độ" : "On Track";
 }
 
-function buildAdminModel(stats, visibleProjects, currentUser) {
+function deadlineProjectLabel(deadlineProject, language = "en") {
+  if (!deadlineProject?.date) return language === "vi" ? "Chưa có hạn" : "No deadline";
+  if (deadlineProject.status === "completed") return language === "vi" ? "Hoàn thành" : "Completed";
+  if (deadlineProject.is_overdue || deadlineProject.status === "overdue") return language === "vi" ? "Quá hạn" : "Overdue";
+  if (deadlineProject.is_due_soon || deadlineProject.status === "due_soon") return language === "vi" ? "Sắp hết hạn" : "Due soon";
+  const days = Number(deadlineProject.days_remaining);
+  if (Number.isFinite(days)) {
+    if (days === 0) return language === "vi" ? "Hôm nay" : "Today";
+    return language === "vi" ? `Còn ${days} ngày` : `${days} days left`;
+  }
+  return language === "vi" ? "Đang hoạt động" : "Active";
+}
+
+function deadlineProjectTone(deadlineProject) {
+  if (!deadlineProject?.date) return "neutral";
+  if (deadlineProject.is_overdue || deadlineProject.status === "overdue") return "red";
+  if (deadlineProject.is_due_soon || deadlineProject.status === "due_soon") return "orange";
+  if (deadlineProject.status === "completed") return "green";
+  return "blue";
+}
+
+function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversations = [], chatUsers = []) {
   const taskGroups = stats?.tasksByStatus || {};
   const tasks = Object.values(taskGroups).flat().map((task) => ({
     ...task,
@@ -301,14 +385,18 @@ function buildAdminModel(stats, visibleProjects, currentUser) {
 
   const projectProgress = stats?.projectProgress || [];
   const projects = projectProgress.map((project) => {
+    const progress = Number(project.progress_percent || 0);
+    const deadlineProject = normalizeDeadlineProject(project, progress);
     const health = getHealth(project);
     return {
       ...project,
       id: Number(project.project_id),
       group: project.group_name || "Workspace",
       members: Number(project.member_count || 0),
-      status: Number(project.progress_percent || 0) >= 100 ? "Completed" : "Active",
-      deadline: project.deadline || null,
+      progress_percent: progress,
+      status: progress >= 100 ? "Completed" : "Active",
+      deadline: deadlineProject?.date || project.deadline || null,
+      deadlineProject,
       health,
     };
   });
@@ -331,7 +419,8 @@ function buildAdminModel(stats, visibleProjects, currentUser) {
         due_soon_tasks: 0,
         progress_percent: 0,
         status: "Active",
-        deadline: project.deadline || null,
+        deadline: project.deadlineProject?.date || project.deadline_project?.date || project.deadline || null,
+        deadlineProject: normalizeDeadlineProject(project, 0),
         health: "on_track",
       });
     }
@@ -364,19 +453,21 @@ function buildAdminModel(stats, visibleProjects, currentUser) {
     };
   });
 
-  const groups = (stats?.projectRoles || []).map((role, index) => ({
-    id: index + 1,
-    name: `${formatStatus(role.role)} group`,
-    type: role.role || "member",
-    status: "Active",
-    members: Number(role.count || 0),
-    projects: allProjects.filter((project) => String(project.user_role || "").toLowerCase() === String(role.role || "").toLowerCase()).length,
-    owner: role.role === "owner" ? "Project owners" : "System",
+  const chatUserMap = new Map(chatUsers.map((item) => [Number(item.user_id), item]));
+  const groups = chatGroupConversations.map((conversation) => ({
+    id: conversation.conversation_id,
+    conversation_id: conversation.conversation_id,
+    name: conversation.name || "Group chat",
+    type: "chat",
+    status: conversation.disbanded_at ? "Disbanded" : "Active",
+    members: Number(conversation.member_count || conversation.participants?.length || 0),
+    projects: conversation.project_id ? 1 : 0,
+    project_id: conversation.project_id,
+    project_name: conversation.project_name || "",
+    created_at: conversation.created_at,
+    last_message_at: conversation.last_message_at,
+    participants: (conversation.participants || []).map((userId) => chatUserMap.get(Number(userId))).filter(Boolean),
   }));
-
-  if (groups.length === 0) {
-    groups.push({ id: 1, name: "Workspace group", type: "workspace", status: "Active", members: enrichedUsers.length, projects: allProjects.length, owner: "System" });
-  }
 
   const workflows = allProjects.map((project) => {
     const progress = Number(project.progress_percent || 0);
@@ -391,7 +482,8 @@ function buildAdminModel(stats, visibleProjects, currentUser) {
         owner: project.owner_email || project.owner_name || "Owner",
         status: done ? "completed" : current ? "in_progress" : "pending",
         processingTime: `${Math.max(1, index + Math.ceil(progress / 25))}d`,
-        deadline: project.deadline,
+        deadline: project.deadlineProject?.date || project.deadline,
+        deadlineProject: project.deadlineProject || null,
         delayStatus: delayed ? "Delayed" : done ? "Normal" : "Pending",
         bottleneck: delayed,
       };
@@ -437,6 +529,7 @@ function buildAdminModel(stats, visibleProjects, currentUser) {
   return {
     users: enrichedUsers,
     groups,
+    chatUsers,
     projects: allProjects,
     tasks,
     workflows,
@@ -632,12 +725,13 @@ export default function AdminPage() {
   const [activeView, setActiveView] = useState("dashboard");
   const [stats, setStats] = useState(null);
   const [projects, setProjects] = useState([]);
+  const [chatGroups, setChatGroups] = useState([]);
+  const [chatUsers, setChatUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({
-    role: "all",
     userStatus: "all",
     projectStatus: "all",
     taskStatus: "all",
@@ -656,16 +750,22 @@ export default function AdminPage() {
     setLoading(true);
     setError("");
     try {
-      const [statsRes, projectRes] = await Promise.all([
+      const [statsRes, projectRes, chatGroupRes] = await Promise.all([
         api.get("/auth/admin/stats"),
         api.get("/projects").catch(() => ({ data: { projects: [] } })),
+        api.get("/projects/chat/group-conversations").catch(() => ({ data: { conversations: [], chat_users: [] } })),
       ]);
-      setStats(statsRes.data.stats || null);
+      const nextStats = statsRes.data.stats || null;
+      setStats(nextStats);
       setProjects(projectRes.data.projects || []);
+      setChatGroups(nextStats?.chatGroups || chatGroupRes.data.conversations || []);
+      setChatUsers(nextStats?.chatUsers || chatGroupRes.data.chat_users || []);
     } catch (err) {
       setError(err.response?.data?.message || "Cannot load admin dashboard.");
       setStats(null);
       setProjects([]);
+      setChatGroups([]);
+      setChatUsers([]);
     } finally {
       setLoading(false);
     }
@@ -676,12 +776,12 @@ export default function AdminPage() {
   }, []);
 
   const model = useMemo(() => {
-    const base = buildAdminModel(stats, projects, user);
+    const base = buildAdminModel(stats, projects, user, chatGroups, chatUsers);
     const mergedUsers = [...base.users, ...localUsers]
       .filter((item, index, list) => list.findIndex((entry) => String(entry.email) === String(item.email)) === index)
       .filter((item) => !deletedUserIds.has(item.id));
     return { ...base, users: mergedUsers, stats: { ...base.stats, totalUsers: Math.max(base.stats.totalUsers, mergedUsers.length) } };
-  }, [stats, projects, user, localUsers, deletedUserIds]);
+  }, [stats, projects, user, chatGroups, chatUsers, localUsers, deletedUserIds]);
 
   const activeNav = ADMIN_NAV.find((item) => item.id === activeView) || ADMIN_NAV[0];
   const lowerSearch = search.trim().toLowerCase();
@@ -693,8 +793,7 @@ export default function AdminPage() {
   };
 
   const visibleUsers = model.users.filter((item) => (
-    filterText([item.name, item.email, item.role, item.status])
-    && (filters.role === "all" || item.role === filters.role)
+    filterText([item.name, item.email, item.status])
     && (filters.userStatus === "all" || item.status === filters.userStatus)
   ));
 
@@ -741,7 +840,6 @@ export default function AdminPage() {
         id,
         name: payload.name || "New user",
         email: payload.email || "new.user@taskflow.local",
-        role: payload.role || "member",
         status: payload.status || "Active",
         projects: payload.projects || 0,
         tasks: payload.tasks || 0,
@@ -785,7 +883,10 @@ export default function AdminPage() {
           <div className="admin-list-stack">
             {model.projects.length ? model.projects.slice(0, 6).map((project) => (
               <div key={project.id} className="admin-compact-row">
-                <span>{project.name}</span>
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{t("Deadline:")} {formatDate(project.deadline)}</small>
+                </span>
                 <ProgressBar value={project.progress_percent} tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "blue"} />
               </div>
             )) : <EmptyState label={t("No projects")} />}
@@ -837,22 +938,15 @@ export default function AdminPage() {
           <option value="Pending">{t("Pending")}</option>
           <option value="Locked">{t("Locked")}</option>
         </select>
-        <select value={filters.role} onChange={(event) => updateFilter("role", event.target.value)}>
-          <option value="all">{t("All roles")}</option>
-          <option value="admin">{t("Admin")}</option>
-          <option value="owner">{t("Owner")}</option>
-          <option value="member">{t("Member")}</option>
-        </select>
       </SearchFilter>
       <div className="admin-table users">
         <div className="admin-table-head">
-          <span>{t("Name")}</span><span>{t("Email")}</span><span>{t("Role")}</span><span>{t("Status")}</span><span>{t("Projects")}</span><span>{t("Tasks")}</span><span>{t("Last Active")}</span><span>{t("Actions")}</span>
+          <span>{t("Name")}</span><span>{t("Email")}</span><span>{t("Status")}</span><span>{t("Projects")}</span><span>{t("Tasks")}</span><span>{t("Last Active")}</span><span>{t("Actions")}</span>
         </div>
         {visibleUsers.map((item) => (
           <div key={item.id} className="admin-table-row">
             <span><strong>{item.name}</strong></span>
             <span>{item.email}</span>
-            <span><Badge>{formatStatus(item.role, language)}</Badge></span>
             <span><Badge tone={item.status === "Locked" ? "red" : item.status === "Pending" ? "orange" : "green"}>{t(item.status)}</Badge></span>
             <span>{item.projects}</span>
             <span>{item.tasks}</span>
@@ -874,33 +968,27 @@ export default function AdminPage() {
     <SectionCard
       title={t("Groups")}
       icon="teamAdd"
-      actions={<button className="admin-primary-button" type="button" onClick={() => setModal({ type: "groupForm" })}><Icon name="plus" size={14} />{t("Create Group")}</button>}
     >
-      <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")}>
-        <select value={filters.role} onChange={(event) => updateFilter("role", event.target.value)}>
-          <option value="all">{t("All types")}</option>
-          {model.groups.map((group) => <option key={group.id} value={group.type}>{group.type}</option>)}
-        </select>
-      </SearchFilter>
+      <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")} />
       <div className="admin-card-grid">
         {model.groups
-          .filter((group) => filterText([group.name, group.type, group.status]) && (filters.role === "all" || group.type === filters.role))
+          .filter((group) => filterText([group.name, group.project_name, group.status]))
           .map((group) => (
             <div key={group.id} className="admin-group-card">
               <div>
                 <strong>{group.name}</strong>
-                <Badge tone="blue">{group.type}</Badge>
+                <Badge tone={group.status === "Disbanded" ? "red" : "blue"}>{group.status === "Disbanded" ? t("Disbanded") : t("Chat group")}</Badge>
               </div>
-              <p>{group.members} {t("members")} - {group.projects} {t("projects")}</p>
+              <p>{group.members} {t("members")}{group.project_name ? ` - ${group.project_name}` : ""}</p>
+              <small className="admin-group-meta">{t("Last message")}: {formatDateTime(group.last_message_at || group.created_at)}</small>
               <div className="admin-row-actions">
                 <button type="button" onClick={() => setModal({ type: "group", item: group })}>{t("Members")}</button>
-                <button type="button" onClick={() => setModal({ type: "groupProjects", item: group })}>{t("Projects")}</button>
-                <button type="button" onClick={() => setModal({ type: "groupForm", item: group })}>{t("Edit")}</button>
-                <button type="button">{t("Delete")}</button>
+                <button type="button" onClick={() => navigate("/chat")}>{t("Open chat")}</button>
               </div>
             </div>
           ))}
       </div>
+      {model.groups.length === 0 && <EmptyState label={t("No chat groups found")} />}
     </SectionCard>
   );
 
@@ -928,7 +1016,12 @@ export default function AdminPage() {
             <span>{project.members}</span>
             <span><ProgressBar value={project.progress_percent} tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "blue"} /></span>
             <span><Badge tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "green"}><i className={`admin-health-dot ${project.health}`} />{healthLabel(project.health, language)}</Badge></span>
-            <span>{formatDate(project.deadline)}</span>
+            <span className="admin-deadline-cell">
+              <strong>{formatDate(project.deadlineProject?.date || project.deadline)}</strong>
+              <Badge tone={deadlineProjectTone(project.deadlineProject)}>
+                {deadlineProjectLabel(project.deadlineProject, language)}
+              </Badge>
+            </span>
             <span>{formatDate(project.created_at)}</span>
           </div>
         ))}
@@ -1062,7 +1155,10 @@ export default function AdminPage() {
           <div className="admin-list-stack">
             {model.projects.slice(0, 8).map((project) => (
               <div key={project.id} className="admin-compact-row">
-                <span>{project.name}</span>
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{t("Deadline:")} {formatDate(project.deadline)}</small>
+                </span>
                 <ProgressBar value={project.progress_percent} />
               </div>
             ))}
@@ -1199,7 +1295,10 @@ function RiskList({ projects, t = (text) => text, language = "en" }) {
     <div className="admin-list-stack">
       {projects.map((project) => (
         <div key={project.id} className="admin-risk-row">
-          <span>{project.name}</span>
+          <span>
+            <strong>{project.name}</strong>
+            <small>{t("Deadline:")} {formatDate(project.deadline)}</small>
+          </span>
           <Badge tone={project.health === "delayed" ? "red" : "orange"}>{healthLabel(project.health, language)}</Badge>
         </div>
       ))}
@@ -1226,12 +1325,11 @@ function modalTitle(modal, t = (text) => text) {
   if (modal.type === "user") return t("User Detail");
   if (modal.type === "task") return t("Task Detail");
   if (modal.type === "group") return t("Group Members");
-  if (modal.type === "groupProjects") return t("Group Projects");
   return t("Group");
 }
 
 function ModalContent({ modal, model, onSaveUser, t = (text) => text, language = "en" }) {
-  const [form, setForm] = useState(modal.item || { role: "member", status: "Active" });
+  const [form, setForm] = useState(modal.item || { status: "Active" });
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
   if (modal.type === "userForm") {
@@ -1239,7 +1337,6 @@ function ModalContent({ modal, model, onSaveUser, t = (text) => text, language =
       <form className="admin-form" onSubmit={(event) => { event.preventDefault(); onSaveUser(form); }}>
         <label>{t("Name")}<input value={form.name || ""} onChange={(event) => update("name", event.target.value)} /></label>
         <label>{t("Email")}<input value={form.email || ""} onChange={(event) => update("email", event.target.value)} /></label>
-        <label>{t("Role")}<select value={form.role || "member"} onChange={(event) => update("role", event.target.value)}><option value="admin">{t("Admin")}</option><option value="owner">{t("Owner")}</option><option value="member">{t("Member")}</option></select></label>
         <label>{t("Status")}<select value={form.status || "Active"} onChange={(event) => update("status", event.target.value)}><option value="Active">{t("Active")}</option><option value="Pending">{t("Pending")}</option><option value="Locked">{t("Locked")}</option></select></label>
         <button className="admin-primary-button" type="submit">{t("Save User")}</button>
       </form>
@@ -1252,7 +1349,7 @@ function ModalContent({ modal, model, onSaveUser, t = (text) => text, language =
     return (
       <div className="admin-modal-detail">
         <p><strong>{modal.item.name}</strong><span>{modal.item.email}</span></p>
-        <p><Badge>{formatStatus(modal.item.role, language)}</Badge><Badge tone={modal.item.status === "Locked" ? "red" : "green"}>{t(modal.item.status)}</Badge></p>
+        <p><Badge tone={modal.item.status === "Locked" ? "red" : "green"}>{t(modal.item.status)}</Badge></p>
         <h4>{t("Projects")}</h4>
         {ownedProjects.map((project) => <span key={project.id}>{project.name}</span>)}
         {!ownedProjects.length && <EmptyState label={t("No projects")} />}
@@ -1274,21 +1371,12 @@ function ModalContent({ modal, model, onSaveUser, t = (text) => text, language =
     );
   }
 
-  if (modal.type === "groupProjects") {
-    const projects = model.projects.filter((project) => project.group === modal.item.name || project.user_role === modal.item.type);
-    return (
-      <div className="admin-modal-detail">
-        {projects.map((project) => <span key={project.id}>{project.name}</span>)}
-        {!projects.length && <EmptyState label={t("No projects")} />}
-      </div>
-    );
-  }
-
   if (modal.type === "group") {
     return (
       <div className="admin-modal-detail">
         <p><strong>{modal.item.name}</strong><span>{modal.item.members} {t("members")}</span></p>
-        {model.users.slice(0, modal.item.members || 4).map((user) => <span key={user.id}>{user.name} - {user.email}</span>)}
+        {(modal.item.participants || []).map((user) => <span key={user.user_id}>{user.username} - {user.email}</span>)}
+        {(modal.item.participants || []).length === 0 && <EmptyState label={t("No users found")} />}
       </div>
     );
   }

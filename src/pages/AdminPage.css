@@ -560,6 +560,29 @@
   font-weight: 750;
 }
 
+.admin-compact-row > span,
+.admin-risk-row > span {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-compact-row > span strong,
+.admin-risk-row > span strong,
+.admin-compact-row > span small,
+.admin-risk-row > span small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-compact-row > span small,
+.admin-risk-row > span small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .admin-workload-row {
   grid-template-columns: minmax(0, 1fr) 52px 86px;
 }
@@ -629,12 +652,12 @@
 
 .admin-table.users .admin-table-head,
 .admin-table.users .admin-table-row {
-  grid-template-columns: 1fr 1.25fr 90px 100px 76px 64px 100px 270px;
+  grid-template-columns: 1fr 1.35fr 100px 76px 64px 110px 270px;
 }
 
 .admin-table.projects .admin-table-head,
 .admin-table.projects .admin-table-row {
-  grid-template-columns: 1.15fr 1.15fr 0.8fr 70px 1fr 110px 96px 96px;
+  grid-template-columns: 1.1fr 1.1fr 0.75fr 64px 0.95fr 106px 136px 96px;
 }
 
 .admin-table.tasks .admin-table-head,
@@ -688,6 +711,17 @@
   white-space: nowrap;
   margin-top: 2px;
   color: #64748b;
+}
+
+.admin-deadline-cell {
+  display: grid;
+  gap: 4px;
+  align-items: center;
+}
+
+.admin-deadline-cell .admin-badge {
+  width: fit-content;
+  max-width: 100%;
 }
 
 .admin-row-actions {
@@ -821,6 +855,14 @@
   margin: 0;
   color: #64748b;
   font-size: 13px;
+}
+
+.admin-group-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .admin-pipeline {

@@ -6,6 +6,8 @@ export default function AddProjectModal({
 
   newProjectName,
   setNewProjectName,
+  newProjectDeadline,
+  setNewProjectDeadline,
 
   handleAddProject,
   savingProject = false,
@@ -27,6 +29,14 @@ export default function AddProjectModal({
             onChange={(e) => setNewProjectName(e.target.value)}
             placeholder="e.g. Work, Personal"
             autoFocus
+            onKeyDown={(e) => e.key === "Enter" && handleAddProject()}
+          />
+          <label>Completion date</label>
+          <input
+            type="date"
+            value={newProjectDeadline || ""}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setNewProjectDeadline?.(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAddProject()}
           />
         </div>

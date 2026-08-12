@@ -96,6 +96,7 @@ export default function ChatPage() {
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDeadline, setNewProjectDeadline] = useState("");
   const [savingProject, setSavingProject] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -590,11 +591,12 @@ export default function ChatPage() {
     if (!newProjectName.trim()) return;
     setSavingProject(true);
     try {
-      const res = await api.post("/projects", { name: newProjectName.trim() });
+      const res = await api.post("/projects", { name: newProjectName.trim(), deadline: newProjectDeadline || null });
       const created = res.data.project;
       setProjects((prev) => [...prev, created]);
       setActiveProject(created);
       setNewProjectName("");
+      setNewProjectDeadline("");
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
@@ -1541,6 +1543,8 @@ export default function ChatPage() {
         setIsAddProjectModalOpen={setIsAddProjectModalOpen}
         newProjectName={newProjectName}
         setNewProjectName={setNewProjectName}
+        newProjectDeadline={newProjectDeadline}
+        setNewProjectDeadline={setNewProjectDeadline}
         handleAddProject={handleAddProject}
         savingProject={savingProject}
       />

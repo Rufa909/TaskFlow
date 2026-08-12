@@ -64,6 +64,7 @@ export default function UpcomingPage() {
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDeadline, setNewProjectDeadline] = useState("");
   const [savingProject, setSavingProject] = useState(false);
 
   const [isAddingTask, setIsAddingTask] = useState(false);
@@ -260,11 +261,12 @@ export default function UpcomingPage() {
     setSavingProject(true);
 
     try {
-      const res = await api.post("/projects", { name: newProjectName.trim() });
+      const res = await api.post("/projects", { name: newProjectName.trim(), deadline: newProjectDeadline || null });
       const created = res.data.project;
       setProjects((prev) => [...prev, created]);
       setActiveProject(created);
       setNewProjectName("");
+      setNewProjectDeadline("");
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
@@ -406,6 +408,8 @@ export default function UpcomingPage() {
         setIsAddProjectModalOpen={setIsAddProjectModalOpen}
         newProjectName={newProjectName}
         setNewProjectName={setNewProjectName}
+        newProjectDeadline={newProjectDeadline}
+        setNewProjectDeadline={setNewProjectDeadline}
         handleAddProject={handleAddProject}
         savingProject={savingProject}
       />

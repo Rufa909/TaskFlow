@@ -131,9 +131,21 @@
 
 .project-item .project-name {
   min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.project-item .project-name > span,
+.project-item .project-deadline {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-item .project-deadline {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .project-count {

@@ -6,6 +6,8 @@ export default function EditProjectModal({
   project,
   name,
   setName,
+  deadline,
+  setDeadline,
   onSave,
   saving = false,
 }) {
@@ -25,6 +27,14 @@ export default function EditProjectModal({
             onChange={(e) => setName(e.target.value)}
             placeholder="Project name"
             autoFocus
+            onKeyDown={(e) => e.key === "Enter" && onSave()}
+          />
+          <label>Completion date</label>
+          <input
+            type="date"
+            value={deadline || ""}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setDeadline?.(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && onSave()}
           />
         </div>

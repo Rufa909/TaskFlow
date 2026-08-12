@@ -81,6 +81,15 @@ function getDateOnly(value) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+function formatProjectDeadline(value) {
+  const date = getDateOnly(value);
+  return date ? date.toLocaleDateString("vi-VN") : "";
+}
+
+function getProjectDeadlineDate(project) {
+  return project?.deadlineProject?.date || project?.deadline_project?.date || project?.deadline || null;
+}
+
 function isSameDay(first, second) {
   return first.getTime() === second.getTime();
 }
@@ -164,10 +173,12 @@ export default function HomePage() {
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDeadline, setNewProjectDeadline] = useState("");
   const [savingProject, setSavingProject] = useState(false);
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState(null);
   const [editProjectName, setEditProjectName] = useState("");
+  const [editProjectDeadline, setEditProjectDeadline] = useState("");
   const [editingProjectSaving, setEditingProjectSaving] = useState(false);
   const [tasksByProject, setTasksByProject] = useState({});
   const [taskAttachment, setTaskAttachment] = useState([]);
@@ -666,6 +677,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     try {
       const res = await api.post("/projects", { 
         name: newProjectName.trim(),
+        deadline: newProjectDeadline || null,
         workflow_stages: workflowStages 
       });
       const created = res.data.project;
@@ -673,6 +685,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       setActiveProject(created);
       setActiveView("project");
       setNewProjectName("");
+      setNewProjectDeadline("");
       setIsProjectMenuOpen(false);
       setIsCustomizeWorkflowOpen(false);
       setCustomWorkflowStages(null);
@@ -711,6 +724,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   const openEditProjectModal = (project) => {
     setProjectToEdit(project);
     setEditProjectName(project?.name || "");
+    setEditProjectDeadline(project?.deadline ? String(project.deadline).slice(0, 10) : "");
     setIsEditProjectModalOpen(true);
   };
 
@@ -720,6 +734,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     try {
       const res = await api.put(`/projects/${projectToEdit.project_id}`, {
         name: editProjectName.trim(),
+        deadline: editProjectDeadline || null,
       });
       const updated = res.data.project;
       setProjects((prev) =>
@@ -731,6 +746,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         setActiveProject(updated);
       setIsEditProjectModalOpen(false);
       setProjectToEdit(null);
+      setEditProjectDeadline("");
     } catch (err) {
       console.error(err);
       showToast(t("cannotEditProject"), "error");
@@ -1088,6 +1104,8 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         project={projectToEdit}
         name={editProjectName}
         setName={setEditProjectName}
+        deadline={editProjectDeadline}
+        setDeadline={setEditProjectDeadline}
         onSave={handleEditProjectSave}
         saving={editingProjectSaving}
       />
@@ -1542,9 +1560,21 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
             </div>
           ) : (
             <>
-              <h1 className="page-title">
-                {activeProject?.name || "Select a project"}
-              </h1>
+              <div className="project-page-heading">
+                <h1 className="page-title">
+                  {activeProject?.name || "Select a project"}
+                </h1>
+                {activeProject && (
+                  <div className={`project-deadline-chip ${getProjectDeadlineDate(activeProject) ? "" : "empty"}`}>
+                    <Icon name="calendar" size={14} />
+                    <span>
+                      {getProjectDeadlineDate(activeProject)
+                        ? `${t("projectDeadline")}: ${formatProjectDeadline(getProjectDeadlineDate(activeProject))}`
+                        : t("noProjectDeadline")}
+                    </span>
+                  </div>
+                )}
+              </div>
 
               {/* Workflow Progress Bar - Top Priority */}
               {activeProject && !loadingWorkflow && workflowStages.length > 0 && (
@@ -1809,6 +1839,8 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         setIsAddProjectModalOpen={setIsAddProjectModalOpen}
         newProjectName={newProjectName}
         setNewProjectName={setNewProjectName}
+        newProjectDeadline={newProjectDeadline}
+        setNewProjectDeadline={setNewProjectDeadline}
         handleAddProject={handleAddProject}
         savingProject={savingProject}
       />
@@ -1818,6 +1850,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         onClose={() => {
           setIsCustomizeWorkflowOpen(false);
           setNewProjectName("");
+          setNewProjectDeadline("");
         }}
         onSave={handleCreateProjectWithWorkflow}
         loading={savingProject}

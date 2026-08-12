@@ -2,6 +2,95 @@ const pool = require('../config/db');
 const ProjectStage = require('../models/ProjectStage');
 
 let removedMembersTableReady;
+let projectDeadlineColumnReady;
+
+async function ensureProjectDeadlineColumn() {
+    if (!projectDeadlineColumnReady) {
+        projectDeadlineColumnReady = (async () => {
+            const connection = await pool.getConnection();
+            try {
+                await connection.query("SELECT GET_LOCK('taskflow_projects_deadline_column', 10)");
+                const [columns] = await connection.query("SHOW COLUMNS FROM projects WHERE Field = 'deadline'");
+                if (columns.length === 0) {
+                    try {
+                        await connection.query("ALTER TABLE projects ADD COLUMN deadline DATE NULL");
+                    } catch (err) {
+                        if (err.code !== "ER_DUP_FIELDNAME" && err.errno !== 1060) throw err;
+                    }
+                }
+            } finally {
+                await connection.query("SELECT RELEASE_LOCK('taskflow_projects_deadline_column')").catch(() => {});
+                connection.release();
+            }
+        })().catch((err) => {
+            projectDeadlineColumnReady = null;
+            throw err;
+        });
+    }
+
+    return projectDeadlineColumnReady;
+}
+
+function normalizeProjectDeadline(deadline) {
+    if (!deadline) return null;
+    const value = String(deadline).slice(0, 10);
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return value;
+}
+
+function isPastProjectDeadline(deadline) {
+    if (!deadline) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return deadline < today;
+}
+
+function buildDeadlineProject(deadline, progressPercent = 0) {
+    if (!deadline) {
+        return {
+            date: null,
+            status: "none",
+            days_remaining: null,
+            is_overdue: false,
+            is_due_soon: false,
+        };
+    }
+
+    const value = String(deadline).slice(0, 10);
+    const target = new Date(value);
+    if (Number.isNaN(target.getTime())) {
+        return {
+            date: null,
+            status: "invalid",
+            days_remaining: null,
+            is_overdue: false,
+            is_due_soon: false,
+        };
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const deadlineDate = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+    const daysRemaining = Math.ceil((deadlineDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    const completed = Number(progressPercent || 0) >= 100;
+    const isOverdue = !completed && daysRemaining < 0;
+    const isDueSoon = !completed && daysRemaining >= 0 && daysRemaining <= 3;
+
+    return {
+        date: value,
+        status: completed ? "completed" : isOverdue ? "overdue" : isDueSoon ? "due_soon" : "active",
+        days_remaining: daysRemaining,
+        is_overdue: isOverdue,
+        is_due_soon: isDueSoon,
+    };
+}
+
+function attachDeadlineProject(project) {
+    return {
+        ...project,
+        deadlineProject: buildDeadlineProject(project.deadline),
+    };
+}
 
 async function ensureRemovedMembersTable() {
     if (!removedMembersTableReady) {
@@ -26,6 +115,7 @@ async function ensureRemovedMembersTable() {
 // GET /api/projects → lấy tất cả project của user đang đăng nhập
 exports.getProjects = async (req, res) => {
     try {
+        await ensureProjectDeadlineColumn();
         await ensureRemovedMembersTable();
         let [rows] = await pool.query(
             `SELECT DISTINCT p.*,
@@ -59,7 +149,7 @@ exports.getProjects = async (req, res) => {
                 [result.insertId]
             );
         }
-        res.json({ success: true, projects: rows });
+        res.json({ success: true, projects: rows.map(attachDeadlineProject) });
     } catch (err) {
         console.error('Loi getProjects:', err);
         res.status(500).json({ success: false, message: 'Co loi xay ra!' });
@@ -68,14 +158,22 @@ exports.getProjects = async (req, res) => {
 
 // POST /api/projects → tạo project mới
 exports.createProject = async (req, res) => {
-    const { name, workflow_stages } = req.body;
+    const { name, workflow_stages, deadline } = req.body;
     if (!name || !name.trim()) {
         return res.status(400).json({ success: false, message: 'Ten project khong duoc de trong!' });
     }
+    const normalizedDeadline = normalizeProjectDeadline(deadline);
+    if (deadline && normalizedDeadline === undefined) {
+        return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong hop le!' });
+    }
+    if (isPastProjectDeadline(normalizedDeadline)) {
+        return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong duoc o qua khu!' });
+    }
     try {
+        await ensureProjectDeadlineColumn();
         const [result] = await pool.query(
-            'INSERT INTO projects (owner_id, name) VALUES (?, ?)',
-            [req.user.id, name.trim()]
+            'INSERT INTO projects (owner_id, name, deadline) VALUES (?, ?, ?)',
+            [req.user.id, name.trim(), normalizedDeadline]
         );
         const projectId = result.insertId;
 
@@ -110,7 +208,7 @@ exports.createProject = async (req, res) => {
             'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
             [projectId]
         );
-        res.status(201).json({ success: true, project: rows[0] });
+        res.status(201).json({ success: true, project: attachDeadlineProject(rows[0]) });
     } catch (err) {
         console.error('Loi createProject:', err);
         res.status(500).json({ success: false, message: 'Co loi xay ra!' });
@@ -121,6 +219,7 @@ exports.createProject = async (req, res) => {
 exports.deleteProject = async (req, res) => {
     const { id } = req.params;
     try {
+        await ensureProjectDeadlineColumn();
         const [rows] = await pool.query(
             'SELECT * FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL',
             [id, req.user.id]
@@ -139,11 +238,19 @@ exports.deleteProject = async (req, res) => {
 // PUT /api/projects/:id → update project name
 exports.updateProject = async (req, res) => {
     const { id } = req.params;
-    const { name } = req.body;
+    const { name, deadline } = req.body;
     if (!name || !name.trim()) {
         return res.status(400).json({ success: false, message: 'Ten project khong duoc de trong!' });
     }
     try {
+        await ensureProjectDeadlineColumn();
+        const normalizedDeadline = normalizeProjectDeadline(deadline);
+        if (deadline && normalizedDeadline === undefined) {
+            return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong hop le!' });
+        }
+        if (isPastProjectDeadline(normalizedDeadline)) {
+            return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong duoc o qua khu!' });
+        }
         const [rows] = await pool.query(
             'SELECT * FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL',
             [id, req.user.id]
@@ -151,12 +258,12 @@ exports.updateProject = async (req, res) => {
         if (rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Project khong ton tai!' });
         }
-        await pool.query('UPDATE projects SET name = ? WHERE project_id = ?', [name.trim(), id]);
+        await pool.query('UPDATE projects SET name = ?, deadline = ? WHERE project_id = ?', [name.trim(), normalizedDeadline, id]);
         const [updated] = await pool.query(
             'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
             [id]
         );
-        res.json({ success: true, project: updated[0] });
+        res.json({ success: true, project: attachDeadlineProject(updated[0]) });
     } catch (err) {
         console.error('Loi updateProject:', err);
         res.status(500).json({ success: false, message: 'Co loi xay ra!' });

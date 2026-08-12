@@ -17,6 +17,8 @@ export const translations = {
     selectProject: 'Select a project',
     myProjects: 'My Projects',
     addProject: 'Add project',
+    projectDeadline: 'Project deadline',
+    noProjectDeadline: 'No project deadline',
     
     // Modals
     addProjectTitle: 'Add project',
@@ -117,6 +119,8 @@ export const translations = {
     selectProject: 'Chọn một project',
     myProjects: 'Project của tôi',
     addProject: 'Thêm project',
+    projectDeadline: 'Hạn project',
+    noProjectDeadline: 'Chưa có hạn project',
     
     // Modals
     addProjectTitle: 'Thêm project',

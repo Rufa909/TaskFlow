@@ -36,6 +36,7 @@ export default function TodayPage() {
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectDeadline, setNewProjectDeadline] = useState("");
   const [savingProject, setSavingProject] = useState(false);
 
   // Task UI state
@@ -203,11 +204,12 @@ export default function TodayPage() {
     if (!newProjectName.trim()) return;
     setSavingProject(true);
     try {
-      const res = await api.post("/projects", { name: newProjectName.trim() });
+      const res = await api.post("/projects", { name: newProjectName.trim(), deadline: newProjectDeadline || null });
       const created = res.data.project;
       setProjects((prev) => [...prev, created]);
       setActiveProject(created);
       setNewProjectName("");
+      setNewProjectDeadline("");
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
@@ -337,6 +339,8 @@ export default function TodayPage() {
         setIsAddProjectModalOpen={setIsAddProjectModalOpen}
         newProjectName={newProjectName}
         setNewProjectName={setNewProjectName}
+        newProjectDeadline={newProjectDeadline}
+        setNewProjectDeadline={setNewProjectDeadline}
         handleAddProject={handleAddProject}
       />
 

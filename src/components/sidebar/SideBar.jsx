@@ -50,6 +50,12 @@ function normalizeSearchText(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function formatProjectDeadline(deadline) {
+  if (!deadline) return "";
+  const date = new Date(deadline);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("vi-VN");
+}
+
 export default function Sidebar({
   user,
 
@@ -919,7 +925,12 @@ export default function Sidebar({
                   <Icon name="hash" size={18} />
                 </span>
                 <span className="project-name" style={{ flex: 1, textAlign: "left" }}>
-                  {proj.name}
+                  <span>{proj.name}</span>
+                  {proj.deadline && (
+                    <small className="project-deadline">
+                      Hoàn thành {formatProjectDeadline(proj.deadline)}
+                    </small>
+                  )}
                 </span>
                 {projectCounts[proj.project_id] > 0 && (
                   <span className="project-count">{projectCounts[proj.project_id]}</span>
