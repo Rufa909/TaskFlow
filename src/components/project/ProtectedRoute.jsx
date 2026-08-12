@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 
 // Component bảo vệ route: nếu chưa đăng nhập → redirect về /auth
 // Bọc quanh các route cần xác thực
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
 
   // Đang kiểm tra token → hiển thị loading, không redirect vội
@@ -18,6 +18,10 @@ const ProtectedRoute = ({ children }) => {
   // Chưa đăng nhập → về trang auth
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (adminOnly && String(user.role || "").toLowerCase() !== "admin") {
+    return <Navigate to="/" replace />;
   }
 
   // Đã đăng nhập → hiển thị nội dung

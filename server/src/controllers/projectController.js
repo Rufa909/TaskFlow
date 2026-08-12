@@ -33,7 +33,8 @@ async function ensureProjectDeadlineColumn() {
 
 function normalizeProjectDeadline(deadline) {
     if (!deadline) return null;
-    const value = String(deadline).slice(0, 10);
+    const value = formatDateOnly(deadline);
+    if (!value) return undefined;
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return undefined;
     return value;
@@ -56,7 +57,16 @@ function buildDeadlineProject(deadline, progressPercent = 0) {
         };
     }
 
-    const value = String(deadline).slice(0, 10);
+    const value = formatDateOnly(deadline);
+    if (!value) {
+        return {
+            date: null,
+            status: "invalid",
+            days_remaining: null,
+            is_overdue: false,
+            is_due_soon: false,
+        };
+    }
     const target = new Date(value);
     if (Number.isNaN(target.getTime())) {
         return {
@@ -83,6 +93,26 @@ function buildDeadlineProject(deadline, progressPercent = 0) {
         is_overdue: isOverdue,
         is_due_soon: isDueSoon,
     };
+}
+
+function formatDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return match[0];
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function attachDeadlineProject(project) {

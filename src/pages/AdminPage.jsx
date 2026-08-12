@@ -142,6 +142,7 @@ const ADMIN_VI = {
   "All deadlines": "Tất cả deadline",
   "Due soon": "Sắp hết hạn",
   "No deadline": "Không có deadline",
+  "Clear": "Xóa hạn",
   "Detail": "Chi tiết",
   "No tasks found": "Không tìm thấy công việc",
   "No bottleneck": "Không có điểm nghẽn",
@@ -745,6 +746,7 @@ export default function AdminPage() {
   });
   const [localUsers, setLocalUsers] = useState([]);
   const [deletedUserIds, setDeletedUserIds] = useState(new Set());
+  const [savingProjectDeadlineIds, setSavingProjectDeadlineIds] = useState(new Set());
 
   const loadAdminData = async () => {
     setLoading(true);
@@ -850,6 +852,50 @@ export default function AdminPage() {
         : [...current, nextUser];
     });
     setModal(null);
+  };
+
+  const saveProjectDeadline = async (project, deadline) => {
+    const projectId = project.project_id || project.id;
+    if (!projectId || savingProjectDeadlineIds.has(projectId)) return;
+
+    setSavingProjectDeadlineIds((current) => new Set(current).add(projectId));
+    try {
+      const res = await api.patch(`/auth/admin/projects/${projectId}/deadline`, { deadline: deadline || null });
+      const updated = res.data.project;
+      const nextDeadlineProject = updated.deadlineProject || updated.deadline_project || null;
+      const nextDeadline = nextDeadlineProject?.date || updated.deadline || null;
+
+      setStats((current) => {
+        if (!current?.projectProgress) return current;
+        return {
+          ...current,
+          projectProgress: current.projectProgress.map((item) => (
+            Number(item.project_id) === Number(projectId)
+              ? {
+                  ...item,
+                  deadline: nextDeadline,
+                  deadlineProject: nextDeadlineProject,
+                  progress_percent: updated.progress_percent ?? item.progress_percent,
+                }
+              : item
+          )),
+        };
+      });
+
+      setProjects((current) => current.map((item) => (
+        Number(item.project_id) === Number(projectId)
+          ? { ...item, deadline: nextDeadline, deadlineProject: nextDeadlineProject }
+          : item
+      )));
+    } catch (err) {
+      setError(err.response?.data?.message || "Cannot update project deadline.");
+    } finally {
+      setSavingProjectDeadlineIds((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        return next;
+      });
+    }
   };
 
   const renderDashboard = () => (
@@ -1017,10 +1063,27 @@ export default function AdminPage() {
             <span><ProgressBar value={project.progress_percent} tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "blue"} /></span>
             <span><Badge tone={project.health === "delayed" ? "red" : project.health === "at_risk" ? "orange" : "green"}><i className={`admin-health-dot ${project.health}`} />{healthLabel(project.health, language)}</Badge></span>
             <span className="admin-deadline-cell">
-              <strong>{formatDate(project.deadlineProject?.date || project.deadline)}</strong>
+              <label className="admin-project-deadline-control">
+                <input
+                  type="date"
+                  value={project.deadlineProject?.date || project.deadline || ""}
+                  disabled={savingProjectDeadlineIds.has(project.project_id || project.id)}
+                  onChange={(event) => saveProjectDeadline(project, event.target.value)}
+                />
+              </label>
               <Badge tone={deadlineProjectTone(project.deadlineProject)}>
                 {deadlineProjectLabel(project.deadlineProject, language)}
               </Badge>
+              {(project.deadlineProject?.date || project.deadline) && (
+                <button
+                  className="admin-deadline-clear"
+                  type="button"
+                  disabled={savingProjectDeadlineIds.has(project.project_id || project.id)}
+                  onClick={() => saveProjectDeadline(project, null)}
+                >
+                  {t("Clear")}
+                </button>
+              )}
             </span>
             <span>{formatDate(project.created_at)}</span>
           </div>

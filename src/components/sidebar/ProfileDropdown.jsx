@@ -11,19 +11,22 @@ export default function ProfileDropdown({
 }) {
   const { openTeamModal, activeProject } = useTeams();
   const navigate = useNavigate();
+  const isAdmin = String(user?.role || "").toLowerCase() === "admin";
 
   return (
     <div className="profile-dropdown-menu" onClick={(e) => e.stopPropagation()}>
-      <div
-        className="profile-dropdown-item admin-item"
-        onClick={(e) => {
-          e.stopPropagation();
-          navigate("/admin");
-          setIsProfileMenuOpen(false);
-        }}
-      >
-        <Icon name="activity" size={14} /> Admin panel
-      </div>
+      {isAdmin && (
+        <div
+          className="profile-dropdown-item admin-item"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate("/admin");
+            setIsProfileMenuOpen(false);
+          }}
+        >
+          <Icon name="activity" size={14} /> Admin Console
+        </div>
+      )}
 
       <div
         className="profile-dropdown-item"

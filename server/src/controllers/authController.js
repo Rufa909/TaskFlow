@@ -92,7 +92,16 @@ function buildDeadlineProject(deadline, progressPercent = 0) {
         };
     }
 
-    const value = String(deadline).slice(0, 10);
+    const value = formatDateOnly(deadline);
+    if (!value) {
+        return {
+            date: null,
+            status: "invalid",
+            days_remaining: null,
+            is_overdue: false,
+            is_due_soon: false,
+        };
+    }
     const target = new Date(value);
     if (Number.isNaN(target.getTime())) {
         return {
@@ -119,6 +128,44 @@ function buildDeadlineProject(deadline, progressPercent = 0) {
         is_overdue: isOverdue,
         is_due_soon: isDueSoon,
     };
+}
+
+function formatDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, '0');
+        const day = String(value.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return match[0];
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function normalizeProjectDeadline(deadline) {
+    if (!deadline) return null;
+    const value = formatDateOnly(deadline);
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return value;
+}
+
+async function assertAdminUser(userId) {
+    const [[adminRows]] = await pool.query(
+        'SELECT role FROM users WHERE user_id = ? LIMIT 1',
+        [userId]
+    );
+
+    return Boolean(adminRows && adminRows.role === 'admin');
 }
 
 const tableExists = async (tableName) => {
@@ -628,12 +675,7 @@ exports.getAdminStats = async (req, res) => {
         await ensureEmailVerificationColumns();
         await ensureProjectDeadlineColumn();
 
-        const [[adminRows]] = await pool.query(
-            'SELECT role FROM users WHERE user_id = ? LIMIT 1',
-            [req.user.id]
-        );
-
-        if (!adminRows || adminRows.role !== 'admin') {
+        if (!(await assertAdminUser(req.user.id))) {
             return res.status(403).json({
                 success: false,
                 message: 'Only admin can view system statistics'
@@ -969,6 +1011,84 @@ exports.getAdminStats = async (req, res) => {
         });
     } catch (err) {
         console.error('Loi getAdminStats:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Co loi xay ra'
+        });
+    }
+};
+
+exports.updateAdminProjectDeadline = async (req, res) => {
+    try {
+        await ensureProjectDeadlineColumn();
+
+        if (!(await assertAdminUser(req.user.id))) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only admin can update project deadlines'
+            });
+        }
+
+        const projectId = Number(req.params.projectId);
+        if (!Number.isFinite(projectId)) {
+            return res.status(400).json({ success: false, message: 'Project id khong hop le' });
+        }
+
+        const normalizedDeadline = normalizeProjectDeadline(req.body?.deadline);
+        if (req.body?.deadline && normalizedDeadline === undefined) {
+            return res.status(400).json({ success: false, message: 'Ngay han project khong hop le' });
+        }
+
+        const [existing] = await pool.query(
+            'SELECT project_id FROM projects WHERE project_id = ? AND deleted_at IS NULL LIMIT 1',
+            [projectId]
+        );
+        if (existing.length === 0) {
+            return res.status(404).json({ success: false, message: 'Project khong ton tai' });
+        }
+
+        await pool.query(
+            'UPDATE projects SET deadline = ? WHERE project_id = ? AND deleted_at IS NULL',
+            [normalizedDeadline, projectId]
+        );
+
+        const [[project]] = await pool.query(
+            `SELECT
+               p.project_id,
+               p.name,
+               p.created_at,
+               p.deadline,
+               p.owner_id,
+               u.username AS owner_name,
+               u.email AS owner_email,
+               COUNT(t.task_id) AS total_tasks,
+               SUM(CASE WHEN t.status IN ('COMPLETED','OWNER_APPROVED') THEN 1 ELSE 0 END) AS completed_tasks
+             FROM projects p
+             LEFT JOIN users u ON u.user_id = p.owner_id
+             LEFT JOIN tasks t ON t.project_id = p.project_id AND t.deleted_at IS NULL
+             WHERE p.project_id = ?
+               AND p.deleted_at IS NULL
+             GROUP BY p.project_id, p.name, p.created_at, p.deadline, p.owner_id, u.username, u.email
+             LIMIT 1`,
+            [projectId]
+        );
+
+        const total = Number(project.total_tasks || 0);
+        const completed = Number(project.completed_tasks || 0);
+        const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        return res.json({
+            success: true,
+            project: {
+                ...project,
+                project_id: Number(project.project_id),
+                owner_id: Number(project.owner_id),
+                deadlineProject: buildDeadlineProject(project.deadline, progressPercent),
+                progress_percent: progressPercent,
+            },
+        });
+    } catch (err) {
+        console.error('Loi updateAdminProjectDeadline:', err);
         return res.status(500).json({
             success: false,
             message: 'Co loi xay ra'
