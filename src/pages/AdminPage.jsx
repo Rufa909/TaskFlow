@@ -719,46 +719,151 @@ function DonutChart({ items, t = (text) => text }) {
   );
 }
 
-function MonthlyLineChart({ items, t = (text) => text }) {
+function formatMonthLabel(month, language = "en") {
+  const [year, value] = String(month || "").split("-");
+  if (!year || !value) return month || "-";
+  return language === "vi" ? `Tháng ${Number(value)}/${year}` : `${value}/${year}`;
+}
+
+function MonthlyTrendChart({ items, selectedMonth = "all", language = "en", t = (text) => text }) {
   const points = [...items].reverse();
-  const width = 720;
-  const height = 220;
-  const padding = { top: 16, right: 18, bottom: 30, left: 34 };
-  const innerWidth = width - padding.left - padding.right;
-  const innerHeight = height - padding.top - padding.bottom;
-  const maxValue = Math.max(1, ...points.flatMap((item) => [
+  if (!points.length) return <EmptyState label={t("No monthly trend data")} />;
+
+  const visiblePoints = selectedMonth === "all"
+    ? points
+    : points.filter((item) => item.month === selectedMonth);
+  const summaryItems = visiblePoints.length ? visiblePoints : points;
+  const totals = summaryItems.reduce((sum, item) => ({
+    tasks: sum.tasks + Number(item.tasks || 0),
+    completed: sum.completed + Number(item.completed_tasks || 0),
+    projects: sum.projects + Number(item.projects || 0),
+  }), { tasks: 0, completed: 0, projects: 0 });
+  const maxValue = Math.max(1, ...visiblePoints.flatMap((item) => [
     Number(item.tasks || 0),
     Number(item.completed_tasks || 0),
     Number(item.projects || 0),
   ]));
-  const line = (key) => points.map((item, index) => {
-    const x = padding.left + (points.length <= 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
-    const y = padding.top + innerHeight - (Number(item[key] || 0) / maxValue) * innerHeight;
-    return `${x},${y}`;
-  }).join(" ");
 
-  if (!points.length) return <EmptyState label={t("No monthly trend data")} />;
   return (
-    <>
-      <svg className="admin-line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Monthly system trend">
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-          const y = padding.top + innerHeight * ratio;
-          return <line key={ratio} x1={padding.left} x2={width - padding.right} y1={y} y2={y} className="admin-chart-grid" />;
-        })}
-        <polyline points={line("tasks")} className="admin-chart-line tasks" />
-        <polyline points={line("completed_tasks")} className="admin-chart-line completed" />
-        <polyline points={line("projects")} className="admin-chart-line projects" />
-        {points.map((item, index) => {
-          const x = padding.left + (points.length <= 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
-          return <text key={item.month} x={x} y={height - 9} textAnchor="middle" className="admin-chart-label">{String(item.month).slice(5)}</text>;
-        })}
-      </svg>
+    <div className="admin-monthly-trend">
+      <div className="admin-monthly-summary">
+        <div><span>{t("Tasks")}</span><strong>{totals.tasks}</strong></div>
+        <div><span>{t("Completed")}</span><strong>{totals.completed}</strong></div>
+        <div><span>{t("Projects")}</span><strong>{totals.projects}</strong></div>
+      </div>
+      <div className="admin-monthly-bars">
+        {visiblePoints.map((item) => (
+          <div key={item.month} className="admin-monthly-row">
+            <strong>{formatMonthLabel(item.month, language)}</strong>
+            <div>
+              <span className="tasks" style={{ width: `${(Number(item.tasks || 0) / maxValue) * 100}%` }}><b>{Number(item.tasks || 0)}</b></span>
+              <span className="completed" style={{ width: `${(Number(item.completed_tasks || 0) / maxValue) * 100}%` }}><b>{Number(item.completed_tasks || 0)}</b></span>
+              <span className="projects" style={{ width: `${(Number(item.projects || 0) / maxValue) * 100}%` }}><b>{Number(item.projects || 0)}</b></span>
+            </div>
+          </div>
+        ))}
+      </div>
       <div className="admin-chart-legend">
         <span className="tasks">{t("Tasks")}</span>
         <span className="completed">{t("Completed")}</span>
         <span className="projects">{t("Projects")}</span>
       </div>
-    </>
+    </div>
+  );
+}
+
+function monthOffset(month, offset) {
+  const [year, value] = String(month || "").split("-").map(Number);
+  const date = new Date(year || new Date().getFullYear(), (value || 1) - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function currentMonthKey() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildTrendMonths(items, range = "last6") {
+  const dataMap = new Map(items.map((item) => [item.month, item]));
+  const sortedMonths = [...dataMap.keys()].sort();
+  const lastMonth = sortedMonths[sortedMonths.length - 1] || currentMonthKey();
+
+  if (String(range).startsWith("month:")) {
+    const month = String(range).replace("month:", "");
+    return [{ month, tasks: 0, completed_tasks: 0, projects: 0, ...dataMap.get(month) }];
+  }
+
+  if (range === "all") {
+    const firstMonth = sortedMonths[0] || lastMonth;
+    const months = [];
+    for (let month = firstMonth; month <= lastMonth; month = monthOffset(month, 1)) {
+      months.push(month);
+    }
+    return months.map((month) => ({ month, tasks: 0, completed_tasks: 0, projects: 0, ...dataMap.get(month) }));
+  }
+
+  const count = range === "last12" ? 12 : 6;
+  return Array.from({ length: count }, (_, index) => monthOffset(lastMonth, index - count + 1))
+    .map((month) => ({ month, tasks: 0, completed_tasks: 0, projects: 0, ...dataMap.get(month) }));
+}
+
+function getTrendYearMonths(items) {
+  const months = items.map((item) => item.month).filter(Boolean).sort();
+  const year = Number(String(months[months.length - 1] || currentMonthKey()).slice(0, 4));
+  const now = new Date();
+  const monthCount = year === now.getFullYear() ? now.getMonth() + 1 : 12;
+  return Array.from({ length: monthCount }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`);
+}
+
+function MonthlyAreaChart({ items, range = "last6", language = "en", t = (text) => text }) {
+  if (!items.length) return <EmptyState label={t("No monthly trend data")} />;
+
+  const points = buildTrendMonths(items, range);
+  const totals = points.reduce((sum, item) => ({
+    tasks: sum.tasks + Number(item.tasks || 0),
+    completed: sum.completed + Number(item.completed_tasks || 0),
+    projects: sum.projects + Number(item.projects || 0),
+  }), { tasks: 0, completed: 0, projects: 0 });
+  const maxValue = Math.max(1, ...points.flatMap((item) => [
+    Number(item.tasks || 0),
+    Number(item.completed_tasks || 0),
+    Number(item.projects || 0),
+  ]));
+
+  return (
+    <div className="admin-monthly-trend">
+      <div className="admin-monthly-summary">
+        <div><span>{t("Tasks")}</span><strong>{totals.tasks}</strong></div>
+        <div><span>{t("Completed")}</span><strong>{totals.completed}</strong></div>
+        <div><span>{t("Projects")}</span><strong>{totals.projects}</strong></div>
+      </div>
+      <div className="admin-column-chart">
+        {points.map((item) => {
+          const values = [
+            ["tasks", Number(item.tasks || 0)],
+            ["completed", Number(item.completed_tasks || 0)],
+            ["projects", Number(item.projects || 0)],
+          ];
+          return (
+            <div key={item.month} className="admin-column-group">
+              <div className="admin-column-bars">
+                {values.map(([key, value]) => (
+                  <span key={key} className={key} style={{ height: `${Math.max(4, (value / maxValue) * 100)}%` }}>
+                    <b>{value}</b>
+                  </span>
+                ))}
+              </div>
+              <strong>{String(item.month).slice(5)}</strong>
+            </div>
+          );
+        })}
+      </div>
+      <div className="admin-chart-legend">
+        <span className="tasks">{t("Tasks")}</span>
+        <span className="completed">{t("Completed")}</span>
+        <span className="projects">{t("Projects")}</span>
+      </div>
+    </div>
   );
 }
 
@@ -792,6 +897,7 @@ export default function AdminPage() {
   const [error, setError] = useState("");
   const [modal, setModal] = useState(null);
   const [search, setSearch] = useState("");
+  const [trendRange, setTrendRange] = useState("last6");
   const [filters, setFilters] = useState({
     userStatus: "all",
     projectStatus: "all",
@@ -983,7 +1089,22 @@ export default function AdminPage() {
       </div>
 
       <div className="admin-dashboard-grid">
-        <SectionCard title={t("Monthly Trend")} icon="activity"><MonthlyLineChart items={model.monthlyStats} t={t} /></SectionCard>
+        <SectionCard
+          title={t("Monthly Trend")}
+          icon="activity"
+          actions={(
+            <select value={trendRange} onChange={(event) => setTrendRange(event.target.value)}>
+              <option value="last6">{language === "vi" ? "6 tháng gần nhất" : "Last 6 months"}</option>
+              <option value="last12">{language === "vi" ? "12 tháng gần nhất" : "Last 12 months"}</option>
+              <option value="all">{language === "vi" ? "Tất cả dữ liệu" : "All data"}</option>
+              {getTrendYearMonths(model.monthlyStats).map((month) => (
+                <option key={month} value={`month:${month}`}>{formatMonthLabel(month, language)}</option>
+              ))}
+            </select>
+          )}
+        >
+          <MonthlyAreaChart items={model.monthlyStats} range={trendRange} language={language} t={t} />
+        </SectionCard>
         <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} t={t} /></SectionCard>
         <SectionCard title={t("Task Status")} icon="activity"><ChartBars items={model.taskStatus} language={language} emptyLabel={t("No chart data")} /></SectionCard>
         <SectionCard title={t("Project Progress")} icon="grid">
