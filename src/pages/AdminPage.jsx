@@ -15,7 +15,6 @@ const ADMIN_NAV = [
   { id: "workflows", label: "Workflows", icon: "share", description: "Identify delayed stages and current workflow bottlenecks." },
   { id: "monitoring", label: "Monitoring", icon: "flag", description: "Operational issue queue by severity." },
   { id: "activity", label: "Activity Logs", icon: "clock", description: "System audit trail with searchable actions." },
-  { id: "settings", label: "Settings", icon: "setting", description: "System-level configuration surfaces." },
 ];
 
 const DONE_STATUSES = new Set(["COMPLETED", "OWNER_APPROVED"]);
@@ -1381,25 +1380,6 @@ export default function AdminPage() {
     </SectionCard>
   );
 
-  const renderSettings = () => (
-    <div className="admin-settings-grid">
-      {[
-        "User permissions",
-        "Task settings",
-        "Workflow settings",
-        "Notification settings",
-        "Project settings",
-        "AI settings",
-      ].map((label) => (
-        <SectionCard key={label} title={t(label)} icon="setting">
-          <div className="admin-setting-row"><span>{t("Enabled")}</span><input type="checkbox" defaultChecked /></div>
-          <div className="admin-setting-row"><span>{t("Require admin approval")}</span><input type="checkbox" /></div>
-          <div className="admin-setting-row"><span>{t("Audit changes")}</span><input type="checkbox" defaultChecked /></div>
-        </SectionCard>
-      ))}
-    </div>
-  );
-
   const renderContent = () => {
     if (activeView === "dashboard") return renderDashboard();
     if (activeView === "users") return renderUsers();
@@ -1409,7 +1389,7 @@ export default function AdminPage() {
     if (activeView === "workflows") return renderWorkflows();
     if (activeView === "monitoring") return renderMonitoring();
     if (activeView === "activity") return renderActivity();
-    return renderSettings();
+    return renderDashboard();
   };
 
   return (
