@@ -2473,6 +2473,9 @@ exports.getTasksToday = async (req, res) => {
       `SELECT
          t.*,
          p.name as project_name,
+         ps.stage_name,
+         ps.stage_order,
+         ps.status AS stage_status,
          ta.attachment_id,
          ta.originalName AS attachment_name,
          ta.file_url AS attachment_url,
@@ -2480,6 +2483,7 @@ exports.getTasksToday = async (req, res) => {
          ta.size AS attachment_size
        FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
+       LEFT JOIN project_stages ps ON ps.id = t.stage_id
        LEFT JOIN (
          SELECT a.*
          FROM attachments a
@@ -2553,6 +2557,11 @@ exports.getAllTasks = async (req, res) => {
          AND p.deleted_at IS NULL
          AND t.deleted_at IS NULL 
          AND t.completed_at IS NULL 
+         AND (
+           t.stage_id IS NULL
+           OR ps.id IS NULL
+           OR ps.status <> 'completed'
+         )
        ORDER BY t.created_at ASC`,
       [req.user.id, req.user.id],
     );

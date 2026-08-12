@@ -379,10 +379,13 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       const res = await api.get(
         `/projects/${activeProject.project_id}/stages/${encodedStageId}/tasks`,
       );
-      setStageTasks(res.data.tasks || []);
+      const tasks = res.data.tasks || [];
+      setStageTasks(tasks);
+      return tasks;
     } catch (err) {
       console.error("Cannot load stage tasks:", err);
       showToast("Cannot load tasks for this stage", "error");
+      return [];
     } finally {
       setLoadingStageTasks(false);
     }
@@ -414,6 +417,27 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       fetchReportingTasks();
     }
   }, [activeView]);
+
+  useEffect(() => {
+    if (location.pathname !== "/" || projects.length === 0) return;
+
+    const params = new URLSearchParams(location.search);
+    const projectId = params.get("projectId");
+    if (!projectId) return;
+
+    const targetProject = projects.find(
+      (project) => Number(project.project_id) === Number(projectId),
+    );
+
+    if (
+      targetProject &&
+      Number(activeProject?.project_id) !== Number(targetProject.project_id)
+    ) {
+      setActiveProject(targetProject);
+      setActiveView("project");
+      setIsAddingTask(false);
+    }
+  }, [activeProject?.project_id, location.pathname, location.search, projects]);
 
   const fetchAllTasks = async () => {
     setLoadingAllTasks(true);
@@ -826,6 +850,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   }, [setAvailableLabels, allLabelsSignature]);
 
   const selectedLabelName = new URLSearchParams(location.search).get("label");
+  const highlightedTaskId = new URLSearchParams(location.search).get("taskId");
   const selectedLabel = selectedLabelName
     ? labelMap.get(selectedLabelName.toLowerCase()) || {
         name: selectedLabelName,
@@ -888,6 +913,25 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     : [];
   const getSavedFilterCount = (filter) =>
     filterTasksByCriteria(filter.criteria).length;
+
+  useEffect(() => {
+    if (!highlightedTaskId || activeView !== "project") return;
+
+    const openTaskIndex = projectOpenTasks.findIndex(
+      (task) => Number(task.task_id) === Number(highlightedTaskId),
+    );
+
+    if (openTaskIndex >= 0) {
+      setActiveTaskPage(Math.floor(openTaskIndex / TASKS_PER_PAGE) + 1);
+      setTaskSectionDropdownOpen(false);
+
+      window.requestAnimationFrame(() => {
+        document
+          .querySelector(`[data-task-id="${highlightedTaskId}"]`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+    }
+  }, [activeView, highlightedTaskId, projectOpenTasks]);
 
   const getLabelCount = (label) =>
     taskSourceForFilters.filter(
@@ -1287,6 +1331,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         currentUserRole={currentProjectRole}
                         currentUserId={user?.id}
                         availableLabels={allLabels}
+                        highlightedTaskId={highlightedTaskId}
                         setSelectedTask={setSelectedTask}
                       />
                     ) : (

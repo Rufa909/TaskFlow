@@ -425,13 +425,17 @@ export default function Sidebar({
     const targetProject = (projects || []).find(
       (project) => Number(project.project_id) === Number(task.project_id),
     );
+    const params = new URLSearchParams({
+      projectId: String(task.project_id),
+      taskId: String(task.task_id),
+    });
 
     closeProfileMenu();
     if (targetProject) setActiveProject(targetProject);
     setActiveView("project");
     setIsAddingTask(false);
     setIsSearchOpen(false);
-    navigate(`/?projectId=${task.project_id}&taskId=${task.task_id}`);
+    navigate(`/?${params.toString()}`);
   };
 
   useEffect(() => {
@@ -759,6 +763,7 @@ export default function Sidebar({
                             <span className="search-result-title">{task.title}</span>
                             <span className="search-result-subtitle">
                               {task.project_name || "Task"}
+                              {task.stage_name ? ` - ${task.stage_name}` : ""}
                               {task.priority ? ` - ${task.priority}` : ""}
                             </span>
                           </span>
