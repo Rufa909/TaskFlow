@@ -209,6 +209,13 @@ function localizeLeaderRole(role, language = 'en') {
   return repaired;
 }
 
+function getRecommendedMemberRoleLabel(item, language = 'en') {
+  return localizeLeaderRole(
+    item?.recommended_member?.role || item?.recommended_role || '',
+    language,
+  );
+}
+
 function getTaskStatusLabel(status = '') {
   return String(status || 'DRAFT').replace(/_/g, ' ').toLowerCase();
 }
@@ -501,7 +508,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
               {suggestion.recommended_member && (
                 <span className="leader-recommendation-pill">
                   {suggestion.recommended_member.username || suggestion.recommended_member.email}
-                  <small>{suggestion.recommended_role || suggestion.recommended_member.role}</small>
+                  <small>{getRecommendedMemberRoleLabel(suggestion, language)}</small>
                 </span>
               )}
             </div>
@@ -532,7 +539,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
                   <strong>
                     {item.recommended_member?.username || item.recommended_member?.email || lt('unassigned')}
                   </strong>
-                  <small>{item.recommended_role || item.recommended_member?.role || lt('member')}</small>
+                  <small>{getRecommendedMemberRoleLabel(item, language) || lt('member')}</small>
                 </div>
                 <div className="leader-assignment-meta">
                   <span className={`leader-priority-pill priority-${item.priority || 'medium'}`}>
@@ -612,7 +619,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
               <div key={member.user_id} className="leader-workload-row">
                 <span>
                   <strong>{member.username || member.email}</strong>
-                  <small>{member.role}</small>
+                  <small>{localizeLeaderRole(member.role, language)}</small>
                 </span>
                 <em>{member.active_task_count} {lt('active')}</em>
               </div>

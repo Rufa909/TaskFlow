@@ -1,14 +1,41 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Plus, Trash2, GripVertical } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
+import { getTranslation } from '../../i18n/translations';
 import './CustomizeWorkflowModal.css';
 
 const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) => {
-  const [stages, setStages] = useState([
-    { order: 1, name: 'Analyst & Planning', description: 'Requirement analysis & planning phase' },
-    { order: 2, name: 'Development', description: 'Implementation & coding phase' },
-    { order: 3, name: 'Testing', description: 'QA & testing phase' },
-    { order: 4, name: 'Deployment & Maintenance', description: 'Release to production' }
-  ]);
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(language, key);
+  const getDefaultStages = () => [
+    {
+      order: 1,
+      name: t('workflowStageAnalystPlanning'),
+      description: t('workflowStageAnalystPlanningDesc'),
+    },
+    {
+      order: 2,
+      name: t('workflowStageDevelopment'),
+      description: t('workflowStageDevelopmentDesc'),
+    },
+    {
+      order: 3,
+      name: t('workflowStageTesting'),
+      description: t('workflowStageTestingDesc'),
+    },
+    {
+      order: 4,
+      name: t('workflowStageDeploymentMaintenance'),
+      description: t('workflowStageDeploymentMaintenanceDesc'),
+    },
+  ];
+  const [stages, setStages] = useState(getDefaultStages);
+
+  useEffect(() => {
+    if (isOpen) {
+      setStages(getDefaultStages());
+    }
+  }, [isOpen, language]);
 
   const handleAddStage = () => {
     const newOrder = Math.max(...stages.map(s => s.order), 0) + 1;
@@ -50,7 +77,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
   const handleSave = () => {
     const validStages = stages.filter(s => s.name && s.name.trim());
     if (validStages.length === 0) {
-      alert('Please add at least one workflow stage');
+      alert(t('workflowStageRequired'));
       return;
     }
     onSave(validStages);
@@ -65,11 +92,11 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header customize-workflow-header">
-          <h2>🔄 Customize Project Workflow</h2>
+          <h2>🔄 {t('customizeProjectWorkflow')}</h2>
           <button 
             className="modal-close-btn"
             onClick={onClose}
-            aria-label="Close modal"
+            aria-label={t('closeModal')}
           >
             <X size={24} />
           </button>
@@ -77,7 +104,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
 
         <div className="modal-body customize-workflow-body">
           <p className="modal-description">
-            Define the workflow stages your project will go through. You can add, remove, or reorder stages.
+            {t('customizeWorkflowDescription')}
           </p>
 
           <div className="stages-list">
@@ -90,13 +117,13 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
                 <div className="stage-inputs">
                   <input
                     type="text"
-                    placeholder="Stage name (e.g., Planning, Development)"
+                    placeholder={t('workflowStageNamePlaceholder')}
                     value={stage.name}
                     onChange={(e) => handleStageChange(index, 'name', e.target.value)}
                     className="stage-input stage-name"
                   />
                   <textarea
-                    placeholder="Description (e.g., Requirement analysis & planning)"
+                    placeholder={t('workflowStageDescriptionPlaceholder')}
                     value={stage.description}
                     onChange={(e) => handleStageChange(index, 'description', e.target.value)}
                     className="stage-input stage-description"
@@ -109,7 +136,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
                     className="stage-btn move-btn"
                     onClick={() => handleMoveStage(index, 'up')}
                     disabled={index === 0}
-                    title="Move up"
+                    title={t('moveUp')}
                   >
                     ▲
                   </button>
@@ -117,7 +144,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
                     className="stage-btn move-btn"
                     onClick={() => handleMoveStage(index, 'down')}
                     disabled={index === stages.length - 1}
-                    title="Move down"
+                    title={t('moveDown')}
                   >
                     ▼
                   </button>
@@ -125,7 +152,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
                     className="stage-btn delete-btn"
                     onClick={() => handleRemoveStage(index)}
                     disabled={stages.length === 1}
-                    title="Delete stage"
+                    title={t('deleteStage')}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -138,7 +165,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
             className="add-stage-btn"
             onClick={handleAddStage}
           >
-            <Plus size={18} /> Add Stage
+            <Plus size={18} /> {t('addStage')}
           </button>
         </div>
 
@@ -148,14 +175,14 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
             onClick={onClose}
             disabled={loading}
           >
-            Cancel
+            {t('cancel')}
           </button>
           <button 
             className="btn-primary"
             onClick={handleSave}
             disabled={loading}
           >
-            {loading ? 'Creating...' : 'Create Project with Workflow'}
+            {loading ? t('creating') : t('createProjectWithWorkflow')}
           </button>
         </div>
       </div>

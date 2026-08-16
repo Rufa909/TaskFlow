@@ -90,6 +90,11 @@ function getProjectDeadlineDate(project) {
   return project?.deadlineProject?.date || project?.deadline_project?.date || project?.deadline || null;
 }
 
+function getProjectDeadlineInputValue(project) {
+  const deadline = getProjectDeadlineDate(project);
+  return deadline ? String(deadline).slice(0, 10) : "";
+}
+
 function isSameDay(first, second) {
   return first.getTime() === second.getTime();
 }
@@ -180,6 +185,9 @@ export default function HomePage() {
   const [editProjectName, setEditProjectName] = useState("");
   const [editProjectDeadline, setEditProjectDeadline] = useState("");
   const [editingProjectSaving, setEditingProjectSaving] = useState(false);
+  const [isProjectDeadlineEditorOpen, setIsProjectDeadlineEditorOpen] = useState(false);
+  const [projectDeadlineDraft, setProjectDeadlineDraft] = useState("");
+  const [savingProjectDeadline, setSavingProjectDeadline] = useState(false);
   const [tasksByProject, setTasksByProject] = useState({});
   const [taskAttachment, setTaskAttachment] = useState([]);
   const [taskDocumentIds, setTaskDocumentIds] = useState([]);
@@ -268,6 +276,11 @@ export default function HomePage() {
     };
     fetchTasks();
   }, [activeProject]);
+
+  useEffect(() => {
+    setIsProjectDeadlineEditorOpen(false);
+    setProjectDeadlineDraft(getProjectDeadlineInputValue(activeProject));
+  }, [activeProject?.project_id, activeProject?.deadline, activeProject?.deadlineProject?.date]);
 
   // Also fetch completed tasks when project changes
   useEffect(() => {
@@ -784,6 +797,47 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       showToast(t("cannotEditProject"), "error");
     } finally {
       setEditingProjectSaving(false);
+    }
+  };
+
+  const openProjectDeadlineEditor = () => {
+    if (!activeProject) return;
+    setProjectDeadlineDraft(getProjectDeadlineInputValue(activeProject));
+    setIsProjectDeadlineEditorOpen(true);
+  };
+
+  const cancelProjectDeadlineEditor = () => {
+    setProjectDeadlineDraft(getProjectDeadlineInputValue(activeProject));
+    setIsProjectDeadlineEditorOpen(false);
+  };
+
+  const handleProjectDeadlineSave = async () => {
+    if (!activeProject) return;
+    if (projectDeadlineDraft && isPastLocalDate(projectDeadlineDraft)) {
+      showToast("Ngày hoàn thành project không được ở quá khứ.", "error");
+      return;
+    }
+
+    setSavingProjectDeadline(true);
+    try {
+      const res = await api.put(`/projects/${activeProject.project_id}`, {
+        name: activeProject.name,
+        deadline: projectDeadlineDraft || null,
+      });
+      const updated = res.data.project;
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.project_id === updated.project_id ? updated : project,
+        ),
+      );
+      setActiveProject(updated);
+      setProjectDeadlineDraft(getProjectDeadlineInputValue(updated));
+      setIsProjectDeadlineEditorOpen(false);
+      showToast("Đã cập nhật hạn project.", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || t("cannotEditProjectDeadline"), "error");
+    } finally {
+      setSavingProjectDeadline(false);
     }
   };
 
@@ -1618,13 +1672,57 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                   {activeProject?.name || "Select a project"}
                 </h1>
                 {activeProject && (
-                  <div className={`project-deadline-chip ${getProjectDeadlineDate(activeProject) ? "" : "empty"}`}>
-                    <Icon name="calendar" size={14} />
-                    <span>
-                      {getProjectDeadlineDate(activeProject)
-                        ? `${t("projectDeadline")}: ${formatProjectDeadline(getProjectDeadlineDate(activeProject))}`
-                        : t("noProjectDeadline")}
-                    </span>
+                  <div className="project-deadline-inline">
+                    <button
+                      className={`project-deadline-chip ${getProjectDeadlineDate(activeProject) ? "" : "empty"} ${currentProjectRole === "owner" ? "editable" : ""}`}
+                      type="button"
+                      onClick={currentProjectRole === "owner" ? openProjectDeadlineEditor : undefined}
+                      disabled={currentProjectRole !== "owner"}
+                      title={currentProjectRole === "owner" ? "Chỉnh hạn project" : undefined}
+                    >
+                      <Icon name="calendar" size={14} />
+                      <span>
+                        {getProjectDeadlineDate(activeProject)
+                          ? `${t("projectDeadline")}: ${formatProjectDeadline(getProjectDeadlineDate(activeProject))}`
+                          : t("noProjectDeadline")}
+                      </span>
+                      {currentProjectRole === "owner" && <Icon name="chevronDown" size={13} />}
+                    </button>
+                    {isProjectDeadlineEditorOpen && currentProjectRole === "owner" && (
+                      <div className="project-deadline-editor">
+                        <label className="project-deadline-editor-field">
+                          <span>{t("projectDeadline")}</span>
+                          <input
+                            type="date"
+                            value={projectDeadlineDraft}
+                            min={new Date().toISOString().slice(0, 10)}
+                            onChange={(event) => setProjectDeadlineDraft(event.target.value)}
+                            disabled={savingProjectDeadline}
+                          />
+                        </label>
+                        <div className="project-deadline-editor-actions">
+                          <button
+                            className="project-deadline-editor-secondary"
+                            type="button"
+                            onClick={cancelProjectDeadlineEditor}
+                            disabled={savingProjectDeadline}
+                          >
+                            {t("cancel")}
+                          </button>
+                          <button
+                            className="project-deadline-editor-primary"
+                            type="button"
+                            onClick={handleProjectDeadlineSave}
+                            disabled={
+                              savingProjectDeadline ||
+                              projectDeadlineDraft === getProjectDeadlineInputValue(activeProject)
+                            }
+                          >
+                            {savingProjectDeadline ? "Đang lưu..." : t("save")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

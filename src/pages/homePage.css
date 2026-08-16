@@ -416,12 +416,123 @@ body {
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
+  font-family: inherit;
 }
 
 .project-deadline-chip.empty {
   border-color: #e5e7eb;
   background: #f8fafc;
   color: #64748b;
+}
+
+.project-deadline-inline {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+button.project-deadline-chip {
+  cursor: default;
+}
+
+button.project-deadline-chip:disabled {
+  opacity: 1;
+}
+
+.project-deadline-chip.editable {
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.project-deadline-chip.editable:hover,
+.project-deadline-chip.editable:focus-visible {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.1);
+  outline: none;
+}
+
+.project-deadline-editor {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 90;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.14);
+}
+
+.project-deadline-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-deadline-editor-field input {
+  height: 36px;
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0 10px;
+  color: var(--text-main);
+  font: inherit;
+  outline: none;
+}
+
+.project-deadline-editor-field input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.1);
+}
+
+.project-deadline-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.project-deadline-editor-actions button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-deadline-editor-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.project-deadline-editor-secondary {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  color: var(--text-main);
+}
+
+.project-deadline-editor-secondary:hover:not(:disabled) {
+  background: var(--sidebar-hover);
+}
+
+.project-deadline-editor-primary {
+  border: 1px solid var(--accent-color);
+  background: var(--accent-color);
+  color: #fff;
+}
+
+.project-deadline-editor-primary:hover:not(:disabled) {
+  background: #1565c0;
 }
 
 .filters-labels-page {

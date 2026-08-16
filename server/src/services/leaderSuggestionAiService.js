@@ -168,7 +168,7 @@ function sanitizeSuggestion(item, index, membersById) {
     title,
     detail,
     source: compactText(item.source || "ai_analysis", 80),
-    recommended_role: compactText(item.recommended_role || recommendedMember?.role || "", 80),
+    recommended_role: compactText(recommendedMember?.role || item.recommended_role || "", 80),
     recommended_member: recommendedMember || null,
     related_task_ids: Array.isArray(item.related_task_ids)
       ? item.related_task_ids.map(Number).filter((id) => Number.isFinite(id)).slice(0, 8)
@@ -193,7 +193,7 @@ function sanitizePlanItem(item, index, membersById, language = "en") {
     priority: sanitizePriority(item.priority),
     source: compactText(item.source || "ai_assignment_plan", 80),
     suggested_deadline: compactText(item.suggested_deadline || item.deadline || "Set after leader review", 80),
-    recommended_role: compactText(item.recommended_role || recommendedMember?.role || "", 80),
+    recommended_role: compactText(recommendedMember?.role || item.recommended_role || "", 80),
     recommended_member: recommendedMember || null,
     reason: compactText(
       item.reason || (
