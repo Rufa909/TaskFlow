@@ -2535,6 +2535,7 @@ exports.getAllTasks = async (req, res) => {
          ta.size AS attachment_size
        FROM tasks t 
        JOIN projects p ON t.project_id = p.project_id 
+       LEFT JOIN project_stages ps ON ps.id = t.stage_id
        LEFT JOIN (
          SELECT a.*
          FROM attachments a

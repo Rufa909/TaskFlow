@@ -60,6 +60,66 @@ const searchUserByEmail = async (req, res) => {
   }
 };
 
+const suggestUsersByEmail = async (req, res) => {
+  try {
+    const keyword = String(req.query.email || "").trim().toLowerCase();
+    const projectId = req.query.project_id;
+
+    if (keyword.length < 2) {
+      return res.json({ success: true, users: [] });
+    }
+
+    const params = [req.user.id, `%${keyword}%`];
+    let projectExclusions = "";
+
+    if (projectId) {
+      projectExclusions = `
+        AND NOT EXISTS (
+          SELECT 1
+          FROM project_members pm
+          WHERE pm.project_id = ?
+            AND pm.user_id = u.user_id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM projects p
+          WHERE p.project_id = ?
+            AND p.owner_id = u.user_id
+            AND p.deleted_at IS NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM team_invitations ti
+          WHERE ti.project_id = ?
+            AND ti.receiver_id = u.user_id
+            AND ti.status = 'pending'
+        )
+      `;
+      params.push(projectId, projectId, projectId);
+    }
+
+    params.push(`${keyword}%`);
+
+    const [rows] = await pool.query(
+      `
+      SELECT u.user_id, u.username, u.email, u.user_photo, u.email_verified
+      FROM users u
+      WHERE u.user_id != ?
+        AND LOWER(u.email) LIKE ?
+        ${projectExclusions}
+      ORDER BY CASE WHEN LOWER(u.email) LIKE ? THEN 0 ELSE 1 END, u.email ASC
+      LIMIT 6
+      `,
+      params,
+    );
+
+    res.json({ success: true, users: rows });
+  } catch (error) {
+    console.error("Lỗi gợi ý user:", error);
+    res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 // Gửi lời mời vào project
 const sendInvitation = async (req, res) => {
   try {
@@ -359,6 +419,7 @@ const updateProjectMemberRole = async (req, res) => {
 
 module.exports = {
   searchUserByEmail,
+  suggestUsersByEmail,
   sendInvitation,
   getMyInvitations,
   respondInvitation,

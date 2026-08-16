@@ -34,6 +34,9 @@ export default function AddTeamModal() {
   const [searchResult, setSearchResult] = useState(null);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [emailSuggestions, setEmailSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
   // Invite states
   const [inviteSending, setInviteSending] = useState(false);
@@ -68,8 +71,52 @@ export default function AddTeamModal() {
       setSearchResult(null);
       setHasSearched(false);
       setStatusMessage(null);
+      setEmailSuggestions([]);
+      setSuggestionsOpen(false);
     }
   }, [isOpen, activeProject, loadMembers]);
+
+  useEffect(() => {
+    const email = searchEmail.trim();
+    if (!isOpen || email.length < 2 || searchResult?.email === email) {
+      setEmailSuggestions([]);
+      setSuggestionsOpen(false);
+      setSuggestionsLoading(false);
+      return;
+    }
+
+    let ignore = false;
+    setSuggestionsLoading(true);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const res = await api.get("/teams/suggestions", {
+          params: {
+            email,
+            project_id: activeProject?.project_id,
+          },
+        });
+        if (ignore) return;
+        const memberIds = new Set(members.map((member) => Number(member.user_id)));
+        const suggestions = (res.data.users || []).filter(
+          (item) => !memberIds.has(Number(item.user_id)),
+        );
+        setEmailSuggestions(suggestions);
+        setSuggestionsOpen(suggestions.length > 0);
+      } catch (err) {
+        if (!ignore) {
+          setEmailSuggestions([]);
+          setSuggestionsOpen(false);
+        }
+      } finally {
+        if (!ignore) setSuggestionsLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeProject?.project_id, isOpen, members, searchEmail, searchResult?.email]);
 
   // Search handler
   const handleSearch = async () => {
@@ -80,6 +127,7 @@ export default function AddTeamModal() {
     setSearchResult(null);
     setHasSearched(true);
     setStatusMessage(null);
+    setSuggestionsOpen(false);
 
     try {
       const res = await api.get(
@@ -106,6 +154,22 @@ export default function AddTeamModal() {
       e.preventDefault();
       handleSearch();
     }
+  };
+
+  const handleEmailChange = (e) => {
+    setSearchEmail(e.target.value);
+    setSearchResult(null);
+    setHasSearched(false);
+    setStatusMessage(null);
+  };
+
+  const selectSuggestion = (suggestion) => {
+    setSearchEmail(suggestion.email);
+    setSearchResult(suggestion);
+    setHasSearched(true);
+    setStatusMessage(null);
+    setEmailSuggestions([]);
+    setSuggestionsOpen(false);
   };
 
   // Invite handler
@@ -209,13 +273,56 @@ export default function AddTeamModal() {
                 type="email"
                 placeholder="Search by email address..."
                 value={searchEmail}
-                onChange={(e) => setSearchEmail(e.target.value)}
+                onChange={handleEmailChange}
                 onKeyDown={handleKeyDown}
+                onFocus={() => setSuggestionsOpen(emailSuggestions.length > 0)}
+                onBlur={() => window.setTimeout(() => setSuggestionsOpen(false), 120)}
                 autoFocus
               />
               <span className="search-icon">
                 <Icon name="search" size={16} />
               </span>
+              {(suggestionsOpen || suggestionsLoading) && (
+                <div className="atm-email-suggestions">
+                  {suggestionsLoading ? (
+                    <div className="atm-suggestion-state">
+                      <div className="atm-spinner" />
+                      <span>Searching emails...</span>
+                    </div>
+                  ) : (
+                    emailSuggestions.map((suggestion) => (
+                      <button
+                        className="atm-email-suggestion"
+                        type="button"
+                        key={suggestion.user_id}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => selectSuggestion(suggestion)}
+                      >
+                        <span className="atm-suggestion-avatar">
+                          {suggestion.user_photo ? (
+                            <img
+                              src={avatarUrl(suggestion.user_photo)}
+                              alt=""
+                              onError={(e) => {
+                                e.target.style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            (suggestion.username || "U").charAt(0).toUpperCase()
+                          )}
+                        </span>
+                        <span className="atm-suggestion-copy">
+                          <strong>{suggestion.email}</strong>
+                          <small>
+                            {suggestion.username}
+                            {!suggestion.email_verified ? " - chưa xác thực email" : ""}
+                          </small>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
             <button
               className="atm-search-btn"

@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/authMiddleware');
 const {
     searchUserByEmail,
+    suggestUsersByEmail,
     sendInvitation,
     getMyInvitations,
     respondInvitation,
@@ -11,6 +12,7 @@ const {
 } = require('../controllers/teamController');
 
 // Tất cả route đều cần đăng nhập
+router.get('/suggestions', auth, suggestUsersByEmail);
 router.get('/search', auth, searchUserByEmail);
 router.post('/invite', auth, sendInvitation);
 router.get('/invitations', auth, getMyInvitations);

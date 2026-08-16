@@ -20,6 +20,14 @@ const ADMIN_NAV = [
 const DONE_STATUSES = new Set(["COMPLETED", "OWNER_APPROVED"]);
 const BLOCKED_STATUSES = new Set(["CHANGES_REQUESTED", "REJECTED", "BLOCKED"]);
 const ACTIVE_STATUSES = new Set(["IN_PROGRESS", "ACCEPTED", "ASSIGNED", "SUBMITTED", "LEADER_APPROVED"]);
+const MONITORING_SUMMARY_ITEMS = [
+  { label: "Overdue Tasks", types: ["Overdue Task"] },
+  { label: "Blocked Tasks", types: ["Blocked Task"] },
+  { label: "Delayed Stages", types: ["Delayed Stage"] },
+  { label: "Projects At Risk", types: ["Project At Risk"] },
+  { label: "Users Overloaded", types: ["User Overloaded"] },
+  { label: "Workflow Bottlenecks", types: ["Workflow Bottleneck"] },
+];
 
 const ADMIN_VI = {
   "Dashboard": "Tổng quan",
@@ -1088,10 +1096,6 @@ export default function AdminPage() {
           <strong>{model.stats.projectsAtRisk === 0 ? t("System is stable") : `${model.stats.projectsAtRisk} ${t("projects need attention")}`}</strong>
           <span>{model.stats.overdueTasks} {t("overdue tasks")}, {model.stats.blockedTasks} {t("blocked tasks")}, {model.stats.verifiedUsers} {t("verified users")}.</span>
         </div>
-        <div className="admin-source-pills">
-          <Badge tone={model.dataQuality.coreApi ? "green" : "orange"}>{model.dataQuality.coreApi ? t("API connected") : t("API fallback")}</Badge>
-          <Badge tone="blue">{t("Derived workflow analytics")}</Badge>
-        </div>
       </div>
 
       <div className="admin-stat-grid">
@@ -1480,8 +1484,8 @@ export default function AdminPage() {
   const renderMonitoring = () => (
     <SectionCard title={t("System Monitoring")} icon="flag">
       <div className="admin-monitor-grid">
-        {["Overdue Tasks", "Blocked Tasks", "Delayed Stages", "Projects At Risk", "Users Overloaded", "Workflow Bottlenecks"].map((label) => {
-          const count = model.monitoring.filter((item) => item.type.toLowerCase().includes(label.split(" ")[0].toLowerCase())).length;
+        {MONITORING_SUMMARY_ITEMS.map(({ label, types }) => {
+          const count = model.monitoring.filter((item) => types.includes(item.type)).length;
           return <StatCard key={label} label={t(label)} value={count} tone={count > 0 ? "orange" : "green"} icon="flag" />;
         })}
       </div>
