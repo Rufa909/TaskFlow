@@ -43,7 +43,8 @@ const leaderCopy = {
     taskOverview: 'Task overview',
     completed: 'Completed',
     unassigned: 'Unassigned',
-    assignmentSuggestions: 'Assignment suggestions from previous stage',
+    assignmentSuggestions: 'Stage-based assignment suggestions',
+    currentStage: 'current stage',
     updating: 'Updating',
     basedOn: 'Based on',
     previousDocuments: 'previous documents',
@@ -89,7 +90,8 @@ const leaderCopy = {
     taskOverview: 'Tổng quan công việc',
     completed: 'Hoàn thành',
     unassigned: 'Chưa giao',
-    assignmentSuggestions: 'Gợi ý phân công từ giai đoạn trước',
+    assignmentSuggestions: 'Gợi ý phân công theo giai đoạn',
+    currentStage: 'stage hiện tại',
     updating: 'Đang cập nhật',
     basedOn: 'Dựa trên',
     previousDocuments: 'tài liệu giai đoạn trước',
@@ -359,7 +361,7 @@ function buildLeaderSuggestions(tasks = [], incomingPackage = null, language = '
 
   return suggestions.slice(0, 5);
 }
-function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTask, suggestionData, loadingSuggestions, language, setLanguage }) {
+function LeaderWorkspace({ stage, tasks, incomingPackage, currentPackage, setSelectedTask, suggestionData, loadingSuggestions, language, setLanguage }) {
   const lt = (key) => getLeaderCopy(language, key);
   const total = tasks.length;
   const completed = tasks.filter((task) => completedStatuses.has(task.status)).length;
@@ -417,6 +419,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
   const sourceDiscussions = incomingPackage?.discussions?.length || 0;
   const currentDocuments = currentPackage?.documents?.length || 0;
   const currentDiscussions = currentPackage?.discussions?.length || 0;
+  const currentStageName = stage?.stage_name || stage?.name || lt('currentStage');
 
   return (
     <div className="stage-leader-workspace">
@@ -495,7 +498,7 @@ function LeaderWorkspace({ tasks, incomingPackage, currentPackage, setSelectedTa
           {!loadingSuggestions && <em className="leader-loading-badge">{suggestionSource === 'ai' ? 'AI' : lt('rules')}</em>}
         </div>
         <div className="leader-source-note">
-          {lt('basedOn')} {sourceDocuments} {lt('previousDocuments')} {lt('and')} {sourceDiscussions} {lt('discussions')}. {lt('currentStageHas')} {currentDocuments} {lt('documents')} {lt('and')} {currentDiscussions} {lt('discussions')}.
+          {lt('basedOn')} {lt('currentStage')} <strong>{currentStageName}</strong>, {sourceDocuments} {lt('previousDocuments')} {lt('and')} {sourceDiscussions} {lt('discussions')}. {lt('currentStageHas')} {currentDocuments} {lt('documents')} {lt('and')} {currentDiscussions} {lt('discussions')}.
         </div>
         <div className="leader-suggestion-list">
           {localizedSuggestions.map((suggestion) => (
@@ -1039,6 +1042,7 @@ export default function StageTaskPanel({
               {activeTab === 'leader' && isLeaderWorkspaceVisible && (
                 <div className="stage-tab-panel leader-tab-panel">
                   <LeaderWorkspace
+                    stage={stage}
                     tasks={tasks}
                     incomingPackage={incomingPackage}
                     currentPackage={currentPackage}

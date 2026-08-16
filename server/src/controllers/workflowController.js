@@ -285,6 +285,32 @@ function roleHintsForText(text) {
   return ["developer", "member", "leader"];
 }
 
+function roleHintsForStage(stage) {
+  const normalized = normalizeText(`${stage?.stage_name || ""} ${stage?.name || ""} ${stage?.description || ""}`);
+  if (normalized.match(/test|qa|quality|kiem thu|verify|validation/)) {
+    return ["qa", "tester", "developer", "leader"];
+  }
+  if (normalized.match(/deploy|release|maintenance|devops|operate|production|trien khai|bao tri/)) {
+    return ["devops", "developer", "qa", "leader"];
+  }
+  if (normalized.match(/develop|implementation|coding|backend|frontend|api|database|phat trien|lap trinh|trien khai/)) {
+    return ["developer", "backend", "frontend", "devops", "member", "leader"];
+  }
+  if (normalized.match(/planning|analysis|analyst|requirement|design|scope|ke hoach|phan tich|yeu cau/)) {
+    return ["ba", "leader", "designer", "member"];
+  }
+  return ["leader", "member", "developer"];
+}
+
+function stageAwareRoleHints(stage, text = "", fallbackHints = []) {
+  const merged = [
+    ...roleHintsForStage(stage),
+    ...roleHintsForText(text),
+    ...fallbackHints,
+  ];
+  return [...new Set(merged.filter(Boolean))];
+}
+
 function leaderText(language, en, vi) {
   return language === "vi" ? vi : en;
 }
@@ -307,7 +333,7 @@ function formatActiveTaskReason(member, language) {
   );
 }
 
-function buildAssignmentPlan({ tasks, incomingPackage, members, language = "en" }) {
+function buildAssignmentPlan({ stage, tasks, incomingPackage, members, language = "en" }) {
   const virtualLoads = new Map();
   const addVirtualLoad = (member) => {
     if (!member?.user_id) return;
@@ -316,7 +342,8 @@ function buildAssignmentPlan({ tasks, incomingPackage, members, language = "en" 
   };
   const makePlanItem = ({ task, title, detail, priority = "medium", source = "previous_stage", deadline = null }) => {
     const searchText = `${title || ""} ${detail || ""} ${task?.title || ""} ${task?.description || ""}`;
-    const member = pickBalancedMember(members, roleHintsForText(searchText), virtualLoads);
+    const roleHints = stageAwareRoleHints(stage, searchText);
+    const member = pickBalancedMember(members, roleHints, virtualLoads);
     addVirtualLoad(member);
     return {
       id: task?.task_id ? `task-${task.task_id}` : `plan-${virtualLoads.size}-${normalizeText(title).slice(0, 18)}`,
@@ -331,7 +358,7 @@ function buildAssignmentPlan({ tasks, incomingPackage, members, language = "en" 
       source,
       suggested_deadline: task?.deadline || deadline || leaderText(language, "Set after leader review", "Đặt sau khi leader rà soát"),
       recommended_member: memberPayload(member),
-      recommended_role: member?.role || roleHintsForText(searchText)[0] || "member",
+      recommended_role: member?.role || roleHints[0] || "member",
       reason: formatActiveTaskReason(member, language),
     };
   };
@@ -465,11 +492,13 @@ async function getStageTasksForLeader(projectId, stageId) {
   }));
 }
 
-function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPackage, members, language = "en" }) {
+function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, currentPackage, members, language = "en" }) {
   const incomingDocuments = incomingPackage?.documents || [];
   const incomingDiscussions = incomingPackage?.discussions || [];
   const incomingDeliverables = incomingPackage?.deliverables || [];
   const previousContext = normalizeText([
+    stage?.stage_name,
+    stage?.description,
     incomingPackage?.stage?.stage_name,
     incomingPackage?.handover?.summary,
     incomingPackage?.handover?.open_issues,
@@ -481,6 +510,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
   ].join(" "));
   const taskText = normalizeText(tasks.map((task) => `${task.title} ${task.description || ""}`).join(" "));
   const combinedText = `${previousContext} ${taskText}`;
+  const pickForStage = (text = "", fallbackHints = []) =>
+    pickMemberForRole(members, stageAwareRoleHints(stage, text, fallbackHints));
   const suggestions = [];
   const addSuggestion = (suggestion) => {
     suggestions.push({
@@ -525,8 +556,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
         `Hãy giao các việc này trước: ${unassignedTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
       ),
       source: "current_tasks",
-      recommended_role: "leader/member",
-      recommended_member: pickMemberForRole(members, ["leader", "ba", "developer", "qa", "devops", "member"]),
+      recommended_role: roleHintsForStage(stage)[0] || "leader/member",
+      recommended_member: pickForStage("current unassigned tasks", ["leader", "ba", "developer", "qa", "devops", "member"]),
       priority: "high",
       related_task_ids: unassignedTasks.slice(0, 5).map((task) => task.task_id),
     });
@@ -564,8 +595,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       title: leaderText(language, "Turn previous-stage requirements into implementation tasks", "Chuyển yêu cầu giai đoạn trước thành việc triển khai"),
       detail: leaderText(language, "Use the handed-over requirements, MVP scope, and use cases to create module-level tasks with acceptance criteria.", "Dựa vào yêu cầu bàn giao, phạm vi MVP và use case để tạo các việc theo module kèm tiêu chí hoàn thành."),
       source: "previous_stage_documents",
-      recommended_role: "ba",
-      recommended_member: pickMemberForRole(members, ["ba", "leader"]),
+      recommended_role: roleHintsForStage(stage)[0] || "ba",
+      recommended_member: pickForStage("requirement srs scope mvp user story use case stakeholder", ["ba", "leader"]),
       priority: "medium",
     });
   }
@@ -576,8 +607,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       title: leaderText(language, "Prioritize UI/UX tasks before development", "Ưu tiên việc UI/UX trước khi phát triển"),
       detail: leaderText(language, "Assign ownership for screen flows, wireframes, and UI review to reduce rework after backend work is done.", "Giao rõ người phụ trách luồng màn hình, wireframe và review UI để giảm việc làm lại sau khi backend hoàn tất."),
       source: "previous_stage_documents",
-      recommended_role: "developer/ba",
-      recommended_member: pickMemberForRole(members, ["developer", "ba"]),
+      recommended_role: roleHintsForStage(stage)[0] || "developer/ba",
+      recommended_member: pickForStage("wireframe ui ux prototype screen interface", ["developer", "ba"]),
       priority: "medium",
     });
   }
@@ -588,8 +619,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       title: leaderText(language, "Separate API, database, and integration tasks", "Tách riêng việc API, database và tích hợp"),
       detail: leaderText(language, "Data, API, and payment or integration work should have separate owners and early review checkpoints.", "Các phần dữ liệu, API, thanh toán hoặc tích hợp nên có người phụ trách riêng và mốc review sớm."),
       source: "previous_stage_documents",
-      recommended_role: "developer/devops",
-      recommended_member: pickMemberForRole(members, ["developer", "devops"]),
+      recommended_role: roleHintsForStage(stage)[0] || "developer/devops",
+      recommended_member: pickForStage("api database erd schema backend integration payment", ["developer", "devops"]),
       priority: "medium",
     });
   }
@@ -600,8 +631,8 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       title: leaderText(language, "Prepare QA in parallel with implementation", "Chuẩn bị QA song song với triển khai"),
       detail: leaderText(language, "Create tasks for test cases, sample data, and performance checks early instead of pushing QA to the end.", "Tạo việc cho test case, dữ liệu mẫu và kiểm tra hiệu năng từ sớm thay vì dồn QA về cuối."),
       source: "previous_stage_discussions",
-      recommended_role: "qa",
-      recommended_member: pickMemberForRole(members, ["qa", "tester"]),
+      recommended_role: roleHintsForStage(stage)[0] || "qa",
+      recommended_member: pickForStage("test qa performance load bug", ["qa", "tester"]),
       priority: "medium",
     });
   }
@@ -634,7 +665,7 @@ function buildDataDrivenLeaderSuggestions({ tasks, incomingPackage, currentPacka
       current_discussions: currentPackage?.discussions?.length || 0,
     },
     suggestions: suggestions.slice(0, 8),
-    assignment_plan: buildAssignmentPlan({ tasks, incomingPackage, members, language }),
+    assignment_plan: buildAssignmentPlan({ stage, tasks, incomingPackage, members, language }),
     workload: members.map(memberPayload),
     due_soon_tasks: dueSoonTasks,
     attention_tasks: [...dueSoonTasks, ...unassignedTasks, ...reviewTasks, ...blockedTasks]
@@ -881,6 +912,7 @@ const workflowController = {
       const tasks = await getStageTasksForLeader(context.projectId, stage.id);
       const members = await getProjectMembersWithWorkload(context.projectId);
       const suggestionData = buildDataDrivenLeaderSuggestions({
+        stage,
         tasks,
         incomingPackage: packageData.incoming,
         currentPackage: packageData.current,
