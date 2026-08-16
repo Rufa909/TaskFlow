@@ -117,8 +117,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 8px;
   min-width: 120px;
+  min-height: 88px;
   padding: 14px 12px;
   background: white;
   border: 2px solid #e8e8e8;
@@ -155,48 +157,6 @@
 
 .workflow-stage.pending {
   background: #fafafa;
-}
-
-.stage-icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-}
-
-.stage-icon {
-  flex-shrink: 0;
-}
-
-.stage-icon.completed {
-  color: #4caf50;
-}
-
-.stage-icon.active {
-  color: #2196f3;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.stage-icon.rejected {
-  color: #f44336;
-}
-
-.stage-icon.pending {
-  width: 24px;
-  height: 24px;
-  border: 2px solid #d0d0d0;
-  border-radius: 50%;
-  background: white;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
 }
 
 .stage-info {
@@ -269,6 +229,7 @@
 
   .workflow-stage {
     min-width: 100px;
+    min-height: 76px;
     padding: 10px 8px;
     gap: 8px;
   }
@@ -277,20 +238,6 @@
     font-size: 12px;
   }
 
-  .stage-icon-wrapper {
-    width: 32px;
-    height: 32px;
-  }
-
-  .stage-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .stage-icon.pending {
-    width: 20px;
-    height: 20px;
-  }
 }
 
 @media (max-width: 480px) {

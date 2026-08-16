@@ -170,14 +170,26 @@ exports.getProjects = async (req, res) => {
         );
         // Nếu user chưa có project nào → tự động tạo "Project1"
         if (rows.length === 0) {
-            const [result] = await pool.query(
-                'INSERT INTO projects (owner_id, name) VALUES (?, ?)',
-                [req.user.id, 'Project1']
-            );
-            [rows] = await pool.query(
-                "SELECT p.*, 'owner' AS user_role FROM projects p WHERE p.project_id = ? AND p.deleted_at IS NULL",
-                [result.insertId]
-            );
+            await ProjectStage.ensureProjectStagesTable();
+            const connection = await pool.getConnection();
+            try {
+                await connection.beginTransaction();
+                const [result] = await connection.query(
+                    'INSERT INTO projects (owner_id, name) VALUES (?, ?)',
+                    [req.user.id, 'Project1']
+                );
+                await ProjectStage.createDefaultStages(result.insertId, ProjectStage.DEFAULT_WORKFLOW_STAGES, connection);
+                [rows] = await connection.query(
+                    "SELECT p.*, 'owner' AS user_role FROM projects p WHERE p.project_id = ? AND p.deleted_at IS NULL",
+                    [result.insertId]
+                );
+                await connection.commit();
+            } catch (createErr) {
+                await connection.rollback();
+                throw createErr;
+            } finally {
+                connection.release();
+            }
         }
         res.json({ success: true, projects: rows.map(attachDeadlineProject) });
     } catch (err) {
@@ -192,6 +204,9 @@ exports.createProject = async (req, res) => {
     if (!name || !name.trim()) {
         return res.status(400).json({ success: false, message: 'Ten project khong duoc de trong!' });
     }
+    if (!deadline) {
+        return res.status(400).json({ success: false, message: 'Vui long chon han project!' });
+    }
     const normalizedDeadline = normalizeProjectDeadline(deadline);
     if (deadline && normalizedDeadline === undefined) {
         return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong hop le!' });
@@ -201,44 +216,30 @@ exports.createProject = async (req, res) => {
     }
     try {
         await ensureProjectDeadlineColumn();
-        const [result] = await pool.query(
-            'INSERT INTO projects (owner_id, name, deadline) VALUES (?, ?, ?)',
-            [req.user.id, name.trim(), normalizedDeadline]
-        );
-        const projectId = result.insertId;
-
-        // Use custom workflow stages or defaults
-        const stagesToCreate = workflow_stages || [
-            {
-                name: '📋 Planning',
-                description: 'Requirement analysis & planning phase'
-            },
-            {
-                name: '💻 Development',
-                description: 'Implementation & coding phase'
-            },
-            {
-                name: '🧪 Testing',
-                description: 'QA & testing phase'
-            },
-            {
-                name: '🚀 Deployment',
-                description: 'Release to production'
-            }
-        ];
-
+        const stagesToCreate = ProjectStage.normalizeWorkflowStages(workflow_stages);
+        await ProjectStage.ensureProjectStagesTable();
+        const connection = await pool.getConnection();
         try {
-            await ProjectStage.createDefaultStages(projectId, stagesToCreate);
-        } catch (stageErr) {
-            console.warn('Could not create workflow stages:', stageErr.message);
-            // Không báo lỗi, project vẫn được tạo
-        }
+            await connection.beginTransaction();
+            const [result] = await connection.query(
+                'INSERT INTO projects (owner_id, name, deadline) VALUES (?, ?, ?)',
+                [req.user.id, name.trim(), normalizedDeadline]
+            );
+            const projectId = result.insertId;
+            await ProjectStage.createDefaultStages(projectId, stagesToCreate, connection);
 
-        const [rows] = await pool.query(
-            'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
-            [projectId]
-        );
-        res.status(201).json({ success: true, project: attachDeadlineProject(rows[0]) });
+            const [rows] = await connection.query(
+                'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
+                [projectId]
+            );
+            await connection.commit();
+            res.status(201).json({ success: true, project: attachDeadlineProject(rows[0]) });
+        } catch (createErr) {
+            await connection.rollback();
+            throw createErr;
+        } finally {
+            connection.release();
+        }
     } catch (err) {
         console.error('Loi createProject:', err);
         res.status(500).json({ success: false, message: 'Co loi xay ra!' });
@@ -251,11 +252,14 @@ exports.deleteProject = async (req, res) => {
     try {
         await ensureProjectDeadlineColumn();
         const [rows] = await pool.query(
-            'SELECT * FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL',
-            [id, req.user.id]
+            'SELECT * FROM projects WHERE project_id = ? AND deleted_at IS NULL',
+            [id]
         );
         if (rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Project khong ton tai!' });
+        }
+        if (Number(rows[0].owner_id) !== Number(req.user.id)) {
+            return res.status(403).json({ success: false, message: 'Ban khong phai owner cua project nay!' });
         }
         await pool.query('UPDATE projects SET deleted_at = NOW() WHERE project_id = ?', [id]);
         res.json({ success: true, message: 'Da an project!' });

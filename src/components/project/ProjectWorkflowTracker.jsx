@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, Clock, ChevronRight, ChevronLeft, User, Calendar, Trophy } from 'lucide-react';
+import { ChevronRight, ChevronLeft, User, Calendar, Trophy } from 'lucide-react';
 import axios from 'axios';
 import './ProjectWorkflowTracker.css';
+
+const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
 
 const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialStages = [], onStagesChange }) => {
   const [stages, setStages] = useState(initialStages);
@@ -184,7 +186,7 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                 <div className="stage-content">
                   <div className="stage-header">
                     <div>
-                      <h3 className="stage-name">{stage.stage_order}. {stage.stage_name}</h3>
+                      <h3 className="stage-name">{stage.stage_order}. {stripStageIcon(stage.stage_name)}</h3>
                       {stage.description && (
                         <p className="stage-description">{stage.description}</p>
                       )}

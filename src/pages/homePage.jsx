@@ -690,6 +690,10 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     }
   };
   const handleAddProject = async () => {
+    if (!newProjectDeadline) {
+      showToast(t("projectDeadlineRequired"), "error");
+      return;
+    }
     // Close project name modal and open workflow customization
     setIsAddProjectModalOpen(false);
     setIsCustomizeWorkflowOpen(true);
@@ -697,6 +701,10 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleCreateProjectWithWorkflow = async (workflowStages) => {
     if (!newProjectName.trim()) return;
+    if (!newProjectDeadline) {
+      showToast(t("projectDeadlineRequired"), "error");
+      return;
+    }
     setSavingProject(true);
     try {
       const res = await api.post("/projects", { 
@@ -715,7 +723,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       setCustomWorkflowStages(null);
       showToast("Project created with custom workflow!", "success");
     } catch (err) {
-      showToast(t("cannotCreateProject") || err.response?.data?.message, "error");
+      showToast(err.response?.data?.message || t("cannotCreateProject"), "error");
     } finally {
       setSavingProject(false);
     }

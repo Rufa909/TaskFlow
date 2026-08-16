@@ -1,6 +1,40 @@
 const db = require('../config/db');
 
 let stageActivitiesReady;
+let projectStagesReady;
+
+const DEFAULT_WORKFLOW_STAGES = [
+  {
+    name: 'Planning',
+    description: 'Requirement analysis & planning phase'
+  },
+  {
+    name: 'Development',
+    description: 'Implementation & coding phase'
+  },
+  {
+    name: 'Testing',
+    description: 'QA & testing phase'
+  },
+  {
+    name: 'Deployment',
+    description: 'Release to production'
+  }
+];
+
+function normalizeWorkflowStages(stages) {
+  if (!Array.isArray(stages)) return DEFAULT_WORKFLOW_STAGES;
+
+  const normalized = stages
+    .map((stage) => ({
+      ...stage,
+      name: String(stage?.name || '').trim(),
+      description: String(stage?.description || '').trim(),
+    }))
+    .filter((stage) => stage.name);
+
+  return normalized.length > 0 ? normalized : DEFAULT_WORKFLOW_STAGES;
+}
 
 async function ensureStageActivitiesTable() {
   if (!stageActivitiesReady) {
@@ -20,9 +54,43 @@ async function ensureStageActivitiesTable() {
   return stageActivitiesReady;
 }
 
+async function ensureProjectStagesTable(connection = db) {
+  if (!projectStagesReady) {
+    projectStagesReady = connection.query(`
+      CREATE TABLE IF NOT EXISTS project_stages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        project_id INT NOT NULL,
+        stage_order INT NOT NULL,
+        stage_name VARCHAR(255) NOT NULL,
+        description TEXT NULL,
+        status ENUM('pending','in_progress','completed') DEFAULT 'pending',
+        assigned_to INT NULL,
+        deadline DATE NULL,
+        approved_by INT NULL,
+        approved_at DATETIME NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_project_stages_project_order (project_id, stage_order),
+        INDEX idx_project_stages_status (project_id, status),
+        CONSTRAINT fk_project_stages_project
+          FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+      )
+    `).catch((err) => {
+      projectStagesReady = null;
+      throw err;
+    });
+  }
+  return projectStagesReady;
+}
+
 const ProjectStage = {
+  DEFAULT_WORKFLOW_STAGES,
+  normalizeWorkflowStages,
+  ensureProjectStagesTable,
+
   // Lấy toàn bộ workflow của một project
   async getByProjectId(projectId) {
+    await ensureProjectStagesTable();
     const sql = `
       SELECT ps.*, u.username as assignee_name, u2.username as approver_name
       FROM project_stages ps
@@ -36,21 +104,36 @@ const ProjectStage = {
   },
 
   // Tạo mặc định workflow khi tạo project mới
-  async createDefaultStages(projectId, stagesTemplate) {
-    for (let i = 0; i < stagesTemplate.length; i++) {
-      await db.query(`
+  async createDefaultStages(projectId, stagesTemplate, connection = db) {
+    await ensureProjectStagesTable(connection);
+    const stages = normalizeWorkflowStages(stagesTemplate);
+    for (let i = 0; i < stages.length; i++) {
+      await connection.query(`
         INSERT INTO project_stages 
         (project_id, stage_order, stage_name, description, assigned_to, deadline)
         VALUES (?, ?, ?, ?, ?, ?)
       `, [
         projectId,
         i + 1,
-        stagesTemplate[i].name,
-        stagesTemplate[i].description,
-        stagesTemplate[i].assigned_to || null,
-        stagesTemplate[i].deadline || null
+        stages[i].name,
+        stages[i].description,
+        stages[i].assigned_to || null,
+        stages[i].deadline || null
       ]);
     }
+  },
+
+  async ensureDefaultStages(projectId, connection = db) {
+    await ensureProjectStagesTable(connection);
+    const [existing] = await connection.query(
+      'SELECT COUNT(*) AS stage_count FROM project_stages WHERE project_id = ?',
+      [projectId]
+    );
+
+    if (Number(existing[0]?.stage_count || 0) > 0) return false;
+
+    await this.createDefaultStages(projectId, DEFAULT_WORKFLOW_STAGES, connection);
+    return true;
   },
 
   // Move to next stage - mark current as completed, prepare next

@@ -36,6 +36,7 @@ export default function AddProjectModal({
             type="date"
             value={newProjectDeadline || ""}
             min={new Date().toISOString().slice(0, 10)}
+            required
             onChange={(e) => setNewProjectDeadline?.(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAddProject()}
           />
@@ -49,7 +50,7 @@ export default function AddProjectModal({
           </button>
           <button
             onClick={handleAddProject}
-            disabled={!newProjectName.trim() || savingProject}
+            disabled={!newProjectName.trim() || !newProjectDeadline || savingProject}
             className="submit-btn"
           >
             {savingProject ? "Adding..." : "Add"}

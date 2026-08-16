@@ -202,6 +202,10 @@ export default function TodayPage() {
 
   const handleAddProject = async () => {
     if (!newProjectName.trim()) return;
+    if (!newProjectDeadline) {
+      showToast(t("projectDeadlineRequired"), "error");
+      return;
+    }
     setSavingProject(true);
     try {
       const res = await api.post("/projects", { name: newProjectName.trim(), deadline: newProjectDeadline || null });
@@ -213,7 +217,7 @@ export default function TodayPage() {
       setIsAddProjectModalOpen(false);
       setIsProjectMenuOpen(false);
     } catch (err) {
-      showToast(t("cannotCreateProject"), "error");
+      showToast(err.response?.data?.message || t("cannotCreateProject"), "error");
     } finally {
       setSavingProject(false);
     }

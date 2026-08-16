@@ -1,6 +1,8 @@
 import React from 'react';
-import { CheckCircle, Clock, AlertCircle, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import './WorkflowProgressBar.css';
+
+const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
 
 const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => {
   if (!stages || stages.length === 0) return null;
@@ -9,17 +11,6 @@ const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => 
   const inProgressCount = stages.filter(s => s.status === 'in_progress').length;
   const totalCount = stages.length;
   const progressPercent = (completedCount / totalCount) * 100;
-
-  const getStageIcon = (status) => {
-    switch(status) {
-      case 'completed':
-        return <CheckCircle className="stage-icon completed" size={24} />;
-      case 'in_progress':
-        return <Clock className="stage-icon active" size={24} />;
-      default:
-        return <div className="stage-icon pending" />;
-    }
-  };
 
   return (
     <div className="workflow-progress-container">
@@ -52,11 +43,8 @@ const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => 
                   className={`workflow-stage ${stage.status} ${isClickable ? 'clickable' : ''} ${isSelected ? 'selected' : ''}`}
                   onClick={() => isClickable && onStageClick(stage)}
                 >
-                  <div className="stage-icon-wrapper">
-                    {getStageIcon(stage.status)}
-                  </div>
                   <div className="stage-info">
-                    <div className="stage-label">{stage.stage_name}</div>
+                    <div className="stage-label">{stripStageIcon(stage.stage_name)}</div>
                     <div className="stage-status">
                       {stage.status === 'completed' && 'Done'}
                       {stage.status === 'in_progress' && 'Current'}

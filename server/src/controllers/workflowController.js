@@ -746,6 +746,7 @@ async function buildCompletionChecklist(stage) {
 }
 
 async function normalizeWorkflow(projectId) {
+  await ProjectStage.ensureDefaultStages(projectId);
   const stages = await ProjectStage.getByProjectId(projectId);
   let latestStageAction = null;
 
