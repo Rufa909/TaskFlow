@@ -3,6 +3,54 @@ import api from "../../api/axiosInstance";
 import "./AIChatBox.css";
 
 const OLLAMA_AVATAR_SRC = "/ollama-avatar.png";
+const AI_MEMORY_STORAGE_KEY = "taskflow_ai_memory";
+const USER_NAME_PATTERNS = [
+  /\b(?:gọi|goi|hãy gọi|hay goi|cứ gọi|cu goi|nhớ gọi|nho goi)(?:\s+(?:tôi|toi|tui|mình|minh|tao|em|anh|chị|chi|user|người dùng|nguoi dung))?\s+(?:là|la|bằng|bang)\s+([\p{L}\p{N}][\p{L}\p{N}\s.'_-]{0,40})\b/iu,
+  /\b(?:tôi|toi|tui|mình|minh|tao|em|anh|chị|chi)\s+(?:tên\s+là|ten\s+la|tên|ten|là|la)\s+([\p{L}\p{N}][\p{L}\p{N}\s.'_-]{0,40})\b/iu,
+  /\b(?:my name is|call me|please call me)\s+([\p{L}\p{N}][\p{L}\p{N}\s.'_-]{0,40})\b/iu,
+];
+const USER_NAME_QUERY_PATTERNS = [
+  /\b(?:tôi|toi|tui|mình|minh|tao|em|anh|chị|chi)\s+(?:tên|ten)\s+(?:gì|gi)\b/iu,
+  /\b(?:bạn|ban|ai)\s+(?:đang\s+|dang\s+)?gọi\s+(?:tôi|toi|tui|mình|minh|tao|em|anh|chị|chi)\s+(?:là|la)\s+(?:gì|gi)\b/iu,
+  /\b(?:nhớ|nho|biết|biet)\s+(?:tên|ten)\s+(?:tôi|toi|tui|mình|minh|tao|em|anh|chị|chi)\s+(?:không|khong|ko|hong|chưa|chua)\b/iu,
+  /\bwhat(?:'s| is)\s+my\s+name\b/iu,
+];
+
+function cleanRememberedName(value) {
+  return String(value || "")
+    .replace(/[.!?。！？]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+}
+
+function extractPreferredName(text) {
+  for (const pattern of USER_NAME_PATTERNS) {
+    const preferredName = cleanRememberedName(String(text || "").match(pattern)?.[1]);
+    if (preferredName && preferredName.length >= 2) return preferredName;
+  }
+  return null;
+}
+
+function isUserNameQuery(text) {
+  return USER_NAME_QUERY_PATTERNS.some((pattern) => pattern.test(String(text || "")));
+}
+
+function loadAiMemory() {
+  try {
+    return JSON.parse(localStorage.getItem(AI_MEMORY_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveAiMemory(memory) {
+  try {
+    localStorage.setItem(AI_MEMORY_STORAGE_KEY, JSON.stringify(memory));
+  } catch {
+    // Ignore storage errors; chat still works without persisted client memory.
+  }
+}
 
 function inlineMarkdown(text) {
   return String(text)
@@ -100,6 +148,7 @@ export default function AIChatBox() {
   const [documents, setDocuments] = useState([]);
   const [isDocPanelOpen, setIsDocPanelOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [aiMemory, setAiMemory] = useState(() => loadAiMemory());
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -193,17 +242,78 @@ export default function AIChatBox() {
       const text = inputValue.trim();
       if (!text || isLoading) return;
 
+      const preferredName = extractPreferredName(text);
+      const userMessage = { text, sender: "user", time: new Date() };
+
+      if (preferredName) {
+        const nextMemory = { ...aiMemory, preferredName };
+        setAiMemory(nextMemory);
+        saveAiMemory(nextMemory);
+        setAiProvider("taskflow-memory");
+        setMessages((prev) => [
+          ...prev,
+          userMessage,
+          {
+            text: `Ok, từ giờ mình sẽ gọi bạn là **${preferredName}**.`,
+            sender: "bot",
+            time: new Date(),
+            provider: "taskflow-memory",
+          },
+        ]);
+        setInputValue("");
+        api.post("/ai/chat", {
+          message: text,
+          selectedTaskIds,
+          sessionId,
+          chatHistory: [],
+        }).catch((err) => console.error("Failed to sync AI memory:", err));
+        return;
+      }
+
+      if (isUserNameQuery(text)) {
+        setAiProvider("taskflow-memory");
+        setMessages((prev) => [
+          ...prev,
+          userMessage,
+          {
+            text: aiMemory.preferredName
+              ? `Mình nhớ rồi, bạn là **${aiMemory.preferredName}**.`
+              : 'Mình chưa thấy bạn dặn tên/cách gọi. Bạn có thể nói: "gọi tui là Huy".',
+            sender: "bot",
+            time: new Date(),
+            provider: "taskflow-memory",
+          },
+        ]);
+        setInputValue("");
+        return;
+      }
+
+      const rememberedContext = aiMemory.preferredName
+        ? [
+            {
+              role: "user",
+              content: `Thông tin cá nhân đã dặn trước đó: hãy gọi tôi là ${aiMemory.preferredName}.`,
+            },
+            {
+              role: "assistant",
+              content: `Mình nhớ, mình sẽ gọi bạn là ${aiMemory.preferredName}.`,
+            },
+          ]
+        : [];
       // Build history TRƯEỚC khi thêm tin nhắn hiện tại vào state
       // để Ollama có ngữ cảnh các lượt trước (multi-turn memory)
-      const chatHistory = messages
+      const chatHistory = [
+        ...messages
         .filter((m) => m.sender === "user" || m.sender === "bot")
-        .slice(-20)
+        .slice(-18)
         .map((m) => ({
           role: m.sender === "user" ? "user" : "assistant",
           content: m.text,
-        }));
+        })),
+        ...rememberedContext,
+      ];
 
-      setMessages((prev) => [...prev, { text, sender: "user", time: new Date() }]);
+      setMessages((prev) => [...prev, userMessage]);
       setInputValue("");
       setIsLoading(true);
 
@@ -242,7 +352,7 @@ export default function AIChatBox() {
         setIsLoading(false);
       }
     },
-    [inputValue, isLoading, selectedTaskIds, messages, sessionId],
+    [aiMemory, inputValue, isLoading, selectedTaskIds, messages, sessionId],
   );
 
   const handleKeyDown = useCallback(
