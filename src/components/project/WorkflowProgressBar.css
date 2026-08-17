@@ -28,6 +28,28 @@
   flex-shrink: 0;
 }
 
+.workflow-workspace-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.workflow-workspace-btn:hover {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  transform: translateY(-1px);
+}
+
 .progress-stats {
   display: flex;
   align-items: center;
@@ -221,6 +243,10 @@
   .workflow-header {
     flex-direction: column;
     margin-bottom: 20px;
+  }
+
+  .workflow-workspace-btn {
+    align-self: flex-end;
   }
 
   .progress-stats {

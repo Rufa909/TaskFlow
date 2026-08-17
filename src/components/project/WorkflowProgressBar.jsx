@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, PanelRightOpen } from 'lucide-react';
 import './WorkflowProgressBar.css';
 
 const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
@@ -13,7 +13,13 @@ const formatStageDate = (value) => {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
 };
 
-const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => {
+const WorkflowProgressBar = ({
+  stages = [],
+  onStageClick,
+  selectedStageId,
+  onOpenWorkspace,
+  canOpenWorkspace = false,
+}) => {
   if (!stages || stages.length === 0) return null;
 
   const completedCount = stages.filter(s => s.status === 'completed').length;
@@ -39,6 +45,18 @@ const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => 
               <span className="progress-percent">{Math.round(progressPercent)}%</span>
             </div>
           </div>
+          {canOpenWorkspace && (
+            <button
+              type="button"
+              className="workflow-workspace-btn"
+              onClick={onOpenWorkspace}
+              title="Open stage workspace"
+              aria-label="Open stage workspace"
+            >
+              <PanelRightOpen size={16} />
+              <span>Workspace</span>
+            </button>
+          )}
         </div>
 
         {/* Horizontal stages timeline */}
