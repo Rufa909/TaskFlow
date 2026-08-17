@@ -619,6 +619,7 @@ export default function Sidebar({
                           {notification.task_project_name ||
                             notification.chat_project_name ||
                             notification.project_chat_project_name ||
+                            notification.invitation_project_name ||
                             notification.project_name ||
                             "TaskFlow"}
                           {notification.deadline &&

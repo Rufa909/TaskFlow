@@ -1216,7 +1216,7 @@ async function replaceTaskAssignees(taskId, assigneeIds) {
         taskId,
       ],
     );
-    return;
+    return [];
   }
 
   if (nextIds.length === 0) {
@@ -1250,6 +1250,8 @@ async function replaceTaskAssignees(taskId, assigneeIds) {
       taskId,
     ],
   );
+
+  return nextIds.filter((userId) => !existingIds.includes(userId));
 }
 
 async function resolveTaskStageId(projectId, rawStageId) {
@@ -1730,15 +1732,15 @@ exports.updateTask = async (req, res) => {
       });
     }
 
+    let pendingAssigneeIds = null;
     if (assigned_to !== undefined) {
-      let assigneeIds = parseAssigneeIds(assigned_to);
+      pendingAssigneeIds = parseAssigneeIds(assigned_to);
       if (await isSoloProject(projectId)) {
-        assigneeIds = assigneeIds.filter(
+        pendingAssigneeIds = pendingAssigneeIds.filter(
           (userId) => Number(userId) !== Number(req.user.id),
         );
       }
-      await validateAssigneeIds(projectId, assigneeIds);
-      await replaceTaskAssignees(taskId, assigneeIds);
+      await validateAssigneeIds(projectId, pendingAssigneeIds);
     }
 
     let taskStageId = undefined;
@@ -1824,6 +1826,17 @@ exports.updateTask = async (req, res) => {
         success: false,
         message: "Task not found",
       });
+    }
+
+    if (pendingAssigneeIds !== null) {
+      const newlyAssignedIds = await replaceTaskAssignees(taskId, pendingAssigneeIds);
+      await syncTaskDeadlineReminders(taskId);
+      for (const userId of newlyAssignedIds) {
+        await pool.query(
+          "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'task_assigned', ?)",
+          [userId, taskId],
+        );
+      }
     }
 
     const nextEffectiveDeadline = effectiveDeadlineDateFromTask({

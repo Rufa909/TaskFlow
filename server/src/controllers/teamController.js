@@ -1,4 +1,5 @@
 const pool = require("../config/db");
+const { ensureProjectChatTables } = require("./projectChatController");
 
 const PROJECT_MEMBER_ROLES = ["leader", "member", "ba", "developer", "qa", "devops", "viewer"];
 const PROJECT_MEMBER_ROLE_ENUM = "ENUM('owner','leader','member','ba','developer','qa','devops','viewer')";
@@ -174,18 +175,6 @@ const sendInvitation = async (req, res) => {
         message: "Người được mời cần xác thực email trước khi vào team.",
       });
     }
-    // Kiểm tra đã có lời mời pending chưa
-    const [pendingInvites] = await pool.query(
-      'SELECT * FROM team_invitations WHERE project_id = ? AND receiver_id = ? AND status = "pending"',
-      [project_id, receiver_id],
-    );
-
-    if (pendingInvites.length > 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Đã gửi lời mời cho người này rồi" });
-    }
-
     // Kiểm tra đã là member chưa
     const [existingMembers] = await pool.query(
       "SELECT * FROM project_members WHERE project_id = ? AND user_id = ?",
@@ -196,6 +185,44 @@ const sendInvitation = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Người này đã là thành viên của project",
+      });
+    }
+
+    // Kiểm tra lời mời cũ. Nếu đã bị từ chối/xử lý trước đó thì cho gửi lại.
+    const [existingInvites] = await pool.query(
+      `SELECT *
+       FROM team_invitations
+       WHERE project_id = ? AND receiver_id = ?
+       ORDER BY created_at DESC, invitation_id DESC
+       LIMIT 1`,
+      [project_id, receiver_id],
+    );
+
+    if (existingInvites.length > 0) {
+      const existingInvite = existingInvites[0];
+      if (existingInvite.status === "pending") {
+        return res
+          .status(400)
+          .json({ success: false, message: "Đã gửi lời mời cho người này rồi" });
+      }
+
+      await pool.query(
+        `UPDATE team_invitations
+         SET sender_id = ?, status = "pending", created_at = NOW()
+         WHERE invitation_id = ?`,
+        [sender_id, existingInvite.invitation_id],
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Đã gửi lại lời mời thành công",
+        invitation: {
+          invitation_id: existingInvite.invitation_id,
+          project_id,
+          sender_id,
+          receiver_id,
+          status: "pending",
+        },
       });
     }
 
@@ -305,12 +332,24 @@ const respondInvitation = async (req, res) => {
         [invitation.project_id, req.user.id],
       );
 
+      await ensureProjectChatTables();
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'team_invitation_accepted', ?)",
+        [invitation.sender_id, id],
+      );
+
       res.json({ success: true, message: "Đã chấp nhận lời mời" });
     } else {
       // Từ chối
       await pool.query(
         'UPDATE team_invitations SET status = "declined" WHERE invitation_id = ?',
         [id],
+      );
+
+      await ensureProjectChatTables();
+      await pool.query(
+        "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'team_invitation_declined', ?)",
+        [invitation.sender_id, id],
       );
 
       res.json({ success: true, message: "Đã từ chối lời mời" });

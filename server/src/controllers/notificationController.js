@@ -28,6 +28,9 @@ exports.getMyNotifications = async (req, res) => {
         t.title AS task_title,
         t.project_id AS task_project_id,
         tp.name AS task_project_name,
+        tip.name AS invitation_project_name,
+        tiu.username AS invitation_receiver_name,
+        tiu.email AS invitation_receiver_email,
         COALESCE(cc.project_id, gic.project_id) AS chat_project_id,
         COALESCE(cc.conversation_id, gic.conversation_id) AS chat_conversation_id,
         COALESCE(ccp.name, gip.name) AS chat_project_name,
@@ -66,6 +69,8 @@ exports.getMyNotifications = async (req, res) => {
           WHEN n.type = 'leader_approved_task' AND (t.completed_at IS NOT NULL OR t.status = 'COMPLETED') THEN CONCAT('Task approved: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'leader_approved_task' THEN CONCAT('Task waiting for owner approval: ', COALESCE(t.title, 'Task'))
           WHEN n.type = 'task_changes_requested' THEN CONCAT('Changes requested: ', COALESCE(t.title, 'Task'))
+          WHEN n.type = 'team_invitation_declined' THEN CONCAT(COALESCE(tiu.username, tiu.email, 'User'), ' declined invitation to ', COALESCE(tip.name, 'project'))
+          WHEN n.type = 'team_invitation_accepted' THEN CONCAT(COALESCE(tiu.username, tiu.email, 'User'), ' accepted invitation to ', COALESCE(tip.name, 'project'))
           WHEN n.type = 'workflow_handover_ready' THEN 'Workflow handover package is ready'
           WHEN n.type = 'chat_message' THEN CONCAT('New message from ', COALESCE(ccs.username, 'User'))
           WHEN n.type = 'project_chat_message' THEN CONCAT('New project message from ', COALESCE(pcps.username, 'User'))
@@ -80,6 +85,11 @@ exports.getMyNotifications = async (req, res) => {
         ON n.type IN ('task_assigned', 'deadline_due_24h', 'deadline_due_1h', 'deadline_overdue', 'assignment_request', 'assignment_pending', 'assignment_rejected', 'task_submitted', 'leader_approved_task', 'task_changes_requested')
        AND t.task_id = n.reference_id
       LEFT JOIN projects tp ON tp.project_id = t.project_id
+      LEFT JOIN team_invitations ti
+        ON n.type IN ('team_invitation_declined', 'team_invitation_accepted')
+       AND ti.invitation_id = n.reference_id
+      LEFT JOIN projects tip ON tip.project_id = ti.project_id
+      LEFT JOIN users tiu ON tiu.user_id = ti.receiver_id
       LEFT JOIN project_chat_messages ccm
         ON n.type = 'chat_message'
        AND ccm.message_id = n.reference_id
