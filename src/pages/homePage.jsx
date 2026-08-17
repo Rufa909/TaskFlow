@@ -947,6 +947,15 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   const currentProjectRole =
     activeProject?.user_role ||
     (Number(activeProject?.owner_id) === Number(user?.id) ? "owner" : "");
+  const canOpenStageWorkspace = [
+    "owner",
+    "leader",
+    "member",
+    "ba",
+    "developer",
+    "qa",
+    "devops",
+  ].includes(String(currentProjectRole || "").toLowerCase());
 
   const {
     filters,
@@ -1846,7 +1855,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                   onStageClick={handleStageClick}
                   selectedStageId={activeTaskStageId}
                   onOpenWorkspace={handleOpenStageWorkspace}
-                  canOpenWorkspace={["owner", "leader"].includes(currentProjectRole)}
+                  canOpenWorkspace={canOpenStageWorkspace}
                 />
               )}
 
