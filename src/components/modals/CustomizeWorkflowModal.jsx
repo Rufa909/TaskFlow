@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Plus, Trash2, GripVertical } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { getTranslation } from '../../i18n/translations';
@@ -10,6 +10,31 @@ function getTodayDateInputValue() {
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function parseDateInputValue(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function formatDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToDateInput(value, days) {
+  const date = parseDateInputValue(value);
+  if (!date) return '';
+  date.setDate(date.getDate() + days);
+  return formatDateInputValue(date);
+}
+
+function formatSuggestedDate(value) {
+  const date = parseDateInputValue(value);
+  return date ? date.toLocaleDateString('vi-VN') : '';
 }
 
 const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, projectDeadline = "" }) => {
@@ -39,6 +64,21 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
     },
   ];
   const [stages, setStages] = useState(getDefaultStages);
+  const suggestedRanges = useMemo(() => {
+    const start = parseDateInputValue(todayDate);
+    const end = parseDateInputValue(projectDeadline);
+    if (!start || !end || end < start || stages.length === 0) return [];
+
+    const spanDays = Math.floor((end - start) / (24 * 60 * 60 * 1000));
+
+    return stages.map((_, index) => {
+      const startOffset = Math.floor((spanDays * index) / stages.length);
+      const endOffset = Math.floor((spanDays * (index + 1)) / stages.length);
+      const startDate = addDaysToDateInput(todayDate, startOffset);
+      const endDate = addDaysToDateInput(todayDate, endOffset);
+      return { start_date: startDate, end_date: endDate };
+    });
+  }, [projectDeadline, stages.length, todayDate]);
 
   useEffect(() => {
     if (isOpen) {
@@ -86,6 +126,27 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
     });
 
     setStages(updated);
+  };
+
+  const applySuggestedRange = (index) => {
+    const range = suggestedRanges[index];
+    if (!range) return;
+    const updated = [...stages];
+    updated[index] = {
+      ...updated[index],
+      start_date: range.start_date,
+      end_date: range.end_date,
+    };
+    setStages(updated);
+  };
+
+  const applyAllSuggestedRanges = () => {
+    if (suggestedRanges.length !== stages.length) return;
+    setStages(stages.map((stage, index) => ({
+      ...stage,
+      start_date: suggestedRanges[index].start_date,
+      end_date: suggestedRanges[index].end_date,
+    })));
   };
 
   const handleSave = () => {
@@ -136,8 +197,19 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
             {t('customizeWorkflowDescription')}
           </p>
 
+          {suggestedRanges.length === stages.length && (
+            <div className="stage-suggestion-bar">
+              <span>Gợi ý chia đều từ hôm nay đến hạn project</span>
+              <button type="button" onClick={applyAllSuggestedRanges}>
+                Áp dụng gợi ý
+              </button>
+            </div>
+          )}
+
           <div className="stages-list">
-            {stages.map((stage, index) => (
+            {stages.map((stage, index) => {
+              const suggestedRange = suggestedRanges[index];
+              return (
               <div key={index} className="stage-row">
                 <div className="stage-handle">
                   <GripVertical size={18} />
@@ -182,6 +254,15 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
                       />
                     </label>
                   </div>
+                  {suggestedRange && (
+                    <button
+                      type="button"
+                      className="stage-date-suggestion"
+                      onClick={() => applySuggestedRange(index)}
+                    >
+                      Gợi ý: {formatSuggestedDate(suggestedRange.start_date)} - {formatSuggestedDate(suggestedRange.end_date)}
+                    </button>
+                  )}
                 </div>
 
                 <div className="stage-actions">
@@ -211,7 +292,8 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <button 
