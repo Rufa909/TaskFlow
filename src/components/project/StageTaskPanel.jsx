@@ -43,7 +43,7 @@ const leaderCopy = {
     taskOverview: 'Task overview',
     completed: 'Completed',
     unassigned: 'Unassigned',
-    assignmentSuggestions: 'Stage-based assignment suggestions',
+    assignmentSuggestions: 'Stage assignment guidance',
     currentStage: 'current stage',
     updating: 'Updating',
     basedOn: 'Based on',
@@ -52,7 +52,7 @@ const leaderCopy = {
     discussions: 'discussions',
     currentStageHas: 'Current stage has',
     documents: 'documents',
-    suggestedAssignmentPlan: 'Suggested assignment plan',
+    suggestedAssignmentPlan: 'Guided assignment plan',
     task: 'Task',
     assignTo: 'Assign to',
     priority: 'Priority',
@@ -90,7 +90,7 @@ const leaderCopy = {
     taskOverview: 'Tổng quan công việc',
     completed: 'Hoàn thành',
     unassigned: 'Chưa giao',
-    assignmentSuggestions: 'Gợi ý phân công theo giai đoạn',
+    assignmentSuggestions: 'Hướng dẫn phân công theo giai đoạn',
     currentStage: 'stage hiện tại',
     updating: 'Đang cập nhật',
     basedOn: 'Dựa trên',
@@ -99,7 +99,7 @@ const leaderCopy = {
     discussions: 'thảo luận',
     currentStageHas: 'Giai đoạn hiện tại có',
     documents: 'tài liệu',
-    suggestedAssignmentPlan: 'Kế hoạch phân công gợi ý',
+    suggestedAssignmentPlan: 'Kế hoạch phân công theo hướng dẫn',
     task: 'Công việc',
     assignTo: 'Giao cho',
     priority: 'Ưu tiên',
@@ -114,7 +114,7 @@ const leaderCopy = {
     high: 'Cao',
     medium: 'Vừa',
     low: 'Thấp',
-    rules: 'Luật',
+    rules: 'Theo rule',
     informationFromPreviousStage: 'Thông tin từ giai đoạn trước',
     handoverForNextStage: 'Thông tin bàn giao cho giai đoạn tiếp theo',
     noPreviousStageInformation: 'Chưa có thông tin từ giai đoạn trước.',
@@ -203,6 +203,8 @@ function localizeLeaderRole(role, language = 'en') {
   if (value === 'developer/devops') return 'Developer/DevOps';
   if (value === 'developer/ba') return 'Developer/BA';
   if (value === 'leader/member') return 'Leader/Thành viên';
+  if (value === 'developer') return 'Developer';
+  if (value === 'devops') return 'DevOps';
   if (value === 'member') return 'Thành viên';
   if (value === 'owner') return 'Owner';
   if (value === 'leader') return 'Leader';

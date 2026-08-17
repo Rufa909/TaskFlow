@@ -1,6 +1,5 @@
 const ProjectStage = require("../models/ProjectStage");
 const db = require("../config/db");
-const { generateLeaderSuggestionsWithAi } = require("../services/leaderSuggestionAiService");
 
 let workflowHandoverSchemaReady;
 
@@ -343,35 +342,35 @@ function pickBalancedMember(members, roleHints = [], virtualLoads = new Map()) {
 
 function roleHintsForText(text) {
   const normalized = normalizeText(text);
-  if (normalized.match(/qa|test|bug|kiem thu|performance|load/)) return ["qa", "tester"];
-  if (normalized.match(/ui|ux|wireframe|prototype|screen|giao dien|figma/)) return ["designer", "ui", "ux", "ba", "developer"];
-  if (normalized.match(/api|database|erd|schema|backend|integration|payment|momo|cod/)) return ["backend", "developer", "devops"];
+  if (normalized.match(/qa|test|bug|kiem thu|performance|load/)) return ["qa"];
+  if (normalized.match(/ui|ux|wireframe|prototype|screen|giao dien|figma/)) return ["ba", "developer"];
+  if (normalized.match(/api|database|erd|schema|backend|integration|payment|momo|cod/)) return ["developer", "devops"];
   if (normalized.match(/requirement|srs|scope|mvp|user story|use case|stakeholder/)) return ["ba", "leader"];
-  return ["developer", "member", "leader"];
+  return [];
 }
 
 function roleHintsForStage(stage) {
   const normalized = normalizeText(`${stage?.stage_name || ""} ${stage?.name || ""} ${stage?.description || ""}`);
   if (normalized.match(/test|qa|quality|kiem thu|verify|validation/)) {
-    return ["qa", "tester", "developer", "leader"];
+    return ["qa", "developer", "leader"];
   }
   if (normalized.match(/deploy|release|maintenance|devops|operate|production|trien khai|bao tri/)) {
     return ["devops", "developer", "qa", "leader"];
   }
   if (normalized.match(/develop|implementation|coding|backend|frontend|api|database|phat trien|lap trinh|trien khai/)) {
-    return ["developer", "backend", "frontend", "devops", "member", "leader"];
+    return ["developer", "devops", "member", "leader"];
   }
   if (normalized.match(/planning|analysis|analyst|requirement|design|scope|ke hoach|phan tich|yeu cau/)) {
-    return ["ba", "leader", "designer", "member"];
+    return ["ba", "leader", "member"];
   }
   return ["leader", "member", "developer"];
 }
 
 function stageAwareRoleHints(stage, text = "", fallbackHints = []) {
   const merged = [
-    ...roleHintsForStage(stage),
     ...roleHintsForText(text),
     ...fallbackHints,
+    ...roleHintsForStage(stage),
   ];
   return [...new Set(merged.filter(Boolean))];
 }
@@ -579,11 +578,13 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
     pickMemberForRole(members, stageAwareRoleHints(stage, text, fallbackHints));
   const suggestions = [];
   const addSuggestion = (suggestion) => {
+    const recommendedMember = memberPayload(suggestion.recommended_member);
     suggestions.push({
       id: `sg-${suggestions.length + 1}`,
       priority: suggestion.priority || "medium",
       ...suggestion,
-      recommended_member: memberPayload(suggestion.recommended_member),
+      recommended_member: recommendedMember,
+      recommended_role: recommendedMember?.role || suggestion.recommended_role,
     });
   };
 
@@ -612,6 +613,8 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
   }
 
   if (unassignedTasks.length > 0) {
+    const unassignedTaskText = unassignedTasks.map((task) => `${task.title} ${task.description || ""}`).join(" ");
+    const unassignedRoleHints = stageAwareRoleHints(stage, unassignedTaskText, ["member"]);
     addSuggestion({
       type: "assignment",
       title: leaderText(language, `${unassignedTasks.length} tasks are unassigned`, `${unassignedTasks.length} công việc chưa được giao`),
@@ -621,8 +624,8 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
         `Hãy giao các việc này trước: ${unassignedTasks.slice(0, 3).map((task) => task.title).join("; ")}.`,
       ),
       source: "current_tasks",
-      recommended_role: roleHintsForStage(stage)[0] || "leader/member",
-      recommended_member: pickForStage("current unassigned tasks", ["leader", "ba", "developer", "qa", "devops", "member"]),
+      recommended_role: unassignedRoleHints[0] || "member",
+      recommended_member: pickForStage(unassignedTaskText, ["member"]),
       priority: "high",
       related_task_ids: unassignedTasks.slice(0, 5).map((task) => task.task_id),
     });
@@ -660,7 +663,7 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
       title: leaderText(language, "Turn previous-stage requirements into implementation tasks", "Chuyển yêu cầu giai đoạn trước thành việc triển khai"),
       detail: leaderText(language, "Use the handed-over requirements, MVP scope, and use cases to create module-level tasks with acceptance criteria.", "Dựa vào yêu cầu bàn giao, phạm vi MVP và use case để tạo các việc theo module kèm tiêu chí hoàn thành."),
       source: "previous_stage_documents",
-      recommended_role: roleHintsForStage(stage)[0] || "ba",
+      recommended_role: "ba",
       recommended_member: pickForStage("requirement srs scope mvp user story use case stakeholder", ["ba", "leader"]),
       priority: "medium",
     });
@@ -672,8 +675,8 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
       title: leaderText(language, "Prioritize UI/UX tasks before development", "Ưu tiên việc UI/UX trước khi phát triển"),
       detail: leaderText(language, "Assign ownership for screen flows, wireframes, and UI review to reduce rework after backend work is done.", "Giao rõ người phụ trách luồng màn hình, wireframe và review UI để giảm việc làm lại sau khi backend hoàn tất."),
       source: "previous_stage_documents",
-      recommended_role: roleHintsForStage(stage)[0] || "developer/ba",
-      recommended_member: pickForStage("wireframe ui ux prototype screen interface", ["developer", "ba"]),
+      recommended_role: "ba/developer",
+      recommended_member: pickForStage("wireframe ui ux prototype screen interface", ["ba", "developer"]),
       priority: "medium",
     });
   }
@@ -684,7 +687,7 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
       title: leaderText(language, "Separate API, database, and integration tasks", "Tách riêng việc API, database và tích hợp"),
       detail: leaderText(language, "Data, API, and payment or integration work should have separate owners and early review checkpoints.", "Các phần dữ liệu, API, thanh toán hoặc tích hợp nên có người phụ trách riêng và mốc review sớm."),
       source: "previous_stage_documents",
-      recommended_role: roleHintsForStage(stage)[0] || "developer/devops",
+      recommended_role: "developer/devops",
       recommended_member: pickForStage("api database erd schema backend integration payment", ["developer", "devops"]),
       priority: "medium",
     });
@@ -696,8 +699,8 @@ function buildDataDrivenLeaderSuggestions({ stage, tasks, incomingPackage, curre
       title: leaderText(language, "Prepare QA in parallel with implementation", "Chuẩn bị QA song song với triển khai"),
       detail: leaderText(language, "Create tasks for test cases, sample data, and performance checks early instead of pushing QA to the end.", "Tạo việc cho test case, dữ liệu mẫu và kiểm tra hiệu năng từ sớm thay vì dồn QA về cuối."),
       source: "previous_stage_discussions",
-      recommended_role: roleHintsForStage(stage)[0] || "qa",
-      recommended_member: pickForStage("test qa performance load bug", ["qa", "tester"]),
+      recommended_role: "qa",
+      recommended_member: pickForStage("test qa performance load bug", ["qa"]),
       priority: "medium",
     });
   }
@@ -1062,43 +1065,12 @@ const workflowController = {
         members,
         language,
       });
-      let aiSuggestionData = null;
-      let aiError = null;
-
-      try {
-        aiSuggestionData = await generateLeaderSuggestionsWithAi({
-          stage,
-          incomingPackage: packageData.incoming,
-          currentPackage: packageData.current,
-          tasks,
-          members,
-          metrics: suggestionData.metrics,
-          language,
-        });
-      } catch (error) {
-        aiError = error.message;
-        console.warn("Leader suggestions AI fallback:", error.message);
-      }
-
-      const finalSuggestionData = aiSuggestionData?.suggestions?.length
-        ? {
-            ...suggestionData,
-            suggestions: aiSuggestionData.suggestions,
-            assignment_plan: aiSuggestionData.assignment_plan?.length
-              ? aiSuggestionData.assignment_plan
-              : suggestionData.assignment_plan,
-            risks: aiSuggestionData.risks || [],
-            next_actions: aiSuggestionData.next_actions || [],
-            suggestion_source: "ai",
-            ai_model: aiSuggestionData.model,
-          }
-        : {
-            ...suggestionData,
-            risks: [],
-            next_actions: [],
-            suggestion_source: "rules",
-            ai_error: aiError,
-          };
+      const finalSuggestionData = {
+        ...suggestionData,
+        risks: [],
+        next_actions: [],
+        suggestion_source: "rules",
+      };
 
       res.json({
         success: true,
