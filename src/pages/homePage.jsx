@@ -438,6 +438,15 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     fetchStageTasks(stage);
   };
 
+  const handleStageWorkspaceStageChange = (stage) => {
+    if (!stage || isProjectOverdue(activeProject)) return;
+    setSelectedStage(stage);
+    setTaskStageId(stage.id || stage.stage_id || null);
+    setTaskDocumentIds([]);
+    setIsAddingTask(false);
+    fetchStageTasks(stage);
+  };
+
   const handleWorkflowStagesChange = (nextStages) => {
     setWorkflowStages(nextStages);
     const nextStageId = getCurrentWorkflowStage(nextStages)?.id || null;
@@ -2164,6 +2173,8 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         }}
         projectId={activeProject?.project_id}
         stage={selectedStage}
+        stages={workflowStages}
+        onStageChange={handleStageWorkspaceStageChange}
         tasks={stageTasks}
         loading={loadingStageTasks}
         handleDeleteTask={handleDeleteTask}

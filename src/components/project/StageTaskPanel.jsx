@@ -77,7 +77,7 @@ const leaderCopy = {
     noPreviousStageInformation: 'No previous stage information.',
     noDocuments: 'No documents.',
     noDiscussions: 'No discussions.',
-    moveToNextStage: 'Move to next stage',
+    moveToNextStage: 'Complete project',
     documentSummary: (docs, discussions) => `${docs} documents, ${discussions} discussions`,
   },
   vi: {
@@ -120,7 +120,7 @@ const leaderCopy = {
     noPreviousStageInformation: 'Chưa có thông tin từ giai đoạn trước.',
     noDocuments: 'Chưa có tài liệu.',
     noDiscussions: 'Chưa có thảo luận.',
-    moveToNextStage: 'Chuyển sang giai đoạn tiếp theo',
+    moveToNextStage: 'Hoàn thành dự án',
     documentSummary: (docs, discussions) => `${docs} tài liệu, ${discussions} thảo luận`,
   },
 };
@@ -674,6 +674,16 @@ const documentTypes = [
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '');
 
+const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
+
+function getStageStatusLabel(status = '', language = 'en') {
+  const isVi = language === 'vi';
+  if (status === 'completed') return isVi ? 'Đã xong' : 'Done';
+  if (status === 'in_progress') return isVi ? 'Đang làm' : 'Current';
+  if (status === 'pending') return isVi ? 'Chờ' : 'Pending';
+  return status || 'Stage';
+}
+
 function assetUrl(url) {
   if (!url) return '#';
   return url.startsWith('http') || url.startsWith('data:') ? url : `${API_ORIGIN}${url}`;
@@ -733,6 +743,8 @@ export default function StageTaskPanel({
   onClose,
   projectId,
   stage,
+  stages = [],
+  onStageChange,
   tasks = [],
   loading,
   handleDeleteTask,
@@ -759,6 +771,7 @@ export default function StageTaskPanel({
   const [submitting, setSubmitting] = useState(false);
 
   const stageId = stage?.id || stage?.stage_id;
+  const selectedStageId = stageId ? Number(stageId) : null;
 
   const refreshOverview = async () => {
     if (!projectId || !stageId) return;
@@ -791,8 +804,11 @@ export default function StageTaskPanel({
   };
 
   useEffect(() => {
+    if (isOpen) setActiveTab('tasks');
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isOpen) return;
-    setActiveTab('tasks');
     setLeaderSuggestionData(null);
     refreshOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -910,6 +926,35 @@ export default function StageTaskPanel({
 
         <div className="panel-body">
           {panelError && <div className="stage-panel-error">{panelError}</div>}
+
+          {stages.length > 0 && (
+            <div className="stage-workspace-switcher">
+              <div className="stage-workspace-switcher-header">
+                <span>{language === 'vi' ? 'Các giai đoạn' : 'Stages'}</span>
+                <strong>{language === 'vi' ? 'Đang xem' : 'Viewing'}: {stripStageIcon(stage?.stage_name || 'Unassigned')}</strong>
+              </div>
+              <div className="stage-workspace-stage-list" aria-label="Project stages">
+                {stages.map((item, index) => {
+                  const itemId = item?.id || item?.stage_id;
+                  const isSelected = Number(itemId) === selectedStageId;
+                  return (
+                    <button
+                      key={itemId || index}
+                      type="button"
+                      className={`stage-workspace-stage ${item.status || 'pending'} ${isSelected ? 'active' : ''}`}
+                      onClick={() => {
+                        if (!isSelected) onStageChange?.(item);
+                      }}
+                    >
+                      <span className="stage-workspace-order">{item.stage_order || index + 1}</span>
+                      <span className="stage-workspace-name">{stripStageIcon(item.stage_name || 'Unassigned')}</span>
+                      <span className="stage-workspace-status">{isSelected ? (language === 'vi' ? 'Đang xem' : 'Viewing') : getStageStatusLabel(item.status, language)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <KnowledgeSection title={getLeaderCopy(language, 'informationFromPreviousStage')} packageData={incomingPackage} language={language} />
 
@@ -1067,7 +1112,7 @@ export default function StageTaskPanel({
             className="stage-complete-btn"
             disabled={submitting || !canComplete || !canMoveStage}
             onClick={completeStage}
-            title={!canMoveStage ? 'Only owner or leader can move stages' : !overview?.canCompleteStage ? 'You do not have permission to move this stage' : 'Complete stage'}
+            title={!canMoveStage ? 'Only owner or leader can complete the project' : !overview?.canCompleteStage ? 'You do not have permission to complete this project' : 'Complete project'}
           >
             <CheckCircle2 size={17} />
             {getLeaderCopy(language, 'moveToNextStage')}
