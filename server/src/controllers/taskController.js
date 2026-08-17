@@ -307,6 +307,36 @@ async function isProjectMember(projectId, userId) {
   return Boolean(role);
 }
 
+async function isProjectPastDeadline(projectId) {
+  const [[project]] = await pool.query(
+    "SELECT deadline FROM projects WHERE project_id = ? AND deleted_at IS NULL",
+    [projectId],
+  );
+
+  if (!project?.deadline) return false;
+
+  const deadline = project.deadline instanceof Date
+    ? project.deadline
+    : new Date(project.deadline);
+  if (Number.isNaN(deadline.getTime())) return false;
+
+  const today = new Date();
+  const deadlineDate = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  return deadlineDate < todayDate;
+}
+
+async function ensureProjectWritable(projectId, res) {
+  if (!(await isProjectPastDeadline(projectId))) return true;
+
+  res.status(423).json({
+    success: false,
+    message: "Project đã quá hạn.",
+  });
+  return false;
+}
+
 async function getProjectUserCounts(projectIds) {
   const ids = [...new Set(projectIds.map(Number).filter(Number.isInteger))];
   if (ids.length === 0) return new Map();
@@ -1444,6 +1474,7 @@ exports.createTask = async (req, res) => {
         message: "Only project contributors can create tasks in this team project",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const [[project]] = await pool.query(
       `SELECT p.project_id, p.owner_id
@@ -1634,6 +1665,7 @@ exports.updateTask = async (req, res) => {
         message: "Members cannot edit tasks",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -1803,6 +1835,7 @@ exports.completeTask = async (req, res) => {
         message: "You are not a project member",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const canSelfApproveSoloTask =
       (await isSoloProject(projectId)) &&
@@ -2080,6 +2113,7 @@ exports.deleteTask = async (req, res) => {
         message: "Members cannot delete tasks",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     await pool.query(
       `UPDATE tasks
@@ -2216,6 +2250,7 @@ exports.deleteTaskAttachment = async (req, res) => {
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const [[attachment]] = await pool.query(
       `
@@ -2264,6 +2299,7 @@ exports.createSubtask = async (req, res) => {
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const [result] = await pool.query(
       `
@@ -2299,6 +2335,7 @@ exports.updateSubtask = async (req, res) => {
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     if (typeof title === "string") {
       const trimmedTitle = title.trim();
@@ -2356,6 +2393,7 @@ exports.deleteSubtask = async (req, res) => {
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     await pool.query(
       `
@@ -2390,6 +2428,7 @@ exports.createTaskComment = async (req, res) => {
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const [result] = await pool.query(
       `
@@ -2442,6 +2481,7 @@ exports.deleteTaskComment = async (req, res) => {
     if (!(await canAccessTask(projectId, taskId, req.user.id))) {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     await pool.query(
       `
@@ -2663,6 +2703,7 @@ exports.requestTaskAssignment = async (req, res) => {
         message: "Only owner or leader can assign tasks",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const assigneeRole = await getProjectRole(projectId, assigned_to);
     if (!TASK_ASSIGNABLE_ROLES.includes(assigneeRole)) {
@@ -2827,6 +2868,7 @@ exports.reviewTaskAssignmentRequest = async (req, res) => {
         message: "Only owner can review assignment requests",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const [[request]] = await pool.query(
       `
@@ -2982,6 +3024,7 @@ exports.reviewTaskSubmission = async (req, res) => {
         message: "Only owner or leader can review task submissions",
       });
     }
+    if (!(await ensureProjectWritable(projectId, res))) return;
 
     const submissionLookup = submissionId
       ? {

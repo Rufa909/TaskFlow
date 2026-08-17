@@ -134,7 +134,7 @@ async function ensureWorkflowHandoverSchema() {
 
 async function getProjectAccess(projectId, userId) {
   const [projectRows] = await db.query(
-    `SELECT p.owner_id, pm.role, u.role AS system_role
+    `SELECT p.owner_id, p.deadline, pm.role, u.role AS system_role
      FROM projects p
      JOIN users u ON u.user_id = ?
      LEFT JOIN project_members pm ON p.project_id = pm.project_id AND pm.user_id = ?
@@ -146,6 +146,7 @@ async function getProjectAccess(projectId, userId) {
 
   return {
     ownerId: projectRows[0].owner_id,
+    deadline: projectRows[0].deadline,
     role: projectRows[0].role,
     systemRole: projectRows[0].system_role,
     isOwner: Number(projectRows[0].owner_id) === Number(userId),
@@ -170,6 +171,27 @@ async function requireProjectAccess(req, res) {
   }
 
   return { projectId, userId, access };
+}
+
+function isPastProjectDeadline(deadline) {
+  if (!deadline) return false;
+  const value = deadline instanceof Date ? deadline : new Date(deadline);
+  if (Number.isNaN(value.getTime())) return false;
+
+  const today = new Date();
+  const deadlineDate = new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return deadlineDate < todayDate;
+}
+
+function ensureProjectWritable(context, res) {
+  if (!isPastProjectDeadline(context?.access?.deadline)) return true;
+
+  res.status(423).json({
+    success: false,
+    message: "Project đã quá hạn.",
+  });
+  return false;
 }
 
 async function getStage(projectId, stageId) {
@@ -984,6 +1006,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
 
       const stage = await getStage(context.projectId, req.params.stageId);
       if (!stage) return res.status(404).json({ success: false, message: "Stage not found" });
@@ -1038,6 +1061,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
       const message = String(req.body.message || "").trim();
       if (!message) return res.status(400).json({ success: false, message: "Message is required" });
 
@@ -1075,6 +1099,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
       const decision = String(req.body.decision || "").trim();
       if (!decision) return res.status(400).json({ success: false, message: "Decision is required" });
 
@@ -1123,6 +1148,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
       const title = String(req.body.title || "").trim();
       if (!title) return res.status(400).json({ success: false, message: "Deliverable title is required" });
 
@@ -1156,6 +1182,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
       const summary = String(req.body.summary || "").trim();
       if (!summary) return res.status(400).json({ success: false, message: "Summary is required" });
 
@@ -1191,6 +1218,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
 
       const stageId = req.params.stageId || req.body.stageId;
       const stage = await getStage(context.projectId, stageId);
@@ -1247,6 +1275,7 @@ const workflowController = {
       await ensureWorkflowHandoverSchema();
       const context = await requireProjectAccess(req, res);
       if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
 
       if (!context.access.isOwner && !context.access.isAdmin) {
         return res.status(403).json({ success: false, message: "Only project owner or admin can move a stage back" });

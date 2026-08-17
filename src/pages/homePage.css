@@ -535,6 +535,49 @@ button.project-deadline-chip:disabled {
   background: #1565c0;
 }
 
+.project-overdue-state {
+  width: min(560px, 100%);
+  min-height: 240px;
+  margin: 36px auto 0;
+  padding: 36px 28px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #991b1b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.project-overdue-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-overdue-state h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 800;
+}
+
+.project-overdue-state p {
+  max-width: 420px;
+  margin: 0;
+  color: #7f1d1d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .filters-labels-page {
   padding-top: 36px;
 }
