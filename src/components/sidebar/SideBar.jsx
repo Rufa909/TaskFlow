@@ -5,6 +5,7 @@ import ProfileDropdown from "./ProfileDropdown";
 import api from "../../api/axiosInstance";
 import { useFilters } from "../../context/FiltersContext";
 import { useTeams } from "../../context/TeamsContext";
+import { notificationProjectLabel, notificationTitle } from "../../utils/notificationText";
 import "./SideBar.css";
 
 const API_URL = "http://localhost:5000";
@@ -328,6 +329,7 @@ export default function Sidebar({
   ]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 5);
+  const sidebarLanguage = t?.("notifications") === "Thông báo" ? "vi" : "en";
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const normalizedSearchKeyword = normalizeSearchText(searchKeyword);
   const searchSuggestions = useMemo(() => {
@@ -577,7 +579,7 @@ export default function Sidebar({
           {isNotificationsOpen && (
             <div className="notification-popover">
               <div className="notification-popover-header">
-                <span>Notifications</span>
+                <span>{t?.("notifications") || "Notifications"}</span>
                 {notificationBadgeCount > 0 && (
                   <span className="notification-popover-actions">
                     <button
@@ -599,7 +601,7 @@ export default function Sidebar({
                 {loadingNotifications ? (
                   <div className="notification-popover-empty">Loading...</div>
                 ) : latestNotifications.length === 0 ? (
-                  <div className="notification-popover-empty">No notifications</div>
+                  <div className="notification-popover-empty">{sidebarLanguage === "vi" ? "Không có thông báo" : "No notifications"}</div>
                 ) : (
                   latestNotifications.map((notification) => (
                     <button
@@ -613,17 +615,12 @@ export default function Sidebar({
                       <span className="notification-popover-dot" />
                       <span className="notification-popover-main">
                         <span className="notification-popover-title">
-                          {notification.title}
+                          {notificationTitle(notification, sidebarLanguage)}
                         </span>
                         <span className="notification-popover-meta">
-                          {notification.task_project_name ||
-                            notification.chat_project_name ||
-                            notification.project_chat_project_name ||
-                            notification.invitation_project_name ||
-                            notification.project_name ||
-                            "TaskFlow"}
+                          {notificationProjectLabel(notification)}
                           {notification.deadline &&
-                            ` - Deadline ${new Date(notification.deadline).toLocaleDateString()}`}
+                            ` - ${sidebarLanguage === "vi" ? "Hạn" : "Deadline"} ${new Date(notification.deadline).toLocaleDateString("vi-VN")}`}
                           {notification.change_note && ` - ${notification.change_note}`}
                           {" - "}
                           {timeAgo(notification.created_at)}
@@ -639,7 +636,7 @@ export default function Sidebar({
                   className="notification-detail-link"
                   onClick={handleViewNotificationDetails}
                 >
-                  View details
+                  {sidebarLanguage === "vi" ? "Xem chi tiết" : "View details"}
                 </button>
               </div>
             </div>

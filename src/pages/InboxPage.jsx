@@ -15,10 +15,16 @@ import { useTeams } from "../context/TeamsContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { isPastLocalDate, toLocalDateTime } from "../utils/dateTime";
+import { notificationProjectLabel, notificationTitle } from "../utils/notificationText";
 import "./InboxPage.css";
 
 
 const API_URL = "http://localhost:5000";
+const CHAT_NOTIFICATION_TYPES = new Set(["chat_message", "project_chat_message", "group_invited"]);
+
+function isChatNotification(notification) {
+  return CHAT_NOTIFICATION_TYPES.has(notification?.type);
+}
 
 function avatarUrl(photo) {
   if (!photo) return "";
@@ -89,6 +95,8 @@ export default function InboxPage() {
   const [approvalDetailsOpen, setApprovalDetailsOpen] = useState(false);
   const [approvalHistory, setApprovalHistory] = useState([]);
   const [loadingApprovalHistory, setLoadingApprovalHistory] = useState(false);
+  const [inboxNotifications, setInboxNotifications] = useState([]);
+  const [loadingInboxNotifications, setLoadingInboxNotifications] = useState(true);
 
   // Invitation states
   const [invitations, setInvitations] = useState([]);
@@ -135,6 +143,7 @@ export default function InboxPage() {
   const canReviewApprovals = reviewableProjects.length > 0;
   const approvalPreview = approvalHistory.slice(0, 2);
   const invitationPreview = invitationHistory.slice(0, 2);
+  const latestInboxNotifications = inboxNotifications.slice(0, 5);
 
   // Fetch projects
   useEffect(() => {
@@ -222,6 +231,38 @@ export default function InboxPage() {
     };
     fetchInvitations();
   }, []);
+
+  const loadInboxNotifications = async () => {
+    setLoadingInboxNotifications(true);
+    try {
+      const res = await api.get("/notifications", { params: { limit: 20 } });
+      setInboxNotifications(
+        (res.data.notifications || []).filter((notification) => !isChatNotification(notification)),
+      );
+    } catch (err) {
+      console.error("Cannot load inbox notifications", err);
+    } finally {
+      setLoadingInboxNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInboxNotifications();
+  }, []);
+
+  const markInboxNotificationRead = async (notification) => {
+    if (!notification?.noti_id || notification.is_read) return;
+    try {
+      await api.put(`/notifications/${notification.noti_id}/read`);
+      setInboxNotifications((prev) =>
+        prev.map((item) =>
+          item.noti_id === notification.noti_id ? { ...item, is_read: 1 } : item,
+        ),
+      );
+    } catch (err) {
+      console.error("Cannot mark inbox notification read", err);
+    }
+  };
 
   const loadApprovalHistory = async () => {
     setLoadingApprovalHistory(true);
@@ -536,6 +577,64 @@ export default function InboxPage() {
 
         <div className="task-list-container inbox-content">
           <h1 className="page-title">Inbox</h1>
+
+          <div className="inbox-notifications-section">
+            <div className="inbox-invitations-title">
+              <span className="inbox-title-main">
+                <span className="title-icon">
+                  <Icon name="bell" size={16} />
+                </span>
+                <span>{language === "vi" ? "Thông báo" : "Notifications"}</span>
+                {inboxNotifications.filter((item) => !item.is_read).length > 0 && (
+                  <span className="invitation-count-badge">
+                    {inboxNotifications.filter((item) => !item.is_read).length}
+                  </span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="inbox-detail-toggle"
+                onClick={() => navigate("/notifications")}
+              >
+              {language === "vi" ? "Xem chi tiết" : "View details"}
+              </button>
+            </div>
+
+            {loadingInboxNotifications ? (
+              <div className="inv-loading">
+                <div className="inv-spinner" />
+                <span>{language === "vi" ? "Đang tải thông báo..." : "Loading notifications..."}</span>
+              </div>
+            ) : latestInboxNotifications.length === 0 ? (
+              <div className="inv-empty-state">
+                <div className="inv-empty-text">{language === "vi" ? "Không có thông báo" : "No notifications"}</div>
+              </div>
+            ) : (
+              latestInboxNotifications.map((notification) => (
+                <button
+                  key={notification.noti_id}
+                  type="button"
+                  className={`inbox-notification-card ${notification.is_read ? "read" : ""}`}
+                  onClick={() => markInboxNotificationRead(notification)}
+                >
+                  <span className="notification-dot" />
+                  <span className="notification-main">
+                    <span className="notification-title">{notificationTitle(notification, language)}</span>
+                    <span className="notification-meta">
+                      {notificationProjectLabel(notification)}
+                      {notification.deadline &&
+                        ` - ${language === "vi" ? "Hạn" : "Deadline"} ${new Date(notification.deadline).toLocaleDateString("vi-VN")}`}
+                      {notification.change_note && ` - ${notification.change_note}`}
+                      {" - "}
+                      {timeAgo(notification.created_at)}
+                    </span>
+                  </span>
+                </button>
+              ))
+            )}
+
+            <div className="inbox-section-divider" />
+          </div>
 
           <div className="inbox-approvals-section">
             <div className="inbox-invitations-title">

@@ -10,6 +10,7 @@ import Icon from "../components/common/Icon";
 import Sidebar from "../components/sidebar/Sidebar";
 import AddProjectModal from "../components/modals/AddProjectModal";
 import SettingsModal from "../components/modals/SettingsModal";
+import { notificationProjectLabel, notificationTitle } from "../utils/notificationText";
 import "./NotificationsPage.css";
 
 const PAGE_SIZE = 10;
@@ -194,7 +195,7 @@ export default function NotificationsPage() {
 
       <main className="main-content notifications-page-content">
         <header className="main-header">
-          <div className="breadcrumb">Notifications</div>
+          <div className="breadcrumb">{language === "vi" ? "Thông báo" : "Notifications"}</div>
           <div className="main-actions">
             <button className="action-btn">
               <Icon name="more" size={14} />
@@ -204,13 +205,13 @@ export default function NotificationsPage() {
 
         <section className="notifications-panel">
           <div className="notifications-page-header">
-            <h1>Notifications</h1>
+            <h1>{language === "vi" ? "Thông báo" : "Notifications"}</h1>
           </div>
 
           {loadingNotifications ? (
-            <div className="notifications-empty">Loading notifications...</div>
+            <div className="notifications-empty">{language === "vi" ? "Đang tải thông báo..." : "Loading notifications..."}</div>
           ) : notifications.length === 0 ? (
-            <div className="notifications-empty">No notifications</div>
+            <div className="notifications-empty">{language === "vi" ? "Không có thông báo" : "No notifications"}</div>
           ) : (
             <div className="notifications-list">
               {notifications.map((notification) => (
@@ -222,16 +223,11 @@ export default function NotificationsPage() {
                 >
                   <span className="notifications-dot" />
                   <span className="notifications-main">
-                    <span className="notifications-title">{notification.title}</span>
+                    <span className="notifications-title">{notificationTitle(notification, language)}</span>
                     <span className="notifications-meta">
-                      {notification.task_project_name ||
-                        notification.chat_project_name ||
-                        notification.project_chat_project_name ||
-                        notification.invitation_project_name ||
-                        notification.project_name ||
-                        "TaskFlow"}
+                      {notificationProjectLabel(notification)}
                       {notification.deadline &&
-                        ` - Deadline ${new Date(notification.deadline).toLocaleDateString()}`}
+                        ` - ${language === "vi" ? "Hạn" : "Deadline"} ${new Date(notification.deadline).toLocaleDateString("vi-VN")}`}
                       {notification.change_note && ` - ${notification.change_note}`}
                       {" - "}
                       {timeAgo(notification.created_at)}
@@ -248,17 +244,17 @@ export default function NotificationsPage() {
               disabled={page <= 1}
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
             >
-              Previous
+              {language === "vi" ? "Trước" : "Previous"}
             </button>
             <span>
-              Page {page} / {totalPages}
+              {language === "vi" ? "Trang" : "Page"} {page} / {totalPages}
             </span>
             <button
               type="button"
               disabled={page >= totalPages}
               onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
             >
-              Next
+              {language === "vi" ? "Tiếp" : "Next"}
             </button>
           </div>
         </section>
