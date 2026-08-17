@@ -940,6 +940,20 @@ function buildDeadlineDate(deadline, time) {
   return deadlineDate;
 }
 
+function formatDateOnly(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? match[0] : null;
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function datesEqual(a, b) {
   if (!a && !b) return true;
   if (!a || !b) return false;
@@ -1309,6 +1323,47 @@ async function resolveTaskStageId(projectId, rawStageId) {
   return nextStage?.id || null;
 }
 
+async function validateTaskDeadlineRange(projectId, stageId, deadlineDate) {
+  if (!deadlineDate) return;
+
+  const taskDate = formatDateOnly(deadlineDate);
+  if (!taskDate) return;
+
+  const [[project]] = await pool.query(
+    "SELECT deadline FROM projects WHERE project_id = ? AND deleted_at IS NULL LIMIT 1",
+    [projectId],
+  );
+  const projectDeadline = formatDateOnly(project?.deadline);
+  if (projectDeadline && taskDate > projectDeadline) {
+    const error = new Error("Deadline của task không được vượt quá hạn project.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!stageId) return;
+
+  const [[stage]] = await pool.query(
+    "SELECT stage_name, start_date, end_date, deadline FROM project_stages WHERE id = ? AND project_id = ? LIMIT 1",
+    [stageId, projectId],
+  );
+  if (!stage) return;
+
+  const stageStartDate = formatDateOnly(stage.start_date);
+  const stageEndDate = formatDateOnly(stage.end_date || stage.deadline);
+
+  if (stageStartDate && taskDate < stageStartDate) {
+    const error = new Error(`Deadline của task không được trước ngày bắt đầu stage "${stage.stage_name}".`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (stageEndDate && taskDate > stageEndDate) {
+    const error = new Error(`Deadline của task không được vượt quá ngày kết thúc stage "${stage.stage_name}".`);
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 function getUploadedTaskFiles(req) {
   if (req.file) return [req.file];
   if (!req.files) return [];
@@ -1538,6 +1593,7 @@ exports.createTask = async (req, res) => {
     }
 
     const taskStageId = await resolveTaskStageId(projectId, stage_id ?? stageId);
+    await validateTaskDeadlineRange(projectId, taskStageId, deadlineDate);
 
     const [result] = await pool.query(
       `
@@ -1674,15 +1730,6 @@ exports.updateTask = async (req, res) => {
       });
     }
 
-    const normalizedDeadlineTime = normalizeDeadlineTime(deadline, time);
-    const deadlineDate = buildDeadlineDate(deadline, normalizedDeadlineTime);
-    if (isPastDeadlineDate(deadlineDate)) {
-      return res.status(400).json({
-        success: false,
-        message: "Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.",
-      });
-    }
-
     if (assigned_to !== undefined) {
       let assigneeIds = parseAssigneeIds(assigned_to);
       if (await isSoloProject(projectId)) {
@@ -1695,6 +1742,7 @@ exports.updateTask = async (req, res) => {
     }
 
     let taskStageId = undefined;
+    const stageWasProvided = hasBodyField(req, "stage_id") || hasBodyField(req, "stageId");
     if (hasBodyField(req, "stage_id")) {
       taskStageId = stage_id;
     } else if (hasBodyField(req, "stageId")) {
@@ -1705,6 +1753,22 @@ exports.updateTask = async (req, res) => {
       "SELECT deadline, time, stage_id FROM tasks WHERE task_id = ? AND project_id = ? AND deleted_at IS NULL",
       [taskId, projectId],
     );
+    if (!existingTask) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found",
+      });
+    }
+
+    const normalizedDeadlineTime = normalizeDeadlineTime(deadline, time);
+    const deadlineDate = buildDeadlineDate(deadline, normalizedDeadlineTime);
+    if (isPastDeadlineDate(deadlineDate)) {
+      return res.status(400).json({
+        success: false,
+        message: "Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.",
+      });
+    }
+
     const previousEffectiveDeadline = effectiveDeadlineDateFromTask(existingTask);
 
     if (taskStageId === undefined) {
@@ -1714,6 +1778,12 @@ exports.updateTask = async (req, res) => {
     if (taskStageId === "" || taskStageId === "null" || taskStageId === "undefined") {
       taskStageId = null;
     }
+    if (taskStageId !== null) {
+      taskStageId = stageWasProvided
+        ? await resolveTaskStageId(projectId, taskStageId)
+        : taskStageId;
+    }
+    await validateTaskDeadlineRange(projectId, taskStageId, deadlineDate);
 
     const [result] = await pool.query(
       `
@@ -1793,9 +1863,9 @@ res.json({
   } catch (err) {
     console.error("Loi updateTask:", err);
 
-    res.status(500).json({
+    res.status(err.statusCode || 500).json({
       success: false,
-      message: "Lỗi server",
+      message: err.statusCode ? err.message : "Lỗi server",
     });
   }
 };

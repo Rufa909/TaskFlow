@@ -245,6 +245,50 @@
   color: #999;
 }
 
+.stage-date-metadata {
+  align-items: flex-start;
+}
+
+.stage-date-editor-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.stage-date-editor-inline input {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.stage-date-editor-inline button,
+.stage-date-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  height: 28px;
+  width: 28px;
+}
+
+.stage-date-editor-inline button:hover:not(:disabled),
+.stage-date-edit-btn:hover {
+  border-color: #2196f3;
+  color: #2196f3;
+}
+
+.stage-date-editor-inline button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .stage-actions {
   display: flex;
   flex-direction: column;

@@ -46,6 +46,33 @@ function isPastProjectDeadline(deadline) {
     return deadline < today;
 }
 
+function validateWorkflowStageDates(stages, projectDeadline) {
+    const normalizedProjectDeadline = normalizeProjectDeadline(projectDeadline);
+    for (const stage of stages) {
+        const stageName = stage.name || stage.stage_name || 'Stage';
+        const startDate = normalizeProjectDeadline(stage.start_date || stage.startDate);
+        const endDate = normalizeProjectDeadline(stage.end_date || stage.endDate || stage.deadline);
+
+        if ((stage.start_date || stage.startDate) && startDate === undefined) {
+            return `Ngày bắt đầu của stage "${stageName}" không hợp lệ!`;
+        }
+        if ((stage.end_date || stage.endDate || stage.deadline) && endDate === undefined) {
+            return `Ngày kết thúc của stage "${stageName}" không hợp lệ!`;
+        }
+        if (startDate && endDate && startDate > endDate) {
+            return `Ngày bắt đầu của stage "${stageName}" không được sau ngày kết thúc!`;
+        }
+        if (normalizedProjectDeadline && endDate && endDate > normalizedProjectDeadline) {
+            return `Ngày kết thúc của stage "${stageName}" không được vượt quá hạn project!`;
+        }
+        if (normalizedProjectDeadline && startDate && startDate > normalizedProjectDeadline) {
+            return `Ngày bắt đầu của stage "${stageName}" không được sau hạn project!`;
+        }
+    }
+
+    return null;
+}
+
 function buildDeadlineProject(deadline, progressPercent = 0) {
     if (!deadline) {
         return {
@@ -217,6 +244,10 @@ exports.createProject = async (req, res) => {
     try {
         await ensureProjectDeadlineColumn();
         const stagesToCreate = ProjectStage.normalizeWorkflowStages(workflow_stages);
+        const stageDateError = validateWorkflowStageDates(stagesToCreate, normalizedDeadline);
+        if (stageDateError) {
+            return res.status(400).json({ success: false, message: stageDateError });
+        }
         await ProjectStage.ensureProjectStagesTable();
         const connection = await pool.getConnection();
         try {
@@ -291,6 +322,43 @@ exports.updateProject = async (req, res) => {
         );
         if (rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Project khong ton tai!' });
+        }
+        if (normalizedDeadline) {
+            await ProjectStage.ensureProjectStagesTable();
+            const [[blockingStage]] = await pool.query(
+                `SELECT stage_name, COALESCE(end_date, deadline) AS end_date
+                 FROM project_stages
+                 WHERE project_id = ?
+                   AND COALESCE(end_date, deadline) IS NOT NULL
+                   AND COALESCE(end_date, deadline) > ?
+                 ORDER BY COALESCE(end_date, deadline) DESC
+                 LIMIT 1`,
+                [id, normalizedDeadline]
+            );
+            if (blockingStage) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Không thể đặt hạn project trước ngày kết thúc stage "${blockingStage.stage_name}"!`
+                });
+            }
+
+            const [[blockingTask]] = await pool.query(
+                `SELECT title, deadline
+                 FROM tasks
+                 WHERE project_id = ?
+                   AND deleted_at IS NULL
+                   AND deadline IS NOT NULL
+                   AND DATE(deadline) > ?
+                 ORDER BY deadline DESC
+                 LIMIT 1`,
+                [id, normalizedDeadline]
+            );
+            if (blockingTask) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Không thể đặt hạn project trước deadline của task "${blockingTask.title}"!`
+                });
+            }
         }
         await pool.query('UPDATE projects SET name = ?, deadline = ? WHERE project_id = ?', [name.trim(), normalizedDeadline, id]);
         const [updated] = await pool.query(

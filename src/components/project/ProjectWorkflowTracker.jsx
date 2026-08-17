@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, User, Calendar, Trophy } from 'lucide-react';
+import { ChevronRight, ChevronLeft, User, Calendar, Trophy, Pencil, Check, X } from 'lucide-react';
 import axios from 'axios';
 import './ProjectWorkflowTracker.css';
 
 const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
+
+const formatStageDate = (value) => {
+  if (!value) return '';
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
+};
 
 const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialStages = [], onStagesChange }) => {
   const [stages, setStages] = useState(initialStages);
@@ -13,6 +22,8 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
   const [isOwnerState, setIsOwnerState] = useState(isOwner);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [pendingCompleteStageId, setPendingCompleteStageId] = useState(null);
+  const [editingStageId, setEditingStageId] = useState(null);
+  const [dateDraft, setDateDraft] = useState({ start_date: '', end_date: '' });
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -144,6 +155,38 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
     }
   };
 
+  const startEditingDates = (stage) => {
+    setEditingStageId(stage.id);
+    setDateDraft({
+      start_date: stage.start_date ? String(stage.start_date).slice(0, 10) : '',
+      end_date: (stage.end_date || stage.deadline) ? String(stage.end_date || stage.deadline).slice(0, 10) : '',
+    });
+  };
+
+  const saveStageDates = async (stageId) => {
+    if (dateDraft.start_date && dateDraft.end_date && dateDraft.start_date > dateDraft.end_date) {
+      setError('Ngày bắt đầu stage không được sau ngày kết thúc.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await axios.put(
+        `${API_URL}/api/projects/${projectId}/stages/${stageId}/dates`,
+        dateDraft,
+        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } },
+      );
+      setStages(res.data.data);
+      if (onStagesChange) onStagesChange(res.data.data);
+      setEditingStageId(null);
+      setError(null);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thể cập nhật thời gian stage.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getStatusLabel = (status) => {
     switch (status) {
       case 'completed': return 'Completed';
@@ -204,12 +247,46 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                         <span>{stage.assignee_name}</span>
                       </div>
                     )}
-                    {stage.deadline && (
-                      <div className="metadata-item">
-                        <Calendar size={16} />
-                        <span>{new Date(stage.deadline).toLocaleDateString('vi-VN')}</span>
-                      </div>
-                    )}
+                    <div className="metadata-item stage-date-metadata">
+                      <Calendar size={16} />
+                      {editingStageId === stage.id ? (
+                        <span className="stage-date-editor-inline">
+                          <input
+                            type="date"
+                            value={dateDraft.start_date}
+                            max={dateDraft.end_date || undefined}
+                            onChange={(event) => setDateDraft((draft) => ({ ...draft, start_date: event.target.value }))}
+                            disabled={isSubmitting}
+                          />
+                          <input
+                            type="date"
+                            value={dateDraft.end_date}
+                            min={dateDraft.start_date || undefined}
+                            onChange={(event) => setDateDraft((draft) => ({ ...draft, end_date: event.target.value }))}
+                            disabled={isSubmitting}
+                          />
+                          <button type="button" onClick={() => saveStageDates(stage.id)} disabled={isSubmitting} title="Save dates" aria-label="Save dates">
+                            <Check size={14} />
+                          </button>
+                          <button type="button" onClick={() => setEditingStageId(null)} disabled={isSubmitting} title="Cancel" aria-label="Cancel">
+                            <X size={14} />
+                          </button>
+                        </span>
+                      ) : (
+                        <>
+                          <span>
+                            {stage.start_date || stage.end_date || stage.deadline
+                              ? `${formatStageDate(stage.start_date) || 'Chưa đặt'} - ${formatStageDate(stage.end_date || stage.deadline) || 'Chưa đặt'}`
+                              : 'Chưa đặt thời gian stage'}
+                          </span>
+                          {isOwnerState && (
+                            <button type="button" className="stage-date-edit-btn" onClick={() => startEditingDates(stage)} title="Edit stage dates" aria-label="Edit stage dates">
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   {/* Action buttons — only for owner on the current active stage */}

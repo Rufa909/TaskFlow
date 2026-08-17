@@ -194,6 +194,49 @@ function ensureProjectWritable(context, res) {
   return false;
 }
 
+function formatDateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return match[0];
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDateOnlyInput(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  return formatDateOnly(value);
+}
+
+function validateStageDateRange({ startDate, endDate, projectDeadline }) {
+  if (startDate && endDate && startDate > endDate) {
+    return "Ngày bắt đầu stage không được sau ngày kết thúc.";
+  }
+
+  const normalizedProjectDeadline = formatDateOnly(projectDeadline);
+  if (endDate && normalizedProjectDeadline && endDate > normalizedProjectDeadline) {
+    return "Ngày kết thúc stage không được vượt quá hạn project.";
+  }
+
+  if (startDate && normalizedProjectDeadline && startDate > normalizedProjectDeadline) {
+    return "Ngày bắt đầu stage không được sau hạn project.";
+  }
+
+  return null;
+}
+
 async function getStage(projectId, stageId) {
   const [rows] = await db.query(
     "SELECT * FROM project_stages WHERE id = ? AND project_id = ? LIMIT 1",
@@ -912,6 +955,84 @@ const workflowController = {
       });
     } catch (error) {
       console.error("Workflow getStageOverview error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  async updateStageDates(req, res) {
+    try {
+      await ensureWorkflowHandoverSchema();
+      await ProjectStage.ensureProjectStagesTable();
+      const context = await requireProjectAccess(req, res);
+      if (!context) return;
+      if (!ensureProjectWritable(context, res)) return;
+
+      if (!context.access.isOwner && !context.access.isAdmin) {
+        return res.status(403).json({ success: false, message: "Only owner or admin can update stage dates" });
+      }
+
+      const stage = await getStage(context.projectId, req.params.stageId);
+      if (!stage) return res.status(404).json({ success: false, message: "Stage not found" });
+
+      const rawStartDate = req.body.start_date ?? req.body.startDate;
+      const rawEndDate = req.body.end_date ?? req.body.endDate ?? req.body.deadline;
+      const nextStartDate = normalizeDateOnlyInput(rawStartDate);
+      const nextEndDate = normalizeDateOnlyInput(rawEndDate);
+
+      if (nextStartDate === undefined && nextEndDate === undefined) {
+        return res.status(400).json({ success: false, message: "Vui lòng chọn ngày bắt đầu hoặc ngày kết thúc stage." });
+      }
+      if (rawStartDate && nextStartDate === null) {
+        return res.status(400).json({ success: false, message: "Ngày bắt đầu stage không hợp lệ." });
+      }
+      if (rawEndDate && nextEndDate === null) {
+        return res.status(400).json({ success: false, message: "Ngày kết thúc stage không hợp lệ." });
+      }
+
+      const startDate = nextStartDate === undefined ? formatDateOnly(stage.start_date) : nextStartDate;
+      const endDate = nextEndDate === undefined ? formatDateOnly(stage.end_date || stage.deadline) : nextEndDate;
+      const validationMessage = validateStageDateRange({
+        startDate,
+        endDate,
+        projectDeadline: context.access.deadline,
+      });
+
+      if (validationMessage) {
+        return res.status(400).json({ success: false, message: validationMessage });
+      }
+
+      const [[blockingTask]] = await db.query(
+        `SELECT task_id, title
+         FROM tasks
+         WHERE project_id = ?
+           AND stage_id = ?
+           AND deleted_at IS NULL
+           AND deadline IS NOT NULL
+           AND ? IS NOT NULL
+           AND DATE(deadline) > ?
+         ORDER BY deadline DESC
+         LIMIT 1`,
+        [context.projectId, stage.id, endDate, endDate],
+      );
+
+      if (blockingTask) {
+        return res.status(409).json({
+          success: false,
+          message: `Không thể đặt hạn stage trước deadline của task "${blockingTask.title}".`,
+        });
+      }
+
+      await db.query(
+        `UPDATE project_stages
+         SET start_date = ?, end_date = ?, deadline = ?, updated_at = NOW()
+         WHERE id = ? AND project_id = ?`,
+        [startDate, endDate, endDate, stage.id, context.projectId],
+      );
+
+      const stages = await normalizeWorkflow(context.projectId);
+      res.json({ success: true, data: stages, isOwner: context.access.isOwner });
+    } catch (error) {
+      console.error("Workflow updateStageDates error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   },

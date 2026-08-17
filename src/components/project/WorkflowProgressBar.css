@@ -180,6 +180,14 @@
   letter-spacing: 0.3px;
 }
 
+.stage-date-range {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.25;
+  margin-top: 5px;
+  white-space: nowrap;
+}
+
 .timeline-connector {
   color: #d0d0d0;
   flex-shrink: 0;

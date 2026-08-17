@@ -3,7 +3,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { format, addDays, nextMonday } from "date-fns";
 import { useRef } from "react";
-import { isPastLocalDate } from "../../utils/dateTime";
+import { isPastLocalDate, parseLocalDate } from "../../utils/dateTime";
 import { useToast } from "../../context/ToastContext";
 
 export default function DatePickerPopover({
@@ -14,9 +14,13 @@ export default function DatePickerPopover({
   setTaskTime,
 
   setIsDatePickerOpen,
+  minDate,
+  maxDate,
 }) {
   const timeInputRef = useRef();
   const { showToast } = useToast();
+  const normalizedMinDate = parseLocalDate(minDate) || new Date();
+  const normalizedMaxDate = parseLocalDate(maxDate);
 
   const selectDeadline = (date, { close = false } = {}) => {
     if (!date) {
@@ -28,6 +32,15 @@ export default function DatePickerPopover({
 
     if (isPastLocalDate(date)) {
       showToast("Date is in the past, please select a future date.", "error");
+      return;
+    }
+    const selectedDate = parseLocalDate(date);
+    if (selectedDate && normalizedMinDate && selectedDate < parseLocalDate(normalizedMinDate)) {
+      showToast("Deadline của task không được trước ngày bắt đầu stage.", "error");
+      return;
+    }
+    if (selectedDate && normalizedMaxDate && selectedDate > normalizedMaxDate) {
+      showToast("Deadline của task không được vượt quá hạn stage/project.", "error");
       return;
     }
 
@@ -117,8 +130,14 @@ export default function DatePickerPopover({
           <DatePicker
             selected={taskDeadline}
             onChange={(date) => selectDeadline(date)}
+            minDate={normalizedMinDate}
+            maxDate={normalizedMaxDate || undefined}
             dayClassName={(date) =>
-              isPastLocalDate(date) ? "date-picker-day-past" : undefined
+              isPastLocalDate(date) ||
+              (normalizedMinDate && parseLocalDate(date) < parseLocalDate(normalizedMinDate)) ||
+              (normalizedMaxDate && parseLocalDate(date) > normalizedMaxDate)
+                ? "date-picker-day-past"
+                : undefined
             }
             inline
           />

@@ -4,6 +4,15 @@ import './WorkflowProgressBar.css';
 
 const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
 
+const formatStageDate = (value) => {
+  if (!value) return '';
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('vi-VN');
+};
+
 const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => {
   if (!stages || stages.length === 0) return null;
 
@@ -50,6 +59,11 @@ const WorkflowProgressBar = ({ stages = [], onStageClick, selectedStageId }) => 
                       {stage.status === 'in_progress' && 'Current'}
                       {stage.status === 'pending' && 'Pending'}
                     </div>
+                    {(stage.start_date || stage.end_date || stage.deadline) && (
+                      <div className="stage-date-range">
+                        {formatStageDate(stage.start_date) || '...'} - {formatStageDate(stage.end_date || stage.deadline) || '...'}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {index < stages.length - 1 && (

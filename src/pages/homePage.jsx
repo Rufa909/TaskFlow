@@ -21,7 +21,7 @@ import ProjectWorkflowTracker from "../components/project/ProjectWorkflowTracker
 import WorkflowProgressBar from "../components/project/WorkflowProgressBar";
 import CustomizeWorkflowModal from "../components/modals/CustomizeWorkflowModal";
 import StageTaskPanel from "../components/project/StageTaskPanel";
-import { isPastLocalDate, toLocalDateTime } from "../utils/dateTime";
+import { isPastLocalDate, parseLocalDate, toLocalDateTime } from "../utils/dateTime";
 
 const LABELS_STORAGE_KEY = "taskflow.labels";
 const DEFAULT_LABEL_COLOR = "#ef4444";
@@ -97,6 +97,13 @@ function getProjectDeadlineInputValue(project) {
 
 function isProjectOverdue(project) {
   return isPastLocalDate(getProjectDeadlineDate(project));
+}
+
+function getEarliestDate(...values) {
+  return values
+    .map(parseLocalDate)
+    .filter(Boolean)
+    .sort((a, b) => a - b)[0] || null;
 }
 
 function isSameDay(first, second) {
@@ -582,9 +589,29 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     }
     const projId = activeProject.project_id;
     const currentStageId = getCurrentWorkflowStage(workflowStages)?.id || null;
+    const currentStage = getCurrentWorkflowStage(workflowStages);
     const targetStageId = taskStageId || currentStageId;
     if (isPastLocalDate(taskDeadline)) {
       showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
+      return;
+    }
+    const taskDeadlineDate = parseLocalDate(taskDeadline);
+    const stageStartDate = parseLocalDate(currentStage?.start_date);
+    const stageEndDate = parseLocalDate(currentStage?.end_date || currentStage?.deadline);
+    const projectDeadlineDate = parseLocalDate(getProjectDeadlineDate(activeProject));
+
+    if (taskDeadlineDate && stageStartDate && taskDeadlineDate < stageStartDate) {
+      showToast("Deadline của task không được trước ngày bắt đầu stage.", "error");
+      return;
+    }
+
+    if (taskDeadlineDate && stageEndDate && taskDeadlineDate > stageEndDate) {
+      showToast("Deadline của task không được vượt quá ngày kết thúc stage.", "error");
+      return;
+    }
+
+    if (taskDeadlineDate && projectDeadlineDate && taskDeadlineDate > projectDeadlineDate) {
+      showToast("Deadline của task không được vượt quá hạn project.", "error");
       return;
     }
 
@@ -878,6 +905,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     : [];
   const currentWorkflowStage = getCurrentWorkflowStage(workflowStages);
   const currentWorkflowStageId = currentWorkflowStage?.id || null;
+  const taskMinDate = parseLocalDate(currentWorkflowStage?.start_date) || new Date();
+  const taskMaxDate = getEarliestDate(
+    currentWorkflowStage?.end_date || currentWorkflowStage?.deadline,
+    getProjectDeadlineDate(activeProject),
+  );
   const workflowComplete = isWorkflowComplete(workflowStages);
   const projectOverdue = isProjectOverdue(activeProject);
   const stageScopedTasks = currentWorkflowStageId
@@ -1847,6 +1879,8 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                       setTaskDeadline={setTaskDeadline}
                       taskTime={taskTime}
                       setTaskTime={setTaskTime}
+                      minDate={taskMinDate}
+                      maxDate={taskMaxDate}
                       taskAttachment={taskAttachment}
                       setTaskAttachment={setTaskAttachment}
                       stageDocuments={previousStageDocuments}
@@ -1913,7 +1947,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         }}
                       >
                         <span className="task-section-dot overdue-dot" />
-                        Overdue tasks
+                        Công việc quá hạn
                         <span className="task-section-count">{projectOverdueTasks.length}</span>
                         {visibleSections.overdue && <Icon name="check" size={14} />}
                       </button>
@@ -1927,7 +1961,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         }}
                       >
                         <span className="task-section-dot completed-dot" />
-                        Completed tasks
+                        Công việc đã hoàn thành
                         <span className="task-section-count">{projectCompletedTasks.length}</span>
                         {visibleSections.completed && <Icon name="check" size={14} />}
                       </button>
@@ -1966,12 +2000,12 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                     <div className="project-task-group-header">
                       <span className="task-group-header-title overdue-title">
                         <span className="task-section-dot overdue-dot" />
-                        Overdue tasks
+                        Công việc quá hạn
                       </span>
                       <span className="task-count-badge overdue-badge">{projectOverdueTasks.length}</span>
                     </div>
                     {projectOverdueTasks.length === 0 ? (
-                      <div className="project-task-empty">No overdue tasks.</div>
+                      <div className="project-task-empty">Không có công việc nào quá hạn.</div>
                     ) : (
                       <>
                         <TaskList
@@ -2003,12 +2037,12 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                     <div className="project-task-group-header">
                       <span className="task-group-header-title">
                         <span className="task-section-dot completed-dot" />
-                        Completed tasks
+                        Công việc đã hoàn thành
                       </span>
                       <span className="task-count-badge completed-badge">{projectCompletedTasks.length}</span>
                     </div>
                     {projectCompletedTasks.length === 0 ? (
-                      <div className="project-task-empty">No completed tasks.</div>
+                      <div className="project-task-empty">Không có công việc nào đã hoàn thành.</div>
                     ) : (
                       <>
                         <TaskList
@@ -2062,6 +2096,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
         }}
         onSave={handleCreateProjectWithWorkflow}
         loading={savingProject}
+        projectDeadline={newProjectDeadline}
       />
 
       <SettingsModal

@@ -4,7 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { getTranslation } from '../../i18n/translations';
 import './CustomizeWorkflowModal.css';
 
-const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) => {
+const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, projectDeadline = "" }) => {
   const { language } = useLanguage();
   const t = (key) => getTranslation(language, key);
   const getDefaultStages = () => [
@@ -80,6 +80,16 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
       alert(t('workflowStageRequired'));
       return;
     }
+    const invalidStage = validStages.find((stage) => {
+      if (stage.start_date && stage.end_date && stage.start_date > stage.end_date) return true;
+      if (projectDeadline && stage.end_date && stage.end_date > projectDeadline) return true;
+      if (projectDeadline && stage.start_date && stage.start_date > projectDeadline) return true;
+      return false;
+    });
+    if (invalidStage) {
+      alert('Ngày của stage không hợp lệ hoặc vượt quá hạn project.');
+      return;
+    }
     onSave(validStages);
   };
 
@@ -129,6 +139,29 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false }) =>
                     className="stage-input stage-description"
                     rows="2"
                   />
+                  <div className="stage-date-row">
+                    <label className="stage-date-field">
+                      <span>Bắt đầu</span>
+                      <input
+                        type="date"
+                        value={stage.start_date || ''}
+                        max={stage.end_date || projectDeadline || undefined}
+                        onChange={(e) => handleStageChange(index, 'start_date', e.target.value)}
+                        className="stage-input"
+                      />
+                    </label>
+                    <label className="stage-date-field">
+                      <span>Kết thúc</span>
+                      <input
+                        type="date"
+                        value={stage.end_date || ''}
+                        min={stage.start_date || undefined}
+                        max={projectDeadline || undefined}
+                        onChange={(e) => handleStageChange(index, 'end_date', e.target.value)}
+                        className="stage-input"
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 <div className="stage-actions">

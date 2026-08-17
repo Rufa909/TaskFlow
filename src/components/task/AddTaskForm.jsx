@@ -24,6 +24,8 @@ export default function AddTaskForm({
 
   taskTime,
   setTaskTime,
+  minDate,
+  maxDate,
 
   taskAttachment,
   setTaskAttachment,
@@ -493,6 +495,8 @@ const selectedPriority =
             taskTime={taskTime}
             setTaskTime={setTaskTime}
             setIsDatePickerOpen={setIsDatePickerOpen}
+            minDate={minDate}
+            maxDate={maxDate}
           />
         )}
       </div>

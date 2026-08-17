@@ -3,6 +3,26 @@ const db = require('../config/db');
 let stageActivitiesReady;
 let projectStagesReady;
 
+function formatDateOnly(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return match[0];
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const DEFAULT_WORKFLOW_STAGES = [
   {
     name: 'Planning',
@@ -30,6 +50,9 @@ function normalizeWorkflowStages(stages) {
       ...stage,
       name: String(stage?.name || '').trim(),
       description: String(stage?.description || '').trim(),
+      start_date: formatDateOnly(stage?.start_date || stage?.startDate),
+      end_date: formatDateOnly(stage?.end_date || stage?.endDate || stage?.deadline),
+      deadline: formatDateOnly(stage?.deadline || stage?.end_date || stage?.endDate),
     }))
     .filter((stage) => stage.name);
 
@@ -65,6 +88,8 @@ async function ensureProjectStagesTable(connection = db) {
         description TEXT NULL,
         status ENUM('pending','in_progress','completed') DEFAULT 'pending',
         assigned_to INT NULL,
+        start_date DATE NULL,
+        end_date DATE NULL,
         deadline DATE NULL,
         approved_by INT NULL,
         approved_at DATETIME NULL,
@@ -76,6 +101,27 @@ async function ensureProjectStagesTable(connection = db) {
           FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
       )
     `).catch((err) => {
+      projectStagesReady = null;
+      throw err;
+    });
+    projectStagesReady = projectStagesReady.then(async (result) => {
+      const [columns] = await connection.query(`
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'project_stages'
+          AND COLUMN_NAME IN ('start_date', 'end_date')
+      `);
+      const columnNames = new Set(columns.map((column) => column.COLUMN_NAME));
+      if (!columnNames.has('start_date')) {
+        await connection.query("ALTER TABLE project_stages ADD COLUMN start_date DATE NULL AFTER assigned_to");
+      }
+      if (!columnNames.has('end_date')) {
+        await connection.query("ALTER TABLE project_stages ADD COLUMN end_date DATE NULL AFTER start_date");
+      }
+      await connection.query("UPDATE project_stages SET end_date = deadline WHERE end_date IS NULL AND deadline IS NOT NULL");
+      return result;
+    }).catch((err) => {
       projectStagesReady = null;
       throw err;
     });
@@ -110,15 +156,17 @@ const ProjectStage = {
     for (let i = 0; i < stages.length; i++) {
       await connection.query(`
         INSERT INTO project_stages 
-        (project_id, stage_order, stage_name, description, assigned_to, deadline)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (project_id, stage_order, stage_name, description, assigned_to, start_date, end_date, deadline)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         projectId,
         i + 1,
         stages[i].name,
         stages[i].description,
         stages[i].assigned_to || null,
-        stages[i].deadline || null
+        stages[i].start_date || null,
+        stages[i].end_date || stages[i].deadline || null,
+        stages[i].deadline || stages[i].end_date || null
       ]);
     }
   },

@@ -128,6 +128,25 @@
   font-size: 13px;
 }
 
+.stage-date-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stage-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stage-date-field span {
+  color: #555;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .stage-actions {
   display: flex;
   flex-direction: column;
@@ -290,6 +309,10 @@
   .stage-actions {
     flex-direction: row;
     justify-content: flex-end;
+  }
+
+  .stage-date-row {
+    grid-template-columns: 1fr;
   }
 
   .customize-workflow-footer {
