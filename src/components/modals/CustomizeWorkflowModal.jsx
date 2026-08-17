@@ -4,9 +4,18 @@ import { useLanguage } from '../../context/LanguageContext';
 import { getTranslation } from '../../i18n/translations';
 import './CustomizeWorkflowModal.css';
 
+function getTodayDateInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, projectDeadline = "" }) => {
   const { language } = useLanguage();
   const t = (key) => getTranslation(language, key);
+  const todayDate = getTodayDateInputValue();
   const getDefaultStages = () => [
     {
       order: 1,
@@ -51,6 +60,11 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
   const handleStageChange = (index, field, value) => {
     const updated = [...stages];
     updated[index][field] = value;
+
+    if (field === 'start_date' && updated[index].end_date && value > updated[index].end_date) {
+      updated[index].end_date = '';
+    }
+
     setStages(updated);
   };
 
@@ -80,14 +94,19 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
       alert(t('workflowStageRequired'));
       return;
     }
-    const invalidStage = validStages.find((stage) => {
-      if (stage.start_date && stage.end_date && stage.start_date > stage.end_date) return true;
-      if (projectDeadline && stage.end_date && stage.end_date > projectDeadline) return true;
-      if (projectDeadline && stage.start_date && stage.start_date > projectDeadline) return true;
-      return false;
+    const invalidStage = validStages.find((stage, index) => {
+      const previousStage = validStages[index - 1];
+      const previousEndDate = previousStage?.end_date;
+      return (
+        (stage.start_date && stage.end_date && stage.start_date > stage.end_date) ||
+        (index === 0 && stage.start_date && stage.start_date < todayDate) ||
+        (previousEndDate && stage.start_date && stage.start_date < previousEndDate) ||
+        (projectDeadline && stage.end_date && stage.end_date > projectDeadline) ||
+        (projectDeadline && stage.start_date && stage.start_date > projectDeadline)
+      );
     });
     if (invalidStage) {
-      alert('Ngày của stage không hợp lệ hoặc vượt quá hạn project.');
+      alert('Ngày stage không hợp lệ: stage đầu không được trước ngày hiện tại, stage sau phải bắt đầu từ ngày kết thúc stage trước và không được quá hạn project.');
       return;
     }
     onSave(validStages);
@@ -145,7 +164,8 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
                       <input
                         type="date"
                         value={stage.start_date || ''}
-                        max={stage.end_date || projectDeadline || undefined}
+                        min={index === 0 ? todayDate : stages[index - 1]?.end_date || undefined}
+                        max={projectDeadline || undefined}
                         onChange={(e) => handleStageChange(index, 'start_date', e.target.value)}
                         className="stage-input"
                       />

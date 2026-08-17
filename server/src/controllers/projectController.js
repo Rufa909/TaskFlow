@@ -46,9 +46,22 @@ function isPastProjectDeadline(deadline) {
     return deadline < today;
 }
 
+function getTodayDateOnly() {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function validateWorkflowStageDates(stages, projectDeadline) {
     const normalizedProjectDeadline = normalizeProjectDeadline(projectDeadline);
-    for (const stage of stages) {
+    const today = getTodayDateOnly();
+    let previousEndDate = null;
+    let previousStageName = null;
+
+    for (let index = 0; index < stages.length; index++) {
+        const stage = stages[index];
         const stageName = stage.name || stage.stage_name || 'Stage';
         const startDate = normalizeProjectDeadline(stage.start_date || stage.startDate);
         const endDate = normalizeProjectDeadline(stage.end_date || stage.endDate || stage.deadline);
@@ -62,11 +75,22 @@ function validateWorkflowStageDates(stages, projectDeadline) {
         if (startDate && endDate && startDate > endDate) {
             return `Ngày bắt đầu của stage "${stageName}" không được sau ngày kết thúc!`;
         }
+        if (index === 0 && startDate && startDate < today) {
+            return `Ngày bắt đầu của stage đầu tiên không được trước ngày hiện tại!`;
+        }
+        if (previousEndDate && startDate && startDate < previousEndDate) {
+            return `Ngày bắt đầu của stage "${stageName}" không được trước ngày kết thúc của stage "${previousStageName}"!`;
+        }
         if (normalizedProjectDeadline && endDate && endDate > normalizedProjectDeadline) {
             return `Ngày kết thúc của stage "${stageName}" không được vượt quá hạn project!`;
         }
         if (normalizedProjectDeadline && startDate && startDate > normalizedProjectDeadline) {
             return `Ngày bắt đầu của stage "${stageName}" không được sau hạn project!`;
+        }
+
+        if (endDate) {
+            previousEndDate = endDate;
+            previousStageName = stageName;
         }
     }
 
