@@ -54,6 +54,101 @@ function getTodayDateOnly() {
     return `${year}-${month}-${day}`;
 }
 
+function parseDateOnly(value) {
+    const normalized = formatDateOnly(value);
+    if (!normalized) return null;
+    const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function addDaysToDateOnly(value, days) {
+    const date = parseDateOnly(value);
+    if (!date) return null;
+    date.setDate(date.getDate() + days);
+    return formatDateOnly(date);
+}
+
+function getStageDurationWeight(stage) {
+    const value = `${stage?.name || stage?.stage_name || ''} ${stage?.description || ''}`.toLowerCase();
+
+    if (/(develop|phát triển|lap trinh|lập trình|coding|implementation|backend|frontend)/.test(value)) {
+        return 2.2;
+    }
+    if (/(test|kiểm thử|kiem thu|qa|quality|đảm bảo chất lượng|dam bao chat luong)/.test(value)) {
+        return 1.5;
+    }
+    if (/(analysis|analyst|planning|phân tích|phan tich|lập kế hoạch|lap ke hoach|requirement|yêu cầu|yeu cau|ba)/.test(value)) {
+        return 1.3;
+    }
+    if (/(design|ui|ux|prototype|thiết kế|thiet ke)/.test(value)) {
+        return 1.25;
+    }
+    if (/(deploy|deployment|release|triển khai|trien khai|maintenance|bảo trì|bao tri|devops)/.test(value)) {
+        return 1;
+    }
+
+    return 1;
+}
+
+function buildWeightedStageRanges(stages, projectDeadline) {
+    const today = getTodayDateOnly();
+    const start = parseDateOnly(today);
+    const end = parseDateOnly(projectDeadline);
+    if (!start || !end || end < start || stages.length === 0) return [];
+
+    const spanDays = Math.floor((end - start) / (24 * 60 * 60 * 1000));
+    if (spanDays <= 0) {
+        return stages.map(() => ({ start_date: today, end_date: projectDeadline }));
+    }
+
+    const weights = stages.map(getStageDurationWeight);
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || stages.length;
+    const idealDurations = weights.map((weight) => (spanDays * weight) / totalWeight);
+    const durations = idealDurations.map(Math.floor);
+    let remainingDays = spanDays - durations.reduce((sum, days) => sum + days, 0);
+
+    const rankedIndexes = idealDurations
+        .map((duration, index) => ({
+            index,
+            fraction: duration - Math.floor(duration),
+            weight: weights[index],
+        }))
+        .sort((a, b) => b.fraction - a.fraction || b.weight - a.weight || a.index - b.index);
+
+    for (let i = 0; remainingDays > 0; i += 1) {
+        const target = rankedIndexes[i % rankedIndexes.length];
+        durations[target.index] += 1;
+        remainingDays -= 1;
+    }
+
+    let currentOffset = 0;
+    return stages.map((_, index) => {
+        const startOffset = currentOffset;
+        currentOffset += durations[index];
+        return {
+            start_date: addDaysToDateOnly(today, startOffset),
+            end_date: addDaysToDateOnly(today, currentOffset),
+        };
+    });
+}
+
+function applyWeightedStageDates(stages, projectDeadline) {
+    const ranges = buildWeightedStageRanges(stages, projectDeadline);
+    if (ranges.length !== stages.length) return stages;
+
+    return stages.map((stage, index) => {
+        const range = ranges[index];
+        const endDate = stage.end_date || stage.deadline || range.end_date;
+        return {
+            ...stage,
+            start_date: stage.start_date || range.start_date,
+            end_date: endDate,
+            deadline: stage.deadline || endDate,
+        };
+    });
+}
+
 function validateWorkflowStageDates(stages, projectDeadline) {
     const normalizedProjectDeadline = normalizeProjectDeadline(projectDeadline);
     const today = getTodayDateOnly();
@@ -267,7 +362,10 @@ exports.createProject = async (req, res) => {
     }
     try {
         await ensureProjectDeadlineColumn();
-        const stagesToCreate = ProjectStage.normalizeWorkflowStages(workflow_stages);
+        const stagesToCreate = applyWeightedStageDates(
+            ProjectStage.normalizeWorkflowStages(workflow_stages),
+            normalizedDeadline
+        );
         const stageDateError = validateWorkflowStageDates(stagesToCreate, normalizedDeadline);
         if (stageDateError) {
             return res.status(400).json({ success: false, message: stageDateError });

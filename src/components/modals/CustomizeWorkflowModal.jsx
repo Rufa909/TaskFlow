@@ -37,6 +37,90 @@ function formatSuggestedDate(value) {
   return date ? date.toLocaleDateString('vi-VN') : '';
 }
 
+function getStageDurationWeight(stage) {
+  const value = `${stage?.name || ''} ${stage?.description || ''}`.toLowerCase();
+
+  if (/(develop|phát triển|lap trinh|lập trình|coding|implementation|backend|frontend)/.test(value)) {
+    return 2.2;
+  }
+  if (/(test|kiểm thử|kiem thu|qa|quality|đảm bảo chất lượng|dam bao chat luong)/.test(value)) {
+    return 1.5;
+  }
+  if (/(analysis|analyst|planning|phân tích|phan tich|lập kế hoạch|lap ke hoach|requirement|yêu cầu|yeu cau|ba)/.test(value)) {
+    return 1.3;
+  }
+  if (/(design|ui|ux|prototype|thiết kế|thiet ke)/.test(value)) {
+    return 1.25;
+  }
+  if (/(deploy|deployment|release|triển khai|trien khai|maintenance|bảo trì|bao tri|devops)/.test(value)) {
+    return 1;
+  }
+
+  return 1;
+}
+
+function buildWeightedSuggestedRanges(stages, todayDate, projectDeadline) {
+  const start = parseDateInputValue(todayDate);
+  const end = parseDateInputValue(projectDeadline);
+  if (!start || !end || end < start || stages.length === 0) return [];
+
+  const spanDays = Math.floor((end - start) / (24 * 60 * 60 * 1000));
+  if (spanDays <= 0) {
+    return stages.map(() => ({ start_date: todayDate, end_date: projectDeadline }));
+  }
+
+  const weights = stages.map(getStageDurationWeight);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || stages.length;
+  const idealDurations = weights.map((weight) => (spanDays * weight) / totalWeight);
+  const baseDurations = idealDurations.map(Math.floor);
+  let remainingDays = spanDays - baseDurations.reduce((sum, days) => sum + days, 0);
+
+  const rankedIndexes = idealDurations
+    .map((duration, index) => ({
+      index,
+      fraction: duration - Math.floor(duration),
+      weight: weights[index],
+    }))
+    .sort((a, b) => b.fraction - a.fraction || b.weight - a.weight || a.index - b.index);
+
+  for (let i = 0; remainingDays > 0; i += 1) {
+    const target = rankedIndexes[i % rankedIndexes.length];
+    baseDurations[target.index] += 1;
+    remainingDays -= 1;
+  }
+
+  let currentOffset = 0;
+  return stages.map((_, index) => {
+    const startOffset = currentOffset;
+    currentOffset += baseDurations[index];
+    return {
+      start_date: addDaysToDateInput(todayDate, startOffset),
+      end_date: addDaysToDateInput(todayDate, currentOffset),
+    };
+  });
+}
+
+function normalizeStageDateSequence(stages, startIndex = 0) {
+  const normalized = stages.map((stage) => ({ ...stage }));
+  const firstIndex = Math.max(0, startIndex);
+
+  for (let index = firstIndex; index < normalized.length; index += 1) {
+    const stage = normalized[index];
+    const previousStage = normalized[index - 1];
+    const minStartDate = index === 0 ? null : previousStage?.end_date;
+
+    if (minStartDate && stage.start_date && stage.start_date < minStartDate) {
+      stage.start_date = minStartDate;
+    }
+
+    if (stage.start_date && stage.end_date && stage.end_date < stage.start_date) {
+      stage.end_date = stage.start_date;
+    }
+  }
+
+  return normalized;
+}
+
 const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, projectDeadline = "" }) => {
   const { language } = useLanguage();
   const t = (key) => getTranslation(language, key);
@@ -65,20 +149,8 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
   ];
   const [stages, setStages] = useState(getDefaultStages);
   const suggestedRanges = useMemo(() => {
-    const start = parseDateInputValue(todayDate);
-    const end = parseDateInputValue(projectDeadline);
-    if (!start || !end || end < start || stages.length === 0) return [];
-
-    const spanDays = Math.floor((end - start) / (24 * 60 * 60 * 1000));
-
-    return stages.map((_, index) => {
-      const startOffset = Math.floor((spanDays * index) / stages.length);
-      const endOffset = Math.floor((spanDays * (index + 1)) / stages.length);
-      const startDate = addDaysToDateInput(todayDate, startOffset);
-      const endDate = addDaysToDateInput(todayDate, endOffset);
-      return { start_date: startDate, end_date: endDate };
-    });
-  }, [projectDeadline, stages.length, todayDate]);
+    return buildWeightedSuggestedRanges(stages, todayDate, projectDeadline);
+  }, [projectDeadline, stages, todayDate]);
 
   useEffect(() => {
     if (isOpen) {
@@ -102,10 +174,11 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
     updated[index][field] = value;
 
     if (field === 'start_date' && updated[index].end_date && value > updated[index].end_date) {
-      updated[index].end_date = '';
+      updated[index].end_date = value;
     }
 
-    setStages(updated);
+    const normalizeFromIndex = field === 'end_date' ? index + 1 : index;
+    setStages(normalizeStageDateSequence(updated, normalizeFromIndex));
   };
 
   const handleMoveStage = (index, direction) => {
@@ -125,7 +198,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
       stage.order = i + 1;
     });
 
-    setStages(updated);
+    setStages(normalizeStageDateSequence(updated));
   };
 
   const applySuggestedRange = (index) => {
@@ -199,9 +272,9 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
 
           {suggestedRanges.length === stages.length && (
             <div className="stage-suggestion-bar">
-              <span>Gợi ý chia đều từ hôm nay đến hạn project</span>
+              <span>Hướng dẫn chia ngày theo độ quan trọng của stage</span>
               <button type="button" onClick={applyAllSuggestedRanges}>
-                Áp dụng gợi ý
+                Áp dụng hướng dẫn
               </button>
             </div>
           )}
@@ -260,7 +333,7 @@ const CustomizeWorkflowModal = ({ isOpen, onClose, onSave, loading = false, proj
                       className="stage-date-suggestion"
                       onClick={() => applySuggestedRange(index)}
                     >
-                      Gợi ý: {formatSuggestedDate(suggestedRange.start_date)} - {formatSuggestedDate(suggestedRange.end_date)}
+                      Hướng dẫn: {formatSuggestedDate(suggestedRange.start_date)} - {formatSuggestedDate(suggestedRange.end_date)}
                     </button>
                   )}
                 </div>

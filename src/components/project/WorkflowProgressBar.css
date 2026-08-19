@@ -12,6 +12,12 @@
   border: 1px solid #e8e8e8;
 }
 
+.workflow-progress-card.complete {
+  border-color: #86efac;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fef9 100%);
+  box-shadow: 0 8px 22px rgba(22, 163, 74, 0.12);
+}
+
 .workflow-header {
   display: flex;
   justify-content: space-between;
@@ -20,12 +26,34 @@
   gap: 24px;
 }
 
+.workflow-title-wrap {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .workflow-title {
   font-size: 18px;
   font-weight: 600;
   color: #1a1a1a;
   margin: 0;
-  flex-shrink: 0;
+}
+
+.workflow-complete-pill {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: #15803d;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .workflow-workspace-btn {
@@ -223,6 +251,25 @@
   color: #4caf50;
 }
 
+.workflow-complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+  color: #166534;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.workflow-complete-banner svg {
+  flex-shrink: 0;
+}
+
 @keyframes slideRight {
   0%, 100% {
     transform: translateX(0);
@@ -247,6 +294,10 @@
 
   .workflow-workspace-btn {
     align-self: flex-end;
+  }
+
+  .workflow-title-wrap {
+    width: 100%;
   }
 
   .progress-stats {

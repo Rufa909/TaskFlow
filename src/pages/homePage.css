@@ -1164,6 +1164,43 @@ button.project-deadline-chip:disabled {
   margin-top: 8px;
 }
 
+.project-complete-state {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  background: #f0fdf4;
+  color: #166534;
+  padding: 14px 16px;
+}
+
+.project-complete-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.project-complete-state h2 {
+  margin: 0 0 3px;
+  color: #14532d;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.project-complete-state p {
+  margin: 0;
+  color: #166534;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 /* Project task sections */
 .add-task-btn.add-task-btn--top {
   display: flex;

@@ -164,6 +164,10 @@ function getCurrentWorkflowStage(stages = []) {
   );
 }
 
+function getWorkspaceDefaultStage(stages = []) {
+  return getCurrentWorkflowStage(stages) || stages[stages.length - 1] || null;
+}
+
 function isWorkflowComplete(stages = []) {
   return stages.length > 0 && stages.every((stage) => stage.status === "completed");
 }
@@ -310,7 +314,7 @@ export default function HomePage() {
         const res = await api.get(`/projects/${activeProject.project_id}/workflow`);
         const stages = res.data.data || [];
         setWorkflowStages(stages);
-        const currentStage = getCurrentWorkflowStage(stages);
+        const currentStage = getWorkspaceDefaultStage(stages);
         setSelectedStage(currentStage);
         setTaskStageId(currentStage?.id || null);
         if (isWorkflowComplete(stages)) {
@@ -327,7 +331,7 @@ export default function HomePage() {
 
   useEffect(() => {
     let active = true;
-    const currentStageId = taskStageId || getCurrentWorkflowStage(workflowStages)?.id;
+    const currentStageId = taskStageId || getWorkspaceDefaultStage(workflowStages)?.id;
 
     async function fetchPreviousStageDocuments() {
       if (!activeProject?.project_id || !currentStageId) {
@@ -430,7 +434,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleOpenStageWorkspace = () => {
     if (isProjectOverdue(activeProject)) return;
-    const stage = selectedStage || getCurrentWorkflowStage(workflowStages);
+    const stage = selectedStage || getWorkspaceDefaultStage(workflowStages);
     if (!stage) return;
     setSelectedStage(stage);
     setTaskStageId(stage.id || null);
@@ -449,9 +453,9 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleWorkflowStagesChange = (nextStages) => {
     setWorkflowStages(nextStages);
-    const nextStageId = getCurrentWorkflowStage(nextStages)?.id || null;
+    const nextStageId = getWorkspaceDefaultStage(nextStages)?.id || null;
     const stillSelected = nextStages.find((stage) => Number(stage.id) === Number(taskStageId));
-    const nextSelectedStage = stillSelected || getCurrentWorkflowStage(nextStages) || null;
+    const nextSelectedStage = stillSelected || getWorkspaceDefaultStage(nextStages) || null;
     setSelectedStage(nextSelectedStage);
     setTaskStageId(nextSelectedStage?.id || nextStageId);
     if (isWorkflowComplete(nextStages)) {
@@ -616,11 +620,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       return;
     }
     const projId = activeProject.project_id;
-    const currentStageId = getCurrentWorkflowStage(workflowStages)?.id || null;
+    const currentStageId = getWorkspaceDefaultStage(workflowStages)?.id || null;
     const targetStageId = taskStageId || currentStageId;
     const targetStage =
       workflowStages.find((stage) => Number(stage.id) === Number(targetStageId)) ||
-      getCurrentWorkflowStage(workflowStages);
+      getWorkspaceDefaultStage(workflowStages);
     if (isPastLocalDate(taskDeadline)) {
       showToast("Ngày đã qua, vui lòng chọn hôm nay hoặc ngày sau.", "error");
       return;
@@ -933,11 +937,11 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   const currentTasks = activeProject
     ? tasksByProject[activeProject.project_id] || []
     : [];
-  const currentWorkflowStage = getCurrentWorkflowStage(workflowStages);
-  const currentWorkflowStageId = currentWorkflowStage?.id || null;
+  const workspaceDefaultStage = getWorkspaceDefaultStage(workflowStages);
+  const currentWorkflowStageId = workspaceDefaultStage?.id || null;
   const activeTaskStage =
     workflowStages.find((stage) => Number(stage.id) === Number(taskStageId)) ||
-    currentWorkflowStage;
+    workspaceDefaultStage;
   const activeTaskStageId = activeTaskStage?.id || currentWorkflowStageId;
   const taskMinDate = parseLocalDate(activeTaskStage?.start_date) || new Date();
   const taskMaxDate = getEarliestDate(
@@ -1910,6 +1914,17 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
               )}
 
               <div className="task-section">
+                {workflowComplete && (
+                  <div className="project-complete-state" role="status" aria-live="polite">
+                    <div className="project-complete-icon">
+                      <Icon name="check" size={24} />
+                    </div>
+                    <div>
+                      <h2>Dự án đã hoàn thành</h2>
+                      <p>Toàn bộ stage đã hoàn tất. Các task bên dưới chỉ để theo dõi/lưu vết, không thể thêm task mới cho dự án đã hoàn thành.</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Add Task - on top */}
                 {currentProjectRole !== "member" && !workflowComplete && (
@@ -1968,16 +1983,16 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                     className="project-task-group-header clickable"
                     onClick={() => setTaskSectionDropdownOpen(v => !v)}
                   >
-                    <span className="task-group-header-title">
-                      <span style={{
-                        display: 'inline-flex',
-                        transform: taskSectionDropdownOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
-                        transition: 'transform 0.2s'
-                      }}>
-                        <Icon name="chevronDown" size={14} />
+                      <span className="task-group-header-title">
+                        <span style={{
+                          display: 'inline-flex',
+                          transform: taskSectionDropdownOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                          transition: 'transform 0.2s'
+                        }}>
+                          <Icon name="chevronDown" size={14} />
+                        </span>
+                      {workflowComplete ? "Task còn lưu trong dự án" : "Active tasks"}
                       </span>
-                      Active tasks
-                    </span>
                     <span className="task-count-badge">{projectOpenTasks.length}</span>
                   </div>
 

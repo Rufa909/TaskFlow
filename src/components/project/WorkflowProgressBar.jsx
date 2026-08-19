@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, PanelRightOpen } from 'lucide-react';
+import { CheckCircle2, ChevronRight, PanelRightOpen } from 'lucide-react';
 import './WorkflowProgressBar.css';
 
 const stripStageIcon = (name = '') => String(name).replace(/^[^\p{L}\p{N}]+/u, '').trim();
@@ -26,13 +26,22 @@ const WorkflowProgressBar = ({
   const inProgressCount = stages.filter(s => s.status === 'in_progress').length;
   const totalCount = stages.length;
   const progressPercent = (completedCount / totalCount) * 100;
+  const isComplete = totalCount > 0 && completedCount === totalCount;
 
   return (
     <div className="workflow-progress-container">
-      <div className="workflow-progress-card">
+      <div className={`workflow-progress-card ${isComplete ? 'complete' : ''}`}>
         {/* Header with title and progress bar */}
         <div className="workflow-header">
-          <h3 className="workflow-title">Project Progress</h3>
+          <div className="workflow-title-wrap">
+            <h3 className="workflow-title">Project Progress</h3>
+            {isComplete && (
+              <span className="workflow-complete-pill">
+                <CheckCircle2 size={14} />
+                <span>Đã hoàn thành dự án</span>
+              </span>
+            )}
+          </div>
           <div className="progress-stats">
             <div className="progress-item">
               <span className="progress-label">Completed</span>
@@ -73,9 +82,9 @@ const WorkflowProgressBar = ({
                   <div className="stage-info">
                     <div className="stage-label">{stripStageIcon(stage.stage_name)}</div>
                     <div className="stage-status">
-                      {stage.status === 'completed' && 'Done'}
-                      {stage.status === 'in_progress' && 'Current'}
-                      {stage.status === 'pending' && 'Pending'}
+                      {stage.status === 'completed' && 'Đã xong'}
+                      {stage.status === 'in_progress' && 'Đang làm'}
+                      {stage.status === 'pending' && 'Chờ'}
                     </div>
                     {(stage.start_date || stage.end_date || stage.deadline) && (
                       <div className="stage-date-range">
@@ -93,6 +102,12 @@ const WorkflowProgressBar = ({
             );
           })}
         </div>
+        {isComplete && (
+          <div className="workflow-complete-banner" role="status" aria-live="polite">
+            <CheckCircle2 size={18} />
+            <span>Dự án đã hoàn thành toàn bộ stage. Workspace vẫn có thể mở để xem lại task, tài liệu và bàn giao.</span>
+          </div>
+        )}
       </div>
     </div>
   );
