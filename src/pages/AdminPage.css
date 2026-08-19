@@ -789,7 +789,7 @@
 
 .admin-table.users .admin-table-head,
 .admin-table.users .admin-table-row {
-  grid-template-columns: 1fr 1.35fr 100px 76px 64px 110px 270px;
+  grid-template-columns: 1fr 1.35fr 100px 76px 64px 110px 150px;
 }
 
 .admin-table.projects .admin-table-head,

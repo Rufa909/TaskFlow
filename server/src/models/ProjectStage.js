@@ -211,12 +211,12 @@ const ProjectStage = {
 
     // Get current stage info to find previous one
     const [current] = await db.query(`
-      SELECT project_id, stage_order FROM project_stages WHERE id = ?
+      SELECT project_id, stage_order, status FROM project_stages WHERE id = ?
     `, [stageId]);
 
     if (current.length === 0) throw new Error('Stage not found');
 
-    const { project_id, stage_order } = current[0];
+    const { project_id, stage_order, status } = current[0];
 
     if (Number(stage_order) <= 1) {
       throw new Error('Cannot move back from the first stage');
@@ -243,18 +243,25 @@ const ProjectStage = {
       }
     }
 
-    // Update current stage to pending
+    const [laterOpenStages] = await db.query(`
+      SELECT id FROM project_stages
+      WHERE project_id = ? AND stage_order > ? AND status <> 'completed'
+      LIMIT 1
+    `, [project_id, stage_order]);
+    const reopenCompletedFinalStage = status === 'completed' && laterOpenStages.length === 0;
+
+    // A completed workflow returns to its final stage; an active workflow returns to the prior stage.
     await db.query(`
       UPDATE project_stages 
-      SET status = 'pending',
+      SET status = ?,
           approved_by = NULL,
           approved_at = NULL,
           updated_at = NOW()
       WHERE id = ?
-    `, [stageId]);
+    `, [reopenCompletedFinalStage ? 'in_progress' : 'pending', stageId]);
 
     // Find and update previous stage
-    if (stage_order > 1) {
+    if (stage_order > 1 && !reopenCompletedFinalStage) {
       const [prevStage] = await db.query(`
         SELECT id FROM project_stages 
         WHERE project_id = ? AND stage_order = ?

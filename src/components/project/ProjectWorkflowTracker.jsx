@@ -219,7 +219,10 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
           const inProgressIndex = stages.findIndex(s => s.status === 'in_progress');
           const effectiveInProgressIndex = inProgressIndex !== -1
             ? inProgressIndex
-            : stages.findIndex(s => s.status !== 'completed');
+            : (() => {
+                const firstOpenIndex = stages.findIndex(s => s.status !== 'completed');
+                return firstOpenIndex !== -1 ? firstOpenIndex : stages.length - 1;
+              })();
           const isCurrent = index === effectiveInProgressIndex;
           const isLastStage = index === stages.length - 1;
 
@@ -294,7 +297,7 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                     <div className="stage-actions">
                       {error && <div className="action-error">{error}</div>}
                       <div className="action-buttons">
-                        {isLastStage ? (
+                        {stage.status !== 'completed' && (isLastStage ? (
                           <button
                             className="btn-complete"
                             onClick={() => {
@@ -321,7 +324,7 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                             <ChevronRight size={18} />
                             <span>Next</span>
                           </button>
-                        )}
+                        ))}
                         <button
                           className="btn-previous"
                           onClick={() => handleMovePrevious(stage.id)}

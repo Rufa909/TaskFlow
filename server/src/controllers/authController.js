@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const fs = require('fs/promises');
 const path = require('path');
 const pool = require('../config/db');
+const { ensureUserDeletedAtColumn, ensureUserLockedAtColumn } = require('../services/userAccountService');
 const { OAuth2Client } = require('google-auth-library');
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const getPublicUser = (user) => ({
@@ -15,7 +16,9 @@ const getPublicUser = (user) => ({
     user_photo: user.user_photo,
     email_verified: Boolean(user.email_verified),
     auth_provider: user.auth_provider || 'local',
-    created_at: user.created_at
+    created_at: user.created_at,
+    deleted_at: user.deleted_at || null,
+    locked_at: user.locked_at || null
 });
 
 const ensureUserRoleColumn = async () => {
@@ -161,7 +164,7 @@ function normalizeProjectDeadline(deadline) {
 
 async function assertAdminUser(userId) {
     const [[adminRows]] = await pool.query(
-        'SELECT role FROM users WHERE user_id = ? LIMIT 1',
+        'SELECT role FROM users WHERE user_id = ? AND deleted_at IS NULL AND locked_at IS NULL LIMIT 1',
         [userId]
     );
 
@@ -240,7 +243,7 @@ exports.register = async (req, res) => {
     }
 
     try {
-        await ensureUserRoleColumn();
+        await Promise.all([ensureUserRoleColumn(), ensureUserDeletedAtColumn(), ensureUserLockedAtColumn()]);
         // Bước 2: Kiểm tra email đã tồn tại trong DB chưa
         // pool.query trả về [rows, fields] nên dùng destructuring [rows]
         const [existingUser] = await pool.query('select * from users where email = ?', [email]); // dùng ? và truyền riêng để tránh SQL Injection
@@ -292,9 +295,9 @@ exports.login = async (req, res) => {
     }
 
     try {
-        await ensureUserRoleColumn();
+        await Promise.all([ensureUserRoleColumn(), ensureUserDeletedAtColumn(), ensureUserLockedAtColumn()]);
          // Bước 2: Tìm user theo email
-        const [rows] = await pool.query('select * from users where email = ?', [email]);
+        const [rows] = await pool.query('select * from users where email = ? and deleted_at is null', [email]);
         // Không nên nói rõ "email không tồn tại" vì lý do bảo mật
         if (rows.length === 0){
             return res.status(401).json({
@@ -304,6 +307,12 @@ exports.login = async (req, res) => {
         }
 
         const user = rows[0];
+        if (user.locked_at) {
+            return res.status(423).json({
+                success: false,
+                message: 'Tai khoan da bi khoa!'
+            });
+        }
         // Bước 3: So sánh password người dùng nhập với hash trong DB
         // bcrypt.compare() tự động xử lý salt nên không cần làm thủ công
         const isMatch = await bcrypt.compare(password, user.password);
@@ -335,9 +344,9 @@ exports.login = async (req, res) => {
 // Dùng để frontend kiểm tra token còn hợp lệ không khi reload trang
 exports.getMe = async (req, res) => {
     try {
-        await ensureUserRoleColumn();
+        await Promise.all([ensureUserRoleColumn(), ensureUserDeletedAtColumn(), ensureUserLockedAtColumn()]);
         // req.user đã được authMiddleware gắn vào từ token
-        const [rows] = await pool.query('select * from users where user_id = ?', [req.user.id]);
+        const [rows] = await pool.query('select * from users where user_id = ? and deleted_at is null', [req.user.id]);
 
         if (rows.length === 0){
             return res.status(404).json({
@@ -674,6 +683,7 @@ exports.getAdminStats = async (req, res) => {
     try {
         await ensureEmailVerificationColumns();
         await ensureProjectDeadlineColumn();
+        await Promise.all([ensureUserDeletedAtColumn(), ensureUserLockedAtColumn()]);
 
         if (!(await assertAdminUser(req.user.id))) {
             return res.status(403).json({
@@ -699,9 +709,12 @@ exports.getAdminStats = async (req, res) => {
             pool.query(`
                 SELECT
                   COUNT(*) AS total_users,
-                  SUM(role = 'admin') AS admin_users,
-                  SUM(email_verified = 1) AS verified_users,
-                  SUM(auth_provider = 'google') AS google_users
+                  SUM(deleted_at IS NULL AND locked_at IS NULL) AS active_users,
+                  SUM(role = 'admin' AND deleted_at IS NULL AND locked_at IS NULL) AS admin_users,
+                  SUM(email_verified = 1 AND deleted_at IS NULL) AS verified_users,
+                  SUM(auth_provider = 'google' AND deleted_at IS NULL) AS google_users,
+                  SUM(deleted_at IS NOT NULL) AS inactive_users,
+                  SUM(deleted_at IS NULL AND locked_at IS NOT NULL) AS locked_users
                 FROM users
             `),
             pool.query(`
@@ -740,10 +753,9 @@ exports.getAdminStats = async (req, res) => {
                 ORDER BY count DESC
             `),
             pool.query(`
-                SELECT user_id, username, email, role, auth_provider, email_verified, created_at
+                SELECT user_id, username, email, role, auth_provider, email_verified, created_at, deleted_at, locked_at
                 FROM users
                 ORDER BY created_at DESC
-                LIMIT 6
             `),
             pool.query(`
                 SELECT
@@ -798,6 +810,7 @@ exports.getAdminStats = async (req, res) => {
             pool.query(`
                 SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS users
                 FROM users
+                WHERE deleted_at IS NULL
                 GROUP BY DATE_FORMAT(created_at, '%Y-%m')
             `),
             pool.query(`
@@ -1036,6 +1049,9 @@ exports.getAdminStats = async (req, res) => {
             stats: {
                 users: {
                     total: Number(userStats.total_users || 0),
+                    active: Number(userStats.active_users || 0),
+                    inactive: Number(userStats.inactive_users || 0),
+                    locked: Number(userStats.locked_users || 0),
                     admins: Number(userStats.admin_users || 0),
                     verified: Number(userStats.verified_users || 0),
                     google: Number(userStats.google_users || 0),
@@ -1109,6 +1125,71 @@ exports.getAdminStats = async (req, res) => {
             success: false,
             message: 'Co loi xay ra'
         });
+    }
+};
+
+exports.lockAdminUser = async (req, res) => {
+    await Promise.all([ensureUserDeletedAtColumn(), ensureUserLockedAtColumn()]);
+
+    if (!(await assertAdminUser(req.user.id))) {
+        return res.status(403).json({
+            success: false,
+            message: 'Only admin can lock users'
+        });
+    }
+
+    const userId = Number(req.params.userId);
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const hasValidUserId = Number.isInteger(userId) && userId > 0;
+    if (!hasValidUserId && !email) {
+        return res.status(400).json({ success: false, message: 'User id khong hop le' });
+    }
+
+    const connection = await pool.getConnection();
+    try {
+        await connection.query("SELECT GET_LOCK('taskflow_admin_user_lock', 10)");
+        const [[targetUser]] = await connection.query(
+            `SELECT user_id, role, deleted_at, locked_at
+             FROM users
+             WHERE user_id = ? OR (? <> '' AND LOWER(email) = ?)
+             ORDER BY user_id = ? DESC
+             LIMIT 1`,
+            [hasValidUserId ? userId : -1, email, email, hasValidUserId ? userId : -1]
+        );
+        if (!targetUser) {
+            return res.status(404).json({ success: false, message: 'User khong ton tai' });
+        }
+        if (Number(targetUser.user_id) === Number(req.user.id)) {
+            return res.status(400).json({ success: false, message: 'Khong the khoa tai khoan dang dang nhap' });
+        }
+        if (targetUser.deleted_at) {
+            return res.status(409).json({ success: false, message: 'Tai khoan khong con hoat dong' });
+        }
+        if (targetUser.locked_at) {
+            return res.json({ success: true, locked_user_id: Number(targetUser.user_id), already_locked: true });
+        }
+
+        if (targetUser.role === 'admin') {
+            const [[adminCount]] = await connection.query(
+                "SELECT COUNT(*) AS total FROM users WHERE role = 'admin' AND deleted_at IS NULL AND locked_at IS NULL"
+            );
+            if (Number(adminCount.total || 0) <= 1) {
+                return res.status(409).json({ success: false, message: 'Khong the khoa admin cuoi cung' });
+            }
+        }
+
+        await connection.query(
+            'UPDATE users SET locked_at = NOW() WHERE user_id = ? AND deleted_at IS NULL AND locked_at IS NULL',
+            [targetUser.user_id]
+        );
+
+        return res.json({ success: true, locked_user_id: Number(targetUser.user_id) });
+    } catch (err) {
+        console.error('Loi lockAdminUser:', err);
+        return res.status(500).json({ success: false, message: 'Co loi xay ra' });
+    } finally {
+        await connection.query("SELECT RELEASE_LOCK('taskflow_admin_user_lock')").catch(() => {});
+        connection.release();
     }
 };
 
@@ -1197,7 +1278,7 @@ exports.googleLogin = async (req, res) => {
   }
 
   try {
-    await ensureUserRoleColumn();
+    await Promise.all([ensureUserRoleColumn(), ensureUserDeletedAtColumn(), ensureUserLockedAtColumn()]);
     let payload;
 
     if (credential) {
@@ -1227,6 +1308,13 @@ exports.googleLogin = async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
 
     let user = rows[0];
+
+    if (user?.deleted_at) {
+      return res.status(403).json({ success: false, message: 'Tai khoan khong con hoat dong' });
+    }
+    if (user?.locked_at) {
+      return res.status(423).json({ success: false, message: 'Tai khoan da bi khoa' });
+    }
 
     if (!user) {
       const randomPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);

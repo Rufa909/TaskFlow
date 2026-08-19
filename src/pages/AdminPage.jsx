@@ -100,6 +100,7 @@ const ADMIN_VI = {
   "Active": "Đang hoạt động",
   "Pending": "Đang chờ",
   "Locked": "Đã khóa",
+  "Inactive": "Không còn hoạt động",
   "Admin": "Quản trị",
   "Owner": "Chủ sở hữu",
   "Member": "Thành viên",
@@ -112,8 +113,8 @@ const ADMIN_VI = {
   "View": "Xem",
   "Edit": "Sửa",
   "Lock": "Khóa",
-  "Unlock": "Mở khóa",
-  "Delete": "Xóa",
+  "Lock this user?": "Khóa người dùng này? Người dùng sẽ không thể đăng nhập.",
+  "Cannot lock user.": "Không thể khóa người dùng.",
   "No users found": "Không tìm thấy người dùng",
   "Chat group": "Nhóm chat",
   "Open chat": "Mở chat",
@@ -498,7 +499,7 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
       name: item.username || item.name || "Unknown user",
       email: item.email || "-",
       role: item.role || "member",
-      status: item.locked ? "Locked" : item.email_verified ? "Active" : "Pending",
+      status: item.deleted_at ? "Inactive" : item.locked_at || item.locked ? "Locked" : item.email_verified ? "Active" : "Pending",
       projects: allProjects.filter((project) => project.owner_email === item.email || project.owner_id === item.user_id).length,
       tasks: workload.tasks || 0,
       lastActive: item.last_active || item.updated_at || item.created_at,
@@ -529,7 +530,8 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
     const realStages = (project.workflowStages || [])
       .slice()
       .sort((a, b) => Number(a.stage_order || 0) - Number(b.stage_order || 0));
-    const currentStageIndex = realStages.findIndex((stage) => normalizeWorkflowStageStatus(stage.status) !== "completed");
+    const firstOpenStageIndex = realStages.findIndex((stage) => normalizeWorkflowStageStatus(stage.status) !== "completed");
+    const currentStageIndex = firstOpenStageIndex >= 0 ? firstOpenStageIndex : realStages.length - 1;
     const stages = realStages.map((stage, index) => {
       const normalizedStatus = normalizeWorkflowStageStatus(stage.status);
       const status = isProjectOverdue && normalizedStatus !== "completed" ? "delayed" : normalizedStatus;
@@ -697,22 +699,6 @@ function SearchFilter({ search, onSearch, placeholder = "Search", children }) {
         <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder={placeholder} />
       </label>
       {children}
-    </div>
-  );
-}
-
-function ChartBars({ items, valueKey = "count", labelKey = "status", language = "en", emptyLabel = "No chart data" }) {
-  const max = Math.max(1, ...items.map((item) => Number(item[valueKey] || 0)));
-  if (!items.length) return <EmptyState label={emptyLabel} />;
-  return (
-    <div className="admin-bars">
-      {items.map((item) => (
-        <div key={item[labelKey]} className="admin-bar-row">
-          <span>{formatStatus(item[labelKey], language)}</span>
-          <div><i style={{ width: `${(Number(item[valueKey] || 0) / max) * 100}%` }} /></div>
-          <strong>{item[valueKey]}</strong>
-        </div>
-      ))}
     </div>
   );
 }
@@ -929,7 +915,7 @@ export default function AdminPage() {
     reportRange: "30 Days",
   });
   const [localUsers, setLocalUsers] = useState([]);
-  const [deletedUserIds, setDeletedUserIds] = useState(new Set());
+  const [lockingUserIds, setLockingUserIds] = useState(new Set());
   const [savingProjectDeadlineIds, setSavingProjectDeadlineIds] = useState(new Set());
   const [savingPreviousStageIds, setSavingPreviousStageIds] = useState(new Set());
   const [projectDeadlineDrafts, setProjectDeadlineDrafts] = useState({});
@@ -966,10 +952,9 @@ export default function AdminPage() {
   const model = useMemo(() => {
     const base = buildAdminModel(stats, projects, user, chatGroups, chatUsers);
     const mergedUsers = [...base.users, ...localUsers]
-      .filter((item, index, list) => list.findIndex((entry) => String(entry.email) === String(item.email)) === index)
-      .filter((item) => !deletedUserIds.has(item.id));
+      .filter((item, index, list) => list.findIndex((entry) => String(entry.email) === String(item.email)) === index);
     return { ...base, users: mergedUsers, stats: { ...base.stats, totalUsers: Math.max(base.stats.totalUsers, mergedUsers.length) } };
-  }, [stats, projects, user, chatGroups, chatUsers, localUsers, deletedUserIds]);
+  }, [stats, projects, user, chatGroups, chatUsers, localUsers]);
 
   const activeNav = ADMIN_NAV.find((item) => item.id === activeView) || ADMIN_NAV[0];
   const lowerSearch = search.trim().toLowerCase();
@@ -1009,16 +994,29 @@ export default function AdminPage() {
     && (filters.activityAction === "all" || item.action === filters.activityAction)
   ));
 
-  const lockUser = (target) => {
-    setLocalUsers((current) => {
-      const exists = current.some((item) => item.id === target.id);
-      const nextUser = { ...target, status: target.status === "Locked" ? "Active" : "Locked" };
-      return exists ? current.map((item) => (item.id === target.id ? nextUser : item)) : [...current, nextUser];
-    });
-  };
+  const lockUser = async (target) => {
+    if (!window.confirm(`${t("Lock this user?")}\n${target.name} (${target.email})`)) return;
 
-  const deleteUser = (target) => {
-    setDeletedUserIds((current) => new Set(current).add(target.id));
+    if (String(target.id).startsWith("local-")) {
+      setLocalUsers((current) => current.map((item) => (
+        item.id === target.id ? { ...item, locked_at: new Date().toISOString(), status: "Locked" } : item
+      )));
+      return;
+    }
+
+    setLockingUserIds((current) => new Set(current).add(target.id));
+    try {
+      await api.patch(`/auth/admin/users/${target.id}/lock`, { email: target.email });
+      await loadAdminData();
+    } catch (err) {
+      window.alert(err.response?.data?.message || t("Cannot lock user."));
+    } finally {
+      setLockingUserIds((current) => {
+        const next = new Set(current);
+        next.delete(target.id);
+        return next;
+      });
+    }
   };
 
   const saveUser = (payload) => {
@@ -1127,7 +1125,6 @@ export default function AdminPage() {
           <MonthlyAreaChart items={model.monthlyStats} range={trendRange} language={language} t={t} />
         </SectionCard>
         <SectionCard title={t("Task Completion")} icon="activity"><DonutChart items={model.taskStatus} language={language} t={t} /></SectionCard>
-        <SectionCard title={t("Task Status")} icon="activity"><ChartBars items={model.taskStatus} language={language} emptyLabel={t("No chart data")} /></SectionCard>
         <SectionCard title={t("Project Progress")} icon="grid">
           <div className="admin-list-stack">
             {model.projects.length ? model.projects.slice(0, 6).map((project) => (
@@ -1153,9 +1150,6 @@ export default function AdminPage() {
             {!model.activities.length && <EmptyState label={t("No activities")} />}
           </div>
         </SectionCard>
-        <SectionCard title={t("Projects At Risk")} icon="flag">
-          <RiskList projects={model.projects.filter((project) => project.health !== "on_track").slice(0, 6)} t={t} language={language} />
-        </SectionCard>
         <SectionCard title={t("Overdue / Blocked Tasks")} icon="lock">
           <TaskIssueList tasks={model.tasks.filter((task) => task.overdue || task.blocked).slice(0, 6)} onView={(task) => setModal({ type: "task", item: task })} t={t} />
         </SectionCard>
@@ -1175,6 +1169,7 @@ export default function AdminPage() {
           <option value="Active">{t("Active")}</option>
           <option value="Pending">{t("Pending")}</option>
           <option value="Locked">{t("Locked")}</option>
+          <option value="Inactive">{t("Inactive")}</option>
         </select>
       </SearchFilter>
       <div className="admin-table users">
@@ -1185,15 +1180,13 @@ export default function AdminPage() {
           <div key={item.id} className="admin-table-row">
             <span><strong>{item.name}</strong></span>
             <span>{item.email}</span>
-            <span><Badge tone={item.status === "Locked" ? "red" : item.status === "Pending" ? "orange" : "green"}>{t(item.status)}</Badge></span>
+            <span><Badge tone={item.status === "Locked" ? "red" : item.status === "Pending" ? "orange" : item.status === "Inactive" ? "neutral" : "green"}>{t(item.status)}</Badge></span>
             <span>{item.projects}</span>
             <span>{item.tasks}</span>
             <span>{formatDate(item.lastActive)}</span>
             <span className="admin-row-actions">
               <button type="button" onClick={() => setModal({ type: "user", item })}>{t("View")}</button>
-              <button type="button" onClick={() => setModal({ type: "userForm", item })}>{t("Edit")}</button>
-              <button type="button" onClick={() => lockUser(item)}>{item.status === "Locked" ? t("Unlock") : t("Lock")}</button>
-              <button type="button" onClick={() => deleteUser(item)}>{t("Delete")}</button>
+              <button type="button" disabled={item.status === "Inactive" || item.status === "Locked" || lockingUserIds.has(item.id)} onClick={() => lockUser(item)}>{t("Lock")}</button>
             </span>
           </div>
         ))}
@@ -1653,23 +1646,6 @@ export default function AdminPage() {
           <ModalContent modal={modal} model={model} onSaveUser={saveUser} t={t} language={language} />
         </AdminModal>
       )}
-    </div>
-  );
-}
-
-function RiskList({ projects, t = (text) => text, language = "en" }) {
-  if (!projects.length) return <EmptyState label={t("No projects at risk")} />;
-  return (
-    <div className="admin-list-stack">
-      {projects.map((project) => (
-        <div key={project.id} className="admin-risk-row">
-          <span>
-            <strong>{project.name}</strong>
-            <small>{t("Deadline:")} {formatDate(project.deadline)}</small>
-          </span>
-          <Badge tone={project.health === "delayed" ? "red" : "orange"}>{healthLabel(project.health, language)}</Badge>
-        </div>
-      ))}
     </div>
   );
 }

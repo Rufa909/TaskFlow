@@ -13,7 +13,8 @@ const {
   sendVerificationEmail,
   verifyEmail,
   getAdminStats,
-  updateAdminProjectDeadline
+  updateAdminProjectDeadline,
+  lockAdminUser
 } = require('../controllers/authController');
 // Import middleware (bảo vệ route)
 const auth = require('../middleware/authMiddleware');
@@ -35,6 +36,7 @@ router.put('/email', auth, updateEmail);
 router.put('/password', auth, updatePassword);
 router.post('/send-verification-email', auth, sendVerificationEmail);
 router.get('/admin/stats', auth, getAdminStats);
+router.patch('/admin/users/:userId/lock', auth, lockAdminUser);
 router.patch('/admin/projects/:projectId/deadline', auth, updateAdminProjectDeadline);
 
 module.exports = router;

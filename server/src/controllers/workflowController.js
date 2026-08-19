@@ -1374,7 +1374,12 @@ const workflowController = {
         return res.status(403).json({ success: false, message: "Only project owner or admin can move a stage back" });
       }
 
-      await ProjectStage.movePrevious(req.body.stageId, context.userId, {
+      const stage = await getStage(context.projectId, req.body.stageId);
+      if (!stage) {
+        return res.status(404).json({ success: false, message: "Stage not found" });
+      }
+
+      await ProjectStage.movePrevious(stage.id, context.userId, {
         bypassPreviousLimits: context.access.isAdmin,
       });
       const stages = await normalizeWorkflow(context.projectId);
