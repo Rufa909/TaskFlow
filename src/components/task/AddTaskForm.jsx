@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import Icon from "../common/Icon";
 import DatePicker from "react-datepicker";
 import { format, addDays, nextMonday } from "date-fns";
+import { enUS, vi } from "date-fns/locale";
 import DatePickerPopover from "./DatePickerPopover";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
+import { getTranslation } from "../../i18n/translations";
 import api from "../../api/axiosInstance";
 
 const TASK_ASSIGNABLE_ROLES = ["member", "ba", "developer", "qa", "devops"];
@@ -57,16 +60,19 @@ export default function AddTaskForm({
 }) {
   const { showToast } = useToast();
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(language, key);
+  const dateLocale = language === "vi" ? vi : enUS;
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
   const [isLabelsDropdownOpen, setIsLabelsDropdownOpen] = useState(false);
   const [projectMembers, setProjectMembers] = useState([]);
   const [isAssigneeOpen, setIsAssigneeOpen] = useState(false);
   const [isAttachmentPopupOpen, setIsAttachmentPopupOpen] = useState(false);
   const priorities = [
-    { value: "urgent", label: "Urgent", color: "#dc2626" },
-    { value: "high", label: "High", color: "#f97316" },
-    { value: "medium", label: "Medium", color: "#d97706" },
-    { value: "low", label: "Low", color: "#6b7280" },
+    { value: "urgent", label: t("urgent"), color: "#dc2626" },
+    { value: "high", label: t("high"), color: "#f97316" },
+    { value: "medium", label: t("medium"), color: "#d97706" },
+    { value: "low", label: t("low"), color: "#6b7280" },
   ];
 
 const selectedPriority =
@@ -207,7 +213,7 @@ const selectedPriority =
     <div className="add-task-form">
       <input
         className="input-title"
-        placeholder="Task name"
+        placeholder={t("taskName")}
         value={newTaskTitle}
         onChange={(e) => setNewTaskTitle(e.target.value)}
         autoFocus
@@ -215,7 +221,7 @@ const selectedPriority =
       />
       <input
         className="input-desc"
-        placeholder="Description"
+        placeholder={t("description")}
         value={newTaskDesc}
         onChange={(e) => setNewTaskDesc(e.target.value)}
       />
@@ -234,8 +240,8 @@ const selectedPriority =
             color={taskDeadline ? "#058527" : "currentColor"}
           />
           <span style={{ color: taskDeadline ? "#058527" : "inherit" }}>
-            {taskDeadline ? format(taskDeadline, "d MMM") : "Deadline"}{" "}
-            {taskTime && `at ${taskTime}`}
+            {taskDeadline ? format(taskDeadline, "d MMM", { locale: dateLocale }) : t("deadline")}{" "}
+            {taskTime && `${language === "vi" ? "lúc" : "at"} ${taskTime}`}
           </span>
           {taskDeadline && (
             <span
@@ -263,15 +269,15 @@ const selectedPriority =
             >
               <Icon name="paperclip" size={14} />
               {selectedAttachmentCount > 0
-                ? `${selectedAttachmentCount} document${selectedAttachmentCount > 1 ? "s" : ""}`
-                : "Attachment"}
+                ? `${selectedAttachmentCount} ${t("documentCount")}`
+                : t("attachment")}
             </button>
           ) : (
             <label className={`attachment-btn ${selectedFiles.length > 0 ? "has-files" : ""}`}>
               <Icon name="paperclip" size={14} />
               {selectedFiles.length > 1
-                ? `${selectedFiles.length} files`
-                : selectedFiles[0]?.name || "Attachment"}
+                ? `${selectedFiles.length} ${t("fileCount")}`
+                : selectedFiles[0]?.name || t("attachment")}
               <input
                 type="file"
                 hidden
@@ -285,10 +291,10 @@ const selectedPriority =
           {isAttachmentPopupOpen && availableStageDocuments.length > 0 && (
             <div className="attachment-popup document-picker-popup">
               <div className="attachment-popup-header">
-                <span>Documents stage trước</span>
+                <span>{language === "vi" ? "Tài liệu từ giai đoạn trước" : "Documents from previous stage"}</span>
                 {selectedDocuments.length > 0 && (
                   <button type="button" onClick={clearSelectedDocuments}>
-                    Clear
+                    {t("clear")}
                   </button>
                 )}
               </div>
@@ -307,8 +313,8 @@ const selectedPriority =
                       </span>
                       <Icon name="paperclip" size={14} />
                       <span className="attachment-popup-main">
-                        <strong>{doc.title || doc.original_name || "Document"}</strong>
-                        <small>{doc.document_type || doc.original_name || "Stage document"}</small>
+                        <strong>{doc.title || doc.original_name || (language === "vi" ? "Tài liệu" : "Document")}</strong>
+                        <small>{doc.document_type || doc.original_name || (language === "vi" ? "Tài liệu giai đoạn" : "Stage document")}</small>
                       </span>
                     </button>
                   );
@@ -320,9 +326,9 @@ const selectedPriority =
           {isAttachmentPopupOpen && availableStageDocuments.length === 0 && selectedFiles.length > 0 && (
             <div className="attachment-popup">
               <div className="attachment-popup-header">
-                <span>Documents selected</span>
+                <span>{language === "vi" ? "Tệp đã chọn" : "Documents selected"}</span>
                 <button type="button" onClick={clearSelectedFiles}>
-                  Clear
+                  {t("clear")}
                 </button>
               </div>
               <div className="attachment-popup-list">
@@ -393,7 +399,7 @@ const selectedPriority =
               className="task-add-label-btn"
             >
               <Icon name="tag" size={14} />
-              Add label
+              {t("addLabel")}
               <Icon name={isLabelsDropdownOpen ? "chevronUp" : "chevronDown"} size={12} />
             </button>
             {isLabelsDropdownOpen && (
@@ -435,8 +441,8 @@ const selectedPriority =
             >
               <Icon name="user" size={14} />
               {selectedAssignees.length > 0
-                ? `${selectedAssignees.length} member${selectedAssignees.length > 1 ? "s" : ""}`
-                : "Assign"}
+                ? `${selectedAssignees.length} ${t("memberCount")}`
+                : t("assign")}
               <Icon name={isAssigneeOpen ? "chevronUp" : "chevronDown"} size={12} />
             </button>
             {isAssigneeOpen && (
@@ -449,7 +455,7 @@ const selectedPriority =
                     setIsAssigneeOpen(false);
                   }}
                 >
-                  No assignee
+                  {t("noAssignee")}
                 </button>
                 {assignableMembers.map((member) => (
                   <button
@@ -481,7 +487,7 @@ const selectedPriority =
         )}
 
         <button>
-          <Icon name="clock" size={14} /> Reminders
+          <Icon name="clock" size={14} /> {t("reminders")}
         </button>
         <button>
           <Icon name="more" size={14} />
@@ -583,15 +589,15 @@ const selectedPriority =
               setTaskAssignee([]);
             }}
           >
-            Cancel
+            {t("cancel")}
           </button>
           <button
             className="submit-btn"
             onClick={handleAddTask}
             disabled={!newTaskTitle.trim() || !canCreateTask}
-            title={!canCreateTask ? "Your role cannot create tasks in this project" : ""}
+            title={!canCreateTask ? (language === "vi" ? "Vai trò của bạn không thể tạo task trong project này" : "Your role cannot create tasks in this project") : ""}
           >
-            Add task
+            {t("addTaskBtn")}
           </button>
         </div>
       </div>

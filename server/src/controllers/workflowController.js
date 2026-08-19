@@ -172,25 +172,8 @@ async function requireProjectAccess(req, res) {
   return { projectId, userId, access };
 }
 
-function isPastProjectDeadline(deadline) {
-  if (!deadline) return false;
-  const value = deadline instanceof Date ? deadline : new Date(deadline);
-  if (Number.isNaN(value.getTime())) return false;
-
-  const today = new Date();
-  const deadlineDate = new Date(value.getFullYear(), value.getMonth(), value.getDate());
-  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  return deadlineDate < todayDate;
-}
-
-function ensureProjectWritable(context, res) {
-  if (!isPastProjectDeadline(context?.access?.deadline)) return true;
-
-  res.status(423).json({
-    success: false,
-    message: "Project đã quá hạn.",
-  });
-  return false;
+function ensureProjectWritable() {
+  return true;
 }
 
 function formatDateOnly(value) {
@@ -847,22 +830,6 @@ async function buildCompletionChecklist(stage) {
 async function normalizeWorkflow(projectId) {
   await ProjectStage.ensureDefaultStages(projectId);
   const stages = await ProjectStage.getByProjectId(projectId);
-  let latestStageAction = null;
-
-  try {
-    const [latestActivities] = await db.query(
-      `SELECT sa.action, sa.created_at
-       FROM stage_activities sa
-       JOIN project_stages ps ON ps.id = sa.project_stage_id
-       WHERE ps.project_id = ?
-       ORDER BY sa.created_at DESC
-       LIMIT 1`,
-      [projectId],
-    );
-    latestStageAction = latestActivities[0] || null;
-  } catch (error) {
-    latestStageAction = null;
-  }
 
   if (stages.length > 0) {
     for (let index = 0; index < stages.length; index += 1) {
@@ -874,11 +841,7 @@ async function normalizeWorkflow(projectId) {
   }
 
   for (const stage of stages) {
-    const movedAt = latestStageAction?.created_at ? new Date(latestStageAction.created_at) : null;
-    const isWithinPreviousWindow = movedAt && Date.now() - movedAt.getTime() <= 12 * 60 * 60 * 1000;
-    stage.can_move_previous = Number(stage.stage_order) > 1
-      && latestStageAction?.action === "approve"
-      && isWithinPreviousWindow;
+    stage.can_move_previous = Number(stage.stage_order) > 1;
   }
 
   return stages;

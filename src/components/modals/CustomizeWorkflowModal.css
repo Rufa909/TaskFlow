@@ -61,44 +61,6 @@
   line-height: 1.6;
 }
 
-.stage-suggestion-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: -8px 0 18px;
-  padding: 10px 12px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-  color: #1e40af;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.stage-suggestion-bar button,
-.stage-date-suggestion {
-  border: 1px solid #93c5fd;
-  background: #fff;
-  color: #1d4ed8;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.stage-suggestion-bar button {
-  padding: 7px 10px;
-  white-space: nowrap;
-}
-
-.stage-suggestion-bar button:hover,
-.stage-date-suggestion:hover {
-  background: #dbeafe;
-  border-color: #60a5fa;
-}
-
 .stages-list {
   display: flex;
   flex-direction: column;
@@ -170,11 +132,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-}
-
-.stage-date-suggestion {
-  align-self: flex-start;
-  padding: 6px 9px;
 }
 
 .stage-date-field {

@@ -401,7 +401,7 @@ async function ensureChatNotificationSchema() {
 
       const values = [...columnType.matchAll(/'((?:''|[^'])*)'/g)]
         .map((match) => match[1].replace(/''/g, "'"));
-      const nextValues = [...new Set([...values, "chat_message", "project_chat_message", "group_invited", "team_invitation_declined", "team_invitation_accepted"])];
+      const nextValues = [...new Set([...values, "chat_message", "project_chat_message", "group_invited", "team_invitation_sent", "team_invitation_declined", "team_invitation_accepted"])];
       if (nextValues.length === values.length) return;
 
       const nullable = column.IS_NULLABLE === "NO" ? "NOT NULL" : "NULL";
@@ -2059,6 +2059,7 @@ const updateConversationMemberRole = async (req, res) => {
 
 module.exports = {
   ensureProjectChatTables,
+  ensureChatNotificationSchema,
   getProjectChatOverview,
   getDirectConversations,
   getGroupConversations,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, User, Calendar, Trophy, Pencil, Check, X } from 'lucide-react';
+import { User, Calendar, Trophy, Pencil, Check, X } from 'lucide-react';
 import axios from 'axios';
 import './ProjectWorkflowTracker.css';
 
@@ -60,33 +60,6 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
     if (projectId) fetchWorkflow();
   }, [projectId, initialStages, API_URL]);
 
-  const handleMoveNext = async (stageId) => {
-    setIsSubmitting(true);
-    try {
-      await axios.post(`${API_URL}/api/projects/${projectId}/stages/${stageId}/complete`,
-        {},
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      );
-
-      const res = await axios.get(`${API_URL}/api/projects/${projectId}/workflow`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      setStages(res.data.data);
-      if (onStagesChange) onStagesChange(res.data.data);
-      if (res.data.isOwner !== undefined) setIsOwnerState(res.data.isOwner);
-      setError(null);
-    } catch (err) {
-      const missing = err.response?.data?.missing || [];
-      setError(
-        missing.length > 0
-          ? `Không thể chuyển stage. Thiếu: ${missing.join(', ')}`
-          : 'Lỗi khi chuyển sang giai đoạn tiếp theo: ' + (err.response?.data?.message || err.message)
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleCompleteProject = async () => {
     if (!pendingCompleteStageId) return;
     setShowCompleteModal(false);
@@ -114,44 +87,6 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
     } finally {
       setIsSubmitting(false);
       setPendingCompleteStageId(null);
-    }
-  };
-
-  const handleMovePrevious = async (stageId) => {
-    setIsSubmitting(true);
-    try {
-      console.log('[ProjectWorkflowTracker] calling previous endpoint');
-      await axios.post(
-        `${API_URL}/api/projects/${projectId}/stages/previous`,
-        { stageId },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      );
-
-      const res = await axios.get(`${API_URL}/api/projects/${projectId}/workflow`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-
-      console.log('[ProjectWorkflowTracker] movePrevious got workflow', {
-        success: res.data?.success,
-        dataLen: res.data?.data?.length,
-        stages: res.data?.data
-      });
-
-      setStages(res.data.data);
-      if (onStagesChange) onStagesChange(res.data.data);
-      if (res.data.isOwner !== undefined) setIsOwnerState(res.data.isOwner);
-      setError(null);
-    } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message;
-      const previousErrorMessages = {
-        'You can only move back once after moving to a new stage': 'Chỉ được quay lại 1 lần sau khi chuyển sang giai đoạn mới',
-        'You can only move back within 12 hours after moving to a new stage': 'Chỉ được quay lại trong vòng 12 tiếng kể từ khi chuyển sang giai đoạn mới',
-        'Cannot move back from the first stage': 'Không thể quay lại từ giai đoạn đầu tiên',
-      };
-      const translatedMsg = previousErrorMessages[msg] || msg;
-      setError('Lỗi khi quay lại giai đoạn trước: ' + translatedMsg);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -292,49 +227,23 @@ const ProjectWorkflowTracker = ({ projectId, isOwner = false, stages: initialSta
                     </div>
                   </div>
 
-                  {/* Action buttons — only for owner on the current active stage */}
-                  {isOwnerState && isCurrent && (
+                  {isOwnerState && isCurrent && isLastStage && stage.status !== 'completed' && (
                     <div className="stage-actions">
                       {error && <div className="action-error">{error}</div>}
                       <div className="action-buttons">
-                        {stage.status !== 'completed' && (isLastStage ? (
-                          <button
-                            className="btn-complete"
-                            onClick={() => {
-                              setPendingCompleteStageId(stage.id);
-                              setShowCompleteModal(true);
-                            }}
-                            disabled={isSubmitting}
-                            type="button"
-                            aria-label="Complete project"
-                            title="Complete project"
-                          >
-                            <Trophy size={18} />
-                            <span>Complete</span>
-                          </button>
-                        ) : (
-                          <button
-                            className="btn-next"
-                            onClick={() => handleMoveNext(stage.id)}
-                            disabled={isSubmitting}
-                            type="button"
-                            aria-label="Next stage"
-                            title="Next stage"
-                          >
-                            <ChevronRight size={18} />
-                            <span>Next</span>
-                          </button>
-                        ))}
                         <button
-                          className="btn-previous"
-                          onClick={() => handleMovePrevious(stage.id)}
-                          disabled={isSubmitting || !stage.can_move_previous}
+                          className="btn-complete"
+                          onClick={() => {
+                            setPendingCompleteStageId(stage.id);
+                            setShowCompleteModal(true);
+                          }}
+                          disabled={isSubmitting}
                           type="button"
-                          aria-label="Previous stage"
-                          title="Previous stage"
+                          aria-label="Complete project"
+                          title="Complete project"
                         >
-                          <span>Previous</span>
-                          <ChevronLeft size={18} />
+                          <Trophy size={18} />
+                          <span>Complete</span>
                         </button>
                       </div>
                     </div>

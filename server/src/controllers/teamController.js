@@ -1,9 +1,22 @@
 const pool = require("../config/db");
-const { ensureProjectChatTables } = require("./projectChatController");
+const { ensureProjectChatTables, ensureChatNotificationSchema } = require("./projectChatController");
 
 const PROJECT_MEMBER_ROLES = ["leader", "member", "ba", "developer", "qa", "devops", "viewer"];
 const PROJECT_MEMBER_ROLE_ENUM = "ENUM('owner','leader','member','ba','developer','qa','devops','viewer')";
 let projectMemberRoleSchemaReady;
+
+async function notifyInvitationSent(senderId, invitationId) {
+  await ensureChatNotificationSchema();
+  await pool.query(
+    `DELETE FROM notifications
+     WHERE user_id = ? AND type = 'team_invitation_sent' AND reference_id = ?`,
+    [senderId, invitationId],
+  );
+  await pool.query(
+    "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'team_invitation_sent', ?)",
+    [senderId, invitationId],
+  );
+}
 
 async function ensureProjectMemberRoleSchema() {
   if (!projectMemberRoleSchemaReady) {
@@ -212,6 +225,7 @@ const sendInvitation = async (req, res) => {
          WHERE invitation_id = ?`,
         [sender_id, existingInvite.invitation_id],
       );
+      await notifyInvitationSent(sender_id, existingInvite.invitation_id);
 
       return res.status(200).json({
         success: true,
@@ -231,6 +245,7 @@ const sendInvitation = async (req, res) => {
       "INSERT INTO team_invitations (project_id, sender_id, receiver_id) VALUES (?, ?, ?)",
       [project_id, sender_id, receiver_id],
     );
+    await notifyInvitationSent(sender_id, result.insertId);
 
     res.status(201).json({
       success: true,
@@ -333,6 +348,11 @@ const respondInvitation = async (req, res) => {
       );
 
       await ensureProjectChatTables();
+      await ensureChatNotificationSchema();
+      await pool.query(
+        "DELETE FROM notifications WHERE user_id = ? AND type = 'team_invitation_sent' AND reference_id = ?",
+        [invitation.sender_id, id],
+      );
       await pool.query(
         "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'team_invitation_accepted', ?)",
         [invitation.sender_id, id],
@@ -347,6 +367,11 @@ const respondInvitation = async (req, res) => {
       );
 
       await ensureProjectChatTables();
+      await ensureChatNotificationSchema();
+      await pool.query(
+        "DELETE FROM notifications WHERE user_id = ? AND type = 'team_invitation_sent' AND reference_id = ?",
+        [invitation.sender_id, id],
+      );
       await pool.query(
         "INSERT INTO notifications (user_id, type, reference_id) VALUES (?, 'team_invitation_declined', ?)",
         [invitation.sender_id, id],

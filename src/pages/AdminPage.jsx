@@ -221,6 +221,15 @@ const ADMIN_VI = {
   "Assignee:": "Người phụ trách:",
   "Project:": "Dự án:",
   "No tasks": "Chưa có công việc",
+  "All task statuses": "Tất cả trạng thái công việc",
+  "Previous page": "Trang trước",
+  "Next page": "Trang sau",
+  "Showing": "Hiển thị",
+  "of": "trên",
+  "task(s)": "công việc",
+  "In progress tasks": "Đang thực hiện",
+  "Completed tasks": "Đã hoàn thành",
+  "Overdue tasks": "Quá hạn",
   "Language": "Ngôn ngữ",
   "English": "Tiếng Anh",
   "Vietnamese": "Tiếng Việt",
@@ -494,13 +503,15 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
   const users = recentUsers.length > 0 ? recentUsers : currentUser ? [currentUser] : [];
   const enrichedUsers = users.map((item, index) => {
     const workload = userTaskCounts.get(item.email) || userTaskCounts.get(item.username) || {};
+    const projectIds = [...new Set(String(item.project_ids || "").split(",").filter(Boolean))];
     return {
       id: item.user_id || item.id || index + 1,
       name: item.username || item.name || "Unknown user",
       email: item.email || "-",
       role: item.role || "member",
       status: item.deleted_at ? "Inactive" : item.locked_at || item.locked ? "Locked" : item.email_verified ? "Active" : "Pending",
-      projects: allProjects.filter((project) => project.owner_email === item.email || project.owner_id === item.user_id).length,
+      project_ids: projectIds,
+      projects: projectIds.length,
       tasks: workload.tasks || 0,
       lastActive: item.last_active || item.updated_at || item.created_at,
       auth_provider: item.auth_provider,
@@ -530,8 +541,6 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
     const realStages = (project.workflowStages || [])
       .slice()
       .sort((a, b) => Number(a.stage_order || 0) - Number(b.stage_order || 0));
-    const firstOpenStageIndex = realStages.findIndex((stage) => normalizeWorkflowStageStatus(stage.status) !== "completed");
-    const currentStageIndex = firstOpenStageIndex >= 0 ? firstOpenStageIndex : realStages.length - 1;
     const stages = realStages.map((stage, index) => {
       const normalizedStatus = normalizeWorkflowStageStatus(stage.status);
       const status = isProjectOverdue && normalizedStatus !== "completed" ? "delayed" : normalizedStatus;
@@ -543,7 +552,6 @@ function buildAdminModel(stats, visibleProjects, currentUser, chatGroupConversat
         name: stage.stage_name || stage.name || `Stage ${index + 1}`,
         owner: stage.assignee_email || stage.assignee_name || project.owner_email || project.owner_name || "Owner",
         status,
-        canMovePrevious: index === currentStageIndex && Boolean(stage.can_move_previous),
         processingTime: "-",
         deadline: stage.deadline || project.deadlineProject?.date || project.deadline,
         deadlineProject: stage.deadline ? normalizeDeadlineProject({ deadline: stage.deadline }, status === "completed" ? 100 : 0) : project.deadlineProject || null,
@@ -917,7 +925,6 @@ export default function AdminPage() {
   const [localUsers, setLocalUsers] = useState([]);
   const [lockingUserIds, setLockingUserIds] = useState(new Set());
   const [savingProjectDeadlineIds, setSavingProjectDeadlineIds] = useState(new Set());
-  const [savingPreviousStageIds, setSavingPreviousStageIds] = useState(new Set());
   const [projectDeadlineDrafts, setProjectDeadlineDrafts] = useState({});
 
   const loadAdminData = async () => {
@@ -996,6 +1003,7 @@ export default function AdminPage() {
 
   const lockUser = async (target) => {
     if (!window.confirm(`${t("Lock this user?")}\n${target.name} (${target.email})`)) return;
+    const targetKey = target.id || target.email;
 
     if (String(target.id).startsWith("local-")) {
       setLocalUsers((current) => current.map((item) => (
@@ -1004,16 +1012,16 @@ export default function AdminPage() {
       return;
     }
 
-    setLockingUserIds((current) => new Set(current).add(target.id));
+    setLockingUserIds((current) => new Set(current).add(targetKey));
     try {
-      await api.patch(`/auth/admin/users/${target.id}/lock`, { email: target.email });
+      await api.patch("/auth/admin/users/lock", { email: target.email });
       await loadAdminData();
     } catch (err) {
       window.alert(err.response?.data?.message || t("Cannot lock user."));
     } finally {
       setLockingUserIds((current) => {
         const next = new Set(current);
-        next.delete(target.id);
+        next.delete(targetKey);
         return next;
       });
     }
@@ -1161,7 +1169,6 @@ export default function AdminPage() {
     <SectionCard
       title={t("User Management")}
       icon="users"
-      actions={<button className="admin-primary-button" type="button" onClick={() => setModal({ type: "userForm", item: null })}><Icon name="plus" size={14} />{t("Add User")}</button>}
     >
       <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")}>
         <select value={filters.userStatus} onChange={(event) => updateFilter("userStatus", event.target.value)}>
@@ -1177,7 +1184,7 @@ export default function AdminPage() {
           <span>{t("Name")}</span><span>{t("Email")}</span><span>{t("Status")}</span><span>{t("Projects")}</span><span>{t("Tasks")}</span><span>{t("Last Active")}</span><span>{t("Actions")}</span>
         </div>
         {visibleUsers.map((item) => (
-          <div key={item.id} className="admin-table-row">
+          <div key={item.id || item.email} className="admin-table-row">
             <span><strong>{item.name}</strong></span>
             <span>{item.email}</span>
             <span><Badge tone={item.status === "Locked" ? "red" : item.status === "Pending" ? "orange" : item.status === "Inactive" ? "neutral" : "green"}>{t(item.status)}</Badge></span>
@@ -1186,7 +1193,7 @@ export default function AdminPage() {
             <span>{formatDate(item.lastActive)}</span>
             <span className="admin-row-actions">
               <button type="button" onClick={() => setModal({ type: "user", item })}>{t("View")}</button>
-              <button type="button" disabled={item.status === "Inactive" || item.status === "Locked" || lockingUserIds.has(item.id)} onClick={() => lockUser(item)}>{t("Lock")}</button>
+              <button type="button" disabled={item.status === "Inactive" || item.status === "Locked" || lockingUserIds.has(item.id || item.email)} onClick={() => lockUser(item)}>{t("Lock")}</button>
             </span>
           </div>
         ))}
@@ -1342,34 +1349,6 @@ export default function AdminPage() {
     );
   };
 
-  const handleAdminMovePrevious = async (workflow, stage) => {
-    const projectId = workflow.id || stage.project_id;
-    const stageId = stage.stage_id || stage.id;
-    if (!projectId || !stageId || savingPreviousStageIds.has(stageId)) return;
-
-    setSavingPreviousStageIds((current) => new Set(current).add(stageId));
-    setError("");
-    try {
-      await api.post(`/projects/${projectId}/stages/previous`, { stageId });
-      await loadAdminData();
-    } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message;
-      const previousErrorMessages = {
-        "You can only move back once after moving to a new stage": "Chỉ được quay lại 1 lần sau khi chuyển sang giai đoạn mới",
-        "You can only move back within 12 hours after moving to a new stage": "Chỉ được quay lại trong vòng 12 tiếng kể từ khi chuyển sang giai đoạn mới",
-        "Cannot move back from the first stage": "Không thể quay lại từ giai đoạn đầu tiên",
-        "Only project owner or admin can move a stage back": "Chỉ chủ dự án hoặc admin được quay lại giai đoạn trước",
-      };
-      setError(previousErrorMessages[msg] || msg);
-    } finally {
-      setSavingPreviousStageIds((current) => {
-        const next = new Set(current);
-        next.delete(stageId);
-        return next;
-      });
-    }
-  };
-
   const renderTasks = () => (
     <SectionCard title={t("Tasks")} icon="check">
       <SearchFilter search={search} onSearch={setSearch} placeholder={t("Search")}>
@@ -1445,19 +1424,6 @@ export default function AdminPage() {
                     <strong>{stage.name}</strong>
                   </div>
                   <small>{workflowStatusLabel(stage.status, language)}</small>
-                  {stage.canMovePrevious && (
-                    <button
-                      type="button"
-                      className="admin-stage-previous"
-                      onClick={() => handleAdminMovePrevious(workflow, stage)}
-                      disabled={savingPreviousStageIds.has(stage.stage_id || stage.id)}
-                      title={language === "vi" ? "Quay lại stage trước" : "Move to previous stage"}
-                      aria-label={language === "vi" ? "Quay lại stage trước" : "Move to previous stage"}
-                    >
-                      <Icon name="chevronLeft" size={13} />
-                      <span>{savingPreviousStageIds.has(stage.stage_id || stage.id) ? "..." : "Previous"}</span>
-                    </button>
-                  )}
                 </div>
                 {index < workflow.stages.length - 1 && <span className="admin-stage-connector" aria-hidden="true"><Icon name="chevronRight" size={14} /></span>}
               </span>
@@ -1674,7 +1640,16 @@ function modalTitle(modal, t = (text) => text) {
 
 function ModalContent({ modal, model, onSaveUser, t = (text) => text, language = "en" }) {
   const [form, setForm] = useState(modal.item || { status: "Active" });
+  const [userTaskProject, setUserTaskProject] = useState("all");
+  const [userTaskStatus, setUserTaskStatus] = useState("all");
+  const [userTaskPage, setUserTaskPage] = useState(1);
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    setUserTaskProject("all");
+    setUserTaskStatus("all");
+    setUserTaskPage(1);
+  }, [modal.type, modal.item?.id, modal.item?.email]);
 
   if (modal.type === "userForm") {
     return (
@@ -1688,17 +1663,115 @@ function ModalContent({ modal, model, onSaveUser, t = (text) => text, language =
   }
 
   if (modal.type === "user") {
-    const ownedProjects = model.projects.filter((project) => project.owner_email === modal.item.email || project.owner_id === modal.item.id);
-    const assignedTasks = model.tasks.filter((task) => task.assignee_email === modal.item.email || task.assignee === modal.item.name);
+    const assignedTasks = model.tasks.filter((task) => {
+      const assigneeIds = String(task.assignee_ids || "").split(",").filter(Boolean);
+      const assigneeEmails = String(task.assignee_emails || "").split(",").filter(Boolean);
+      return assigneeIds.includes(String(modal.item.id))
+        || assigneeEmails.includes(String(modal.item.email))
+        || task.assignee_email === modal.item.email
+        || task.assignee === modal.item.name;
+    });
+    const explicitProjectIds = new Set(
+      (Array.isArray(modal.item.project_ids)
+        ? modal.item.project_ids
+        : String(modal.item.project_ids || "").split(","))
+        .filter(Boolean)
+        .map(String),
+    );
+    const assignedProjectIds = new Set(assignedTasks.map((task) => String(task.project_id)).filter(Boolean));
+    const relatedProjects = model.projects.filter((project) => {
+      const memberIds = String(project.member_ids || "").split(",").filter(Boolean);
+      const memberEmails = String(project.member_emails || "").split(",").filter(Boolean);
+      return Number(project.owner_id) === Number(modal.item.id)
+        || project.owner_email === modal.item.email
+        || memberIds.includes(String(modal.item.id))
+        || memberEmails.includes(String(modal.item.email))
+        || explicitProjectIds.has(String(project.id))
+        || assignedProjectIds.has(String(project.id));
+    });
+    const userProjects = [...new Map([
+      ...relatedProjects.map((project) => [String(project.id), project]),
+      ...assignedTasks.map((task) => [String(task.project_id), {
+        id: Number(task.project_id),
+        name: task.project_name || "-",
+      }]),
+    ]).values()];
+    const taskProjects = [...new Map(userProjects.map((project) => [String(project.id), {
+      id: String(project.id),
+      name: project.name || "-",
+    }])).values()];
+    const taskStatuses = [...new Set(assignedTasks.map((task) => task.status).filter(Boolean))];
+    const filteredTasks = assignedTasks.filter((task) => (
+      (userTaskProject === "all" || String(task.project_id) === userTaskProject)
+      && (userTaskStatus === "all" || task.status === userTaskStatus)
+    ));
+    const tasksPerPage = 5;
+    const totalPages = Math.max(1, Math.ceil(filteredTasks.length / tasksPerPage));
+    const safePage = Math.min(userTaskPage, totalPages);
+    const paginatedTasks = filteredTasks.slice((safePage - 1) * tasksPerPage, safePage * tasksPerPage);
+    const completedTaskCount = assignedTasks.filter((task) => DONE_STATUSES.has(String(task.status || "").toUpperCase())).length;
+    const overdueTaskCount = assignedTasks.filter((task) => task.overdue).length;
+    const activeTaskCount = assignedTasks.length - completedTaskCount;
+    const changeTaskFilter = (setter, value) => {
+      setter(value);
+      setUserTaskPage(1);
+    };
     return (
-      <div className="admin-modal-detail">
+      <div className="admin-modal-detail admin-user-detail">
         <p><strong>{modal.item.name}</strong><span>{modal.item.email}</span></p>
         <p><Badge tone={modal.item.status === "Locked" ? "red" : "green"}>{t(modal.item.status)}</Badge></p>
         <h4>{t("Projects")}</h4>
-        {ownedProjects.map((project) => <span key={project.id}>{project.name}</span>)}
-        {!ownedProjects.length && <EmptyState label={t("No projects")} />}
-        <h4>{t("Tasks")}</h4>
-        {assignedTasks.map((task) => <span key={task.id}>{task.title}</span>)}
+        <div className="admin-user-project-list">
+          {userProjects.map((project) => <span key={project.id}>{project.name}</span>)}
+        </div>
+        {!userProjects.length && <EmptyState label={t("No projects")} />}
+        <div className="admin-user-task-heading">
+          <h4>{t("Tasks")}</h4>
+          <span>{assignedTasks.length} {t("task(s)")}</span>
+        </div>
+        {assignedTasks.length > 0 && (
+          <>
+            <div className="admin-user-task-summary">
+              <span><strong>{activeTaskCount}</strong>{t("In progress tasks")}</span>
+              <span><strong>{completedTaskCount}</strong>{t("Completed tasks")}</span>
+              <span><strong>{overdueTaskCount}</strong>{t("Overdue tasks")}</span>
+            </div>
+            <div className="admin-user-task-filters">
+              <select value={userTaskProject} onChange={(event) => changeTaskFilter(setUserTaskProject, event.target.value)}>
+                <option value="all">{t("All projects")}</option>
+                {taskProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              </select>
+              <select value={userTaskStatus} onChange={(event) => changeTaskFilter(setUserTaskStatus, event.target.value)}>
+                <option value="all">{t("All task statuses")}</option>
+                {taskStatuses.map((status) => <option key={status} value={status}>{formatStatus(status, language)}</option>)}
+              </select>
+            </div>
+            <div className="admin-user-task-list">
+              {paginatedTasks.map((task) => (
+                <div key={task.id} className={`admin-user-task-item ${task.overdue ? "overdue" : ""}`}>
+                  <div className="admin-user-task-title">
+                    <strong>{task.title}</strong>
+                    <Badge tone={task.overdue ? "red" : DONE_STATUSES.has(String(task.status || "").toUpperCase()) ? "green" : "blue"}>{formatStatus(task.status, language)}</Badge>
+                  </div>
+                  <div className="admin-user-task-meta">
+                    <span><small>{t("Project")}</small><strong>{task.project_name || "-"}</strong></span>
+                    <span><small>{t("Priority")}</small><strong>{formatStatus(task.priority, language)}</strong></span>
+                    <span><small>{t("Deadline")}</small><strong>{formatDate(task.deadline)}</strong></span>
+                  </div>
+                </div>
+              ))}
+              {!paginatedTasks.length && <EmptyState label={t("No tasks found")} />}
+            </div>
+            <div className="admin-user-task-pagination">
+              <span>{t("Showing")} {filteredTasks.length ? (safePage - 1) * tasksPerPage + 1 : 0}-{Math.min(safePage * tasksPerPage, filteredTasks.length)} {t("of")} {filteredTasks.length}</span>
+              <div>
+                <button type="button" onClick={() => setUserTaskPage((page) => Math.max(1, page - 1))} disabled={safePage <= 1}>{t("Previous page")}</button>
+                <strong>{safePage}/{totalPages}</strong>
+                <button type="button" onClick={() => setUserTaskPage((page) => Math.min(totalPages, page + 1))} disabled={safePage >= totalPages}>{t("Next page")}</button>
+              </div>
+            </div>
+          </>
+        )}
         {!assignedTasks.length && <EmptyState label={t("No tasks")} />}
       </div>
     );

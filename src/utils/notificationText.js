@@ -56,6 +56,8 @@ export function notificationTitle(notification, language = "en") {
       return `Công việc đang chờ owner duyệt: ${task}`;
     case "task_changes_requested":
       return `Yêu cầu chỉnh sửa: ${task}`;
+    case "team_invitation_sent":
+      return `Đã mời ${actor} tham gia ${project} - đang chờ phản hồi`;
     case "team_invitation_declined":
       return `${actor} đã từ chối lời mời vào ${project}`;
     case "team_invitation_accepted":

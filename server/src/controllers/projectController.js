@@ -435,15 +435,16 @@ exports.updateProject = async (req, res) => {
         if (deadline && normalizedDeadline === undefined) {
             return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong hop le!' });
         }
-        if (isPastProjectDeadline(normalizedDeadline)) {
-            return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong duoc o qua khu!' });
-        }
         const [rows] = await pool.query(
             'SELECT * FROM projects WHERE project_id = ? AND owner_id = ? AND deleted_at IS NULL',
             [id, req.user.id]
         );
         if (rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Project khong ton tai!' });
+        }
+        const existingDeadline = normalizeProjectDeadline(rows[0].deadline);
+        if (isPastProjectDeadline(normalizedDeadline) && normalizedDeadline !== existingDeadline) {
+            return res.status(400).json({ success: false, message: 'Ngay hoan thanh project khong duoc o qua khu!' });
         }
         if (normalizedDeadline) {
             await ProjectStage.ensureProjectStagesTable();

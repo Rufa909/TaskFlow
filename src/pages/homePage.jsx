@@ -99,6 +99,14 @@ function isProjectOverdue(project) {
   return isPastLocalDate(getProjectDeadlineDate(project));
 }
 
+function getProjectOverdueDays(project) {
+  const deadline = getDateOnly(getProjectDeadlineDate(project));
+  if (!deadline) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - deadline.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
 function getEarliestDate(...values) {
   return values
     .map(parseLocalDate)
@@ -422,7 +430,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   };
 
   const handleStageClick = (stage) => {
-    if (isProjectOverdue(activeProject)) return;
     setSelectedStage(stage);
     setTaskStageId(stage?.id || null);
     setTaskDocumentIds([]);
@@ -433,7 +440,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   };
 
   const handleOpenStageWorkspace = () => {
-    if (isProjectOverdue(activeProject)) return;
     const stage = selectedStage || getWorkspaceDefaultStage(workflowStages);
     if (!stage) return;
     setSelectedStage(stage);
@@ -443,7 +449,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   };
 
   const handleStageWorkspaceStageChange = (stage) => {
-    if (!stage || isProjectOverdue(activeProject)) return;
+    if (!stage) return;
     setSelectedStage(stage);
     setTaskStageId(stage.id || stage.stage_id || null);
     setTaskDocumentIds([]);
@@ -553,10 +559,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleDeleteTask = async (taskId) => {
     if (!activeProject) return;
-    if (isProjectOverdue(activeProject)) {
-      showToast("Project đã quá hạn.", "error");
-      return;
-    }
 
     try {
       await api.delete(`/projects/${activeProject.project_id}/tasks/${taskId}`);
@@ -574,10 +576,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   };
   const handleUpdateTask = async (taskId, updatedData) => {
     if (!activeProject) return;
-    if (isProjectOverdue(activeProject)) {
-      showToast("Project đã quá hạn.", "error");
-      throw new Error("Project is overdue");
-    }
 
     try {
       const projectId =
@@ -609,11 +607,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !activeProject) return;
-    if (isProjectOverdue(activeProject)) {
-      showToast("Project đã quá hạn.", "error");
-      setIsAddingTask(false);
-      return;
-    }
     if (isWorkflowComplete(workflowStages)) {
       showToast("Project is completed. Cannot create new tasks.", "error");
       setIsAddingTask(false);
@@ -639,12 +632,12 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       return;
     }
 
-    if (taskDeadlineDate && stageEndDate && taskDeadlineDate > stageEndDate) {
+    if (!isProjectOverdue(activeProject) && taskDeadlineDate && stageEndDate && taskDeadlineDate > stageEndDate) {
       showToast("Deadline của task không được vượt quá ngày kết thúc stage.", "error");
       return;
     }
 
-    if (taskDeadlineDate && projectDeadlineDate && taskDeadlineDate > projectDeadlineDate) {
+    if (!isProjectOverdue(activeProject) && taskDeadlineDate && projectDeadlineDate && taskDeadlineDate > projectDeadlineDate) {
       showToast("Deadline của task không được vượt quá hạn project.", "error");
       return;
     }
@@ -699,10 +692,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
   };
   const handleCompleteTask = async (task) => {
     if (!activeProject || !task?.task_id) return;
-    if (isProjectOverdue(activeProject)) {
-      showToast("Project đã quá hạn.", "error");
-      return;
-    }
 
     try {
       const res = await api.post(
@@ -745,10 +734,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleReviewTaskSubmission = async (task, action, reason = "") => {
     if (!activeProject || !task?.task_id) return;
-    if (isProjectOverdue(activeProject)) {
-      showToast("Project đã quá hạn.", "error");
-      return;
-    }
 
     try {
       const res = await api.post(
@@ -889,7 +874,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const openProjectDeadlineEditor = () => {
     if (!activeProject) return;
-    if (isProjectOverdue(activeProject)) return;
     setProjectDeadlineDraft(getProjectDeadlineInputValue(activeProject));
     setIsProjectDeadlineEditorOpen(true);
   };
@@ -901,11 +885,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
 
   const handleProjectDeadlineSave = async () => {
     if (!activeProject) return;
-    if (isProjectOverdue(activeProject)) {
-      showToast("Project đã quá hạn.", "error");
-      setIsProjectDeadlineEditorOpen(false);
-      return;
-    }
     if (projectDeadlineDraft && isPastLocalDate(projectDeadlineDraft)) {
       showToast("Ngày hoàn thành project không được ở quá khứ.", "error");
       return;
@@ -943,13 +922,15 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
     workflowStages.find((stage) => Number(stage.id) === Number(taskStageId)) ||
     workspaceDefaultStage;
   const activeTaskStageId = activeTaskStage?.id || currentWorkflowStageId;
-  const taskMinDate = parseLocalDate(activeTaskStage?.start_date) || new Date();
-  const taskMaxDate = getEarliestDate(
-    activeTaskStage?.end_date || activeTaskStage?.deadline,
-    getProjectDeadlineDate(activeProject),
-  );
-  const workflowComplete = isWorkflowComplete(workflowStages);
   const projectOverdue = isProjectOverdue(activeProject);
+  const taskMinDate = parseLocalDate(activeTaskStage?.start_date) || new Date();
+  const taskMaxDate = projectOverdue
+    ? null
+    : getEarliestDate(
+        activeTaskStage?.end_date || activeTaskStage?.deadline,
+        getProjectDeadlineDate(activeProject),
+      );
+  const workflowComplete = isWorkflowComplete(workflowStages);
   const stageScopedTasks = activeTaskStageId
     ? currentTasks.filter(
         (task) => Number(task.stage_id) === Number(activeTaskStageId),
@@ -1106,18 +1087,6 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       });
     }
   }, [activeView, highlightedTaskId, projectOpenTasks]);
-
-  useEffect(() => {
-    if (!projectOverdue) return;
-    setIsAddingTask(false);
-    setSelectedTask(null);
-    setIsStagePanelOpen(false);
-    setSelectedStage(null);
-    setIsProjectDeadlineEditorOpen(false);
-    setIsWorkflowExpanded(false);
-    setTaskSectionDropdownOpen(false);
-    setVisibleSections({ overdue: false, completed: false });
-  }, [projectOverdue, activeProject?.project_id]);
 
   const getLabelCount = (label) =>
     taskSourceForFilters.filter(
@@ -1409,7 +1378,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
       {/* Main Content */}
       <main className="main-content">
         <header className="main-header">
-          <div className="breadcrumb">My Projects / </div>
+          <div className="breadcrumb">{t("myProjects")} / </div>
           <div className="main-actions">
             <button className="action-btn">
               <Icon name="more" size={14} />
@@ -1795,7 +1764,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                 <h1 className="page-title">
                   {activeProject?.name || "Select a project"}
                 </h1>
-                {activeProject && !projectOverdue && (
+                {activeProject && (
                   <div className="project-deadline-inline">
                     <button
                       className={`project-deadline-chip ${getProjectDeadlineDate(activeProject) ? "" : "empty"} ${currentProjectRole === "owner" ? "editable" : ""}`}
@@ -1851,16 +1820,17 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                 )}
               </div>
 
-              {activeProject && projectOverdue ? (
+              {activeProject && projectOverdue && (
                 <div className="project-overdue-state" role="status" aria-live="polite">
                   <div className="project-overdue-icon">
-                    <Icon name="clock" size={30} />
+                    <Icon name="clock" size={20} />
                   </div>
-                  <h2>Đã quá hạn</h2>
-                  <p>Project này đã vượt quá hạn hoàn thành nên mọi chức năng đã bị khóa.</p>
+                  <div>
+                    <h2>Project đã quá hạn {getProjectOverdueDays(activeProject)} ngày</h2>
+                    <p>Bạn vẫn có thể tiếp tục làm việc và hoàn thành project.</p>
+                  </div>
                 </div>
-              ) : (
-                <>
+              )}
               {/* Workflow Progress Bar - Top Priority */}
               {activeProject && !loadingWorkflow && workflowStages.length > 0 && (
                 <WorkflowProgressBar 
@@ -1892,12 +1862,12 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                       name={isWorkflowExpanded ? "chevronDown" : "chevronRight"} 
                       size={18} 
                     />
-                  Detailed Workflow
+                  {t("detailedWorkflow")}
                   </div>
                   {isWorkflowExpanded && (
                     <div style={{ background: "#f8f9fa", padding: "1rem", borderRadius: "8px" }}>
                       {loadingWorkflow ? (
-                        <p>Loading workflow...</p>
+                        <p>{t("loadingWorkflow")}</p>
                       ) : workflowStages.length > 0 ? (
                         <ProjectWorkflowTracker 
                           projectId={activeProject.project_id}
@@ -1906,7 +1876,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                           onStagesChange={handleWorkflowStagesChange}
                         />
                       ) : (
-                        <p>No workflow stages defined for this project.</p>
+                        <p>{t("noWorkflowStages")}</p>
                       )}
                     </div>
                   )}
@@ -1972,7 +1942,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                       }}
                     >
                       <span className="icon"><Icon name="plus" size={18} /></span>
-                      Add task
+                      {t("addTaskBtn")}
                     </button>
                   )
                 )}
@@ -1991,7 +1961,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                         }}>
                           <Icon name="chevronDown" size={14} />
                         </span>
-                      {workflowComplete ? "Task còn lưu trong dự án" : "Active tasks"}
+                      {workflowComplete ? "Task còn lưu trong dự án" : t("activeTasks")}
                       </span>
                     <span className="task-count-badge">{projectOpenTasks.length}</span>
                   </div>
@@ -2030,7 +2000,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                   )}
 
                   {projectOpenTasks.length === 0 ? (
-                    <div className="project-task-empty">No active tasks.</div>
+                    <div className="project-task-empty">{t("noActiveTasks")}</div>
                   ) : (
                     <>
                       <TaskList
@@ -2128,10 +2098,7 @@ let stageId = stage?.id ?? stage?.stage_id ?? "unassigned";
                     )}
                   </div>
                 )}
-
               </div>
-                </>
-              )}
             </>
           )}
         </div>

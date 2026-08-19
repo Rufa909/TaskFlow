@@ -48,7 +48,7 @@ const updateAvatar = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy user" });
     }
 
-    console.log(`✅ Avatar updated successfully for user ${userId}`);
+    console.log(`Avatar updated successfully for user ${userId}`);
 
     res.json({
       success: true,

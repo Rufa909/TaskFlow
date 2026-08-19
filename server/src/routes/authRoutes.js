@@ -36,6 +36,7 @@ router.put('/email', auth, updateEmail);
 router.put('/password', auth, updatePassword);
 router.post('/send-verification-email', auth, sendVerificationEmail);
 router.get('/admin/stats', auth, getAdminStats);
+router.patch('/admin/users/lock', auth, lockAdminUser);
 router.patch('/admin/users/:userId/lock', auth, lockAdminUser);
 router.patch('/admin/projects/:projectId/deadline', auth, updateAdminProjectDeadline);
 

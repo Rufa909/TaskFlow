@@ -753,9 +753,33 @@ exports.getAdminStats = async (req, res) => {
                 ORDER BY count DESC
             `),
             pool.query(`
-                SELECT user_id, username, email, role, auth_provider, email_verified, created_at, deleted_at, locked_at
-                FROM users
-                ORDER BY created_at DESC
+                SELECT
+                  u.user_id,
+                  u.username,
+                  u.email,
+                  u.role,
+                  u.auth_provider,
+                  u.email_verified,
+                  u.created_at,
+                  u.deleted_at,
+                  u.locked_at,
+                  CONCAT_WS(',',
+                    (
+                      SELECT GROUP_CONCAT(DISTINCT owned_project.project_id)
+                      FROM projects owned_project
+                      WHERE owned_project.owner_id = u.user_id
+                        AND owned_project.deleted_at IS NULL
+                    ),
+                    (
+                      SELECT GROUP_CONCAT(DISTINCT pm.project_id)
+                      FROM project_members pm
+                      JOIN projects member_project ON member_project.project_id = pm.project_id
+                      WHERE pm.user_id = u.user_id
+                        AND member_project.deleted_at IS NULL
+                    )
+                  ) AS project_ids
+                FROM users u
+                ORDER BY u.created_at DESC
             `),
             pool.query(`
                 SELECT
@@ -767,12 +791,27 @@ exports.getAdminStats = async (req, res) => {
                   t.deadline,
                   t.created_at,
                   t.completed_at,
+                  t.assigned_to,
                   p.project_id,
                   p.name AS project_name,
-                  u.username AS owner_name
+                  u.username AS owner_name,
+                  assignee.username AS assignee_name,
+                  assignee.email AS assignee_email,
+                  (
+                    SELECT GROUP_CONCAT(ta.user_id)
+                    FROM task_assignees ta
+                    WHERE ta.task_id = t.task_id
+                  ) AS assignee_ids,
+                  (
+                    SELECT GROUP_CONCAT(task_user.email)
+                    FROM task_assignees ta
+                    JOIN users task_user ON task_user.user_id = ta.user_id
+                    WHERE ta.task_id = t.task_id
+                  ) AS assignee_emails
                 FROM tasks t
                 JOIN projects p ON p.project_id = t.project_id
                 LEFT JOIN users u ON u.user_id = p.owner_id
+                LEFT JOIN users assignee ON assignee.user_id = t.assigned_to
                 WHERE t.deleted_at IS NULL
                   AND p.deleted_at IS NULL
                 ORDER BY
@@ -795,6 +834,17 @@ exports.getAdminStats = async (req, res) => {
                     FROM project_members pm
                     WHERE pm.project_id = p.project_id
                   ) + 1 AS member_count,
+                  (
+                    SELECT GROUP_CONCAT(DISTINCT pm.user_id)
+                    FROM project_members pm
+                    WHERE pm.project_id = p.project_id
+                  ) AS member_ids,
+                  (
+                    SELECT GROUP_CONCAT(DISTINCT member_user.email)
+                    FROM project_members pm
+                    JOIN users member_user ON member_user.user_id = pm.user_id
+                    WHERE pm.project_id = p.project_id
+                  ) AS member_emails,
                   COUNT(t.task_id) AS total_tasks,
                   SUM(CASE WHEN t.status IN ('COMPLETED','OWNER_APPROVED') THEN 1 ELSE 0 END) AS completed_tasks,
                   SUM(CASE WHEN t.task_id IS NOT NULL AND t.status NOT IN ('COMPLETED','OWNER_APPROVED') THEN 1 ELSE 0 END) AS active_tasks,
@@ -1076,7 +1126,10 @@ exports.getAdminStats = async (req, res) => {
                     role: item.role || 'member',
                     count: Number(item.count || 0),
                 })),
-                recentUsers: recentUsers.map(getPublicUser),
+                recentUsers: recentUsers.map((user) => ({
+                    ...getPublicUser(user),
+                    project_ids: user.project_ids || '',
+                })),
                 tasksByStatus,
                 projectProgress: projectProgressRows.map((project) => {
                     const stages = workflowStagesByProjectId.get(Number(project.project_id)) || [];
@@ -1105,6 +1158,8 @@ exports.getAdminStats = async (req, res) => {
                         total_stages: totalStages,
                         completed_stages: completedStages,
                         member_count: Number(project.member_count || 1),
+                        member_ids: project.member_ids || '',
+                        member_emails: project.member_emails || '',
                         total_tasks: total,
                         completed_tasks: completed,
                         active_tasks: Number(project.active_tasks || 0),

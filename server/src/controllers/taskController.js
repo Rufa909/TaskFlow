@@ -307,34 +307,8 @@ async function isProjectMember(projectId, userId) {
   return Boolean(role);
 }
 
-async function isProjectPastDeadline(projectId) {
-  const [[project]] = await pool.query(
-    "SELECT deadline FROM projects WHERE project_id = ? AND deleted_at IS NULL",
-    [projectId],
-  );
-
-  if (!project?.deadline) return false;
-
-  const deadline = project.deadline instanceof Date
-    ? project.deadline
-    : new Date(project.deadline);
-  if (Number.isNaN(deadline.getTime())) return false;
-
-  const today = new Date();
-  const deadlineDate = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
-  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-  return deadlineDate < todayDate;
-}
-
-async function ensureProjectWritable(projectId, res) {
-  if (!(await isProjectPastDeadline(projectId))) return true;
-
-  res.status(423).json({
-    success: false,
-    message: "Project đã quá hạn.",
-  });
-  return false;
+function ensureProjectWritable() {
+  return true;
 }
 
 async function getProjectUserCounts(projectIds) {
@@ -363,6 +337,26 @@ async function getProjectUserCounts(projectIds) {
       Number(row.project_id),
       Number(row.user_count || 0),
     ]),
+  );
+}
+
+async function getProjectLeaderCounts(projectIds) {
+  const ids = [...new Set(projectIds.map(Number).filter(Number.isInteger))];
+  if (ids.length === 0) return new Map();
+
+  const [rows] = await pool.query(
+    `
+    SELECT project_id, COUNT(DISTINCT user_id) AS leader_count
+    FROM project_members
+    WHERE project_id IN (?)
+      AND role = 'leader'
+    GROUP BY project_id
+    `,
+    [ids],
+  );
+
+  return new Map(
+    rows.map((row) => [Number(row.project_id), Number(row.leader_count || 0)]),
   );
 }
 
@@ -808,7 +802,10 @@ async function enrichTaskRows(rows) {
   const taskIds = [...new Set(normalized.map((task) => Number(task.task_id)).filter(Boolean))];
   if (taskIds.length === 0) return normalized;
   const projectIds = [...new Set(normalized.map((task) => Number(task.project_id)).filter(Boolean))];
-  const projectUserCounts = await getProjectUserCounts(projectIds);
+  const [projectUserCounts, projectLeaderCounts] = await Promise.all([
+    getProjectUserCounts(projectIds),
+    getProjectLeaderCounts(projectIds),
+  ]);
 
   const [assignees] = await pool.query(
     `
@@ -832,6 +829,7 @@ async function enrichTaskRows(rows) {
   return Promise.all(normalized.map(async (task) => {
     const taskAssignees = byTask.get(Number(task.task_id)) || [];
     const projectUserCount = projectUserCounts.get(Number(task.project_id)) || 0;
+    const projectLeaderCount = projectLeaderCounts.get(Number(task.project_id)) || 0;
     const shouldRepairDraftStatus = taskAssignees.length > 0 && task.status === "DRAFT";
     if (shouldRepairDraftStatus) {
       await pool.query(
@@ -863,6 +861,7 @@ async function enrichTaskRows(rows) {
       accepted_count: taskAssignees.filter((assignee) => assignee.accepted_at).length,
       submitted_count: taskAssignees.filter((assignee) => assignee.submitted_at).length,
       project_user_count: projectUserCount,
+      project_leader_count: projectLeaderCount,
       is_solo_project: projectUserCount <= 1,
     };
   }));
@@ -1336,7 +1335,9 @@ async function validateTaskDeadlineRange(projectId, stageId, deadlineDate) {
     [projectId],
   );
   const projectDeadline = formatDateOnly(project?.deadline);
-  if (projectDeadline && taskDate > projectDeadline) {
+  const today = formatDateOnly(new Date());
+  const projectIsOverdue = Boolean(projectDeadline && today && projectDeadline < today);
+  if (!projectIsOverdue && projectDeadline && taskDate > projectDeadline) {
     const error = new Error("Deadline của task không được vượt quá hạn project.");
     error.statusCode = 400;
     throw error;
@@ -1359,7 +1360,7 @@ async function validateTaskDeadlineRange(projectId, stageId, deadlineDate) {
     throw error;
   }
 
-  if (stageEndDate && taskDate > stageEndDate) {
+  if (!projectIsOverdue && stageEndDate && taskDate > stageEndDate) {
     const error = new Error(`Deadline của task không được vượt quá ngày kết thúc stage "${stage.stage_name}".`);
     error.statusCode = 400;
     throw error;
@@ -2017,6 +2018,17 @@ exports.completeTask = async (req, res) => {
         [taskId],
       );
 
+      const [leaders] = await pool.query(
+        `
+        SELECT user_id
+        FROM project_members
+        WHERE project_id = ?
+          AND role = 'leader'
+        `,
+        [projectId],
+      );
+      const hasLeader = leaders.length > 0;
+
       if (!pendingSubmission) {
         await pool.query(
           `
@@ -2035,18 +2047,8 @@ exports.completeTask = async (req, res) => {
           [taskId],
         );
 
-        const [leaders] = await pool.query(
-          `
-          SELECT user_id
-          FROM project_members
-          WHERE project_id = ?
-            AND role = 'leader'
-          `,
-          [projectId],
-        );
-
         const reviewerIds =
-          leaders.length > 0
+          hasLeader
             ? leaders.map((leader) => leader.user_id)
             : [task.owner_id];
 
@@ -2070,7 +2072,8 @@ exports.completeTask = async (req, res) => {
       return res.json({
         success: true,
         pendingApproval: true,
-        message: "Task submitted. Waiting for leader approval.",
+        approvalTarget: hasLeader ? "leader" : "owner",
+        message: `Task submitted. Waiting for ${hasLeader ? "leader" : "owner"} approval.`,
         task: submittedTask,
       });
     }

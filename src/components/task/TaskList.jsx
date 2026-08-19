@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Icon from "../common/Icon";
 import { formatLocalDate } from "../../utils/dateTime";
+import { useLanguage } from "../../context/LanguageContext";
+import { getTranslation } from "../../i18n/translations";
 import "./TaskList.css";
 
 const API_ORIGIN = "http://localhost:5000";
@@ -18,7 +20,21 @@ const STATUS_LABELS = {
   REJECTED: "Rejected",
 };
 
-function getTaskAction(task, canSelfCompleteDraft = false) {
+const STATUS_LABELS_VI = {
+  DRAFT: "Bản nháp",
+  ASSIGNED: "Đã giao",
+  ACCEPTED: "Đã nhận",
+  IN_PROGRESS: "Đang thực hiện",
+  SUBMITTED: "Đã nộp",
+  LEADER_APPROVED: "Leader đã duyệt",
+  OWNER_APPROVED: "Owner đã duyệt",
+  COMPLETED: "Hoàn thành",
+  CHANGES_REQUESTED: "Yêu cầu chỉnh sửa",
+  REJECTED: "Bị từ chối",
+};
+
+function getTaskAction(task, canSelfCompleteDraft = false, language = "en") {
+  const vi = language === "vi";
   const total = Number(task.assignee_count || 0);
   const accepted = Number(task.accepted_count || 0);
   const submitted = Number(task.submitted_count || 0);
@@ -26,56 +42,59 @@ function getTaskAction(task, canSelfCompleteDraft = false) {
     case "DRAFT":
       if (canSelfCompleteDraft) {
         return {
-          label: "Done",
-          title: "Complete task",
+          label: vi ? "Xong" : "Done",
+          title: vi ? "Hoàn thành task" : "Complete task",
           disabled: false,
         };
       }
       return {
-        label: "Draft",
-        title: "Assign a member to start",
+        label: vi ? "Nháp" : "Draft",
+        title: vi ? "Giao thành viên để bắt đầu" : "Assign a member to start",
         disabled: true,
       };
     case "ASSIGNED":
       return {
-        label: `Accept ${accepted}/${total}`,
-        title: "Accept task",
+        label: `${vi ? "Nhận" : "Accept"} ${accepted}/${total}`,
+        title: vi ? "Nhận task" : "Accept task",
         disabled: false,
       };
     case "ACCEPTED":
     case "IN_PROGRESS":
     case "CHANGES_REQUESTED":
       return {
-        label: `Submit ${submitted}/${total}`,
-        title: "Submit for review",
+        label: `${vi ? "Nộp" : "Submit"} ${submitted}/${total}`,
+        title: vi ? "Nộp để duyệt" : "Submit for review",
         disabled: false,
       };
     case "SUBMITTED":
       return {
-        label: "Waiting",
-        title: "Waiting for leader approval",
+        label: vi ? "Đang chờ" : "Waiting",
+        title: vi ? "Đang chờ duyệt" : "Waiting for approval",
         disabled: true,
       };
     case "LEADER_APPROVED":
       return {
         label: "Owner",
-        title: "Waiting for owner approval",
+        title: vi ? "Đang chờ owner duyệt" : "Waiting for owner approval",
         disabled: true,
       };
     case "COMPLETED":
     case "OWNER_APPROVED":
-      return { label: "Done", title: "Task completed", disabled: true };
+      return { label: vi ? "Xong" : "Done", title: vi ? "Task đã hoàn thành" : "Task completed", disabled: true };
     case "REJECTED":
-      return { label: "Rejected", title: "Task rejected", disabled: true };
+      return { label: vi ? "Từ chối" : "Rejected", title: vi ? "Task bị từ chối" : "Task rejected", disabled: true };
     default:
-      return { label: "Done", title: "Complete task", disabled: false };
+      return { label: vi ? "Xong" : "Done", title: vi ? "Hoàn thành task" : "Complete task", disabled: false };
   }
 }
 
 function canReviewTask(task, userRole) {
   return (
     (userRole === "leader" && task.status === "SUBMITTED") ||
-    (userRole === "owner" && task.status === "LEADER_APPROVED")
+    (userRole === "owner" && (
+      task.status === "LEADER_APPROVED" ||
+      (task.status === "SUBMITTED" && Number(task.project_leader_count || 0) === 0)
+    ))
   );
 }
 
@@ -124,6 +143,8 @@ export default function TaskList({
   availableLabels = [],
   setSelectedTask,
 }) {
+  const { language } = useLanguage();
+  const t = (key) => getTranslation(language, key);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [changesTask, setChangesTask] = useState(null);
   const [changesReason, setChangesReason] = useState("");
@@ -150,8 +171,8 @@ export default function TaskList({
     <>
       {tasks.map((task) => {
         const selfCompletableDraft = canSelfCompleteDraftTask(task, currentUserId);
-        const action = getTaskAction(task, selfCompletableDraft);
-        const statusLabel = STATUS_LABELS[task.status] || task.status;
+        const action = getTaskAction(task, selfCompletableDraft, language);
+        const statusLabel = (language === "vi" ? STATUS_LABELS_VI : STATUS_LABELS)[task.status] || task.status;
         const reviewable = canReviewTask(task, currentUserRole);
         const manageable = canManageTask(task, currentUserRole, currentUserId);
         const currentAssignee = (task.assignees || []).find(
@@ -175,8 +196,8 @@ export default function TaskList({
                 ...action,
                 disabled: true,
                 title: alreadyActed
-                  ? "Waiting for the remaining assigned members"
-                  : "Only assigned members can do this",
+                  ? (language === "vi" ? "Đang chờ các thành viên còn lại" : "Waiting for the remaining assigned members")
+                  : (language === "vi" ? "Chỉ thành viên được giao mới có thể thực hiện" : "Only assigned members can do this"),
               };
 
         return (
@@ -195,25 +216,25 @@ export default function TaskList({
                 <button
                   className="task-review-btn approve"
                   type="button"
-                  title="Approve submission"
+                  title={language === "vi" ? "Duyệt task đã nộp" : "Approve submission"}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleReviewTaskSubmission(task, "approve");
                   }}
                 >
-                  Approve
+                  {language === "vi" ? "Duyệt" : "Approve"}
                 </button>
                 <button
                   className="task-review-btn changes"
                   type="button"
-                  title="Request changes"
+                  title={language === "vi" ? "Yêu cầu chỉnh sửa" : "Request changes"}
                   onClick={(e) => {
                     e.stopPropagation();
                     setChangesTask(task);
                     setChangesReason("");
                   }}
                 >
-                  Changes
+                  {language === "vi" ? "Sửa lại" : "Changes"}
                 </button>
               </div>
             ) : (
@@ -236,7 +257,7 @@ export default function TaskList({
             <button
               className={`task-more-btn ${openMenuId === task.task_id ? "active" : ""}`}
               type="button"
-              aria-label="Task actions"
+              aria-label={language === "vi" ? "Hành động task" : "Task actions"}
               onClick={(e) => {
                 e.stopPropagation();
                 setOpenMenuId(
@@ -266,7 +287,7 @@ export default function TaskList({
                       <span className="task-dropdown-icon">
                         <Icon name="edit" size={15} />
                       </span>
-                      <span>Edit task</span>
+                      <span>{language === "vi" ? "Sửa task" : "Edit task"}</span>
                     </button>
                   )}
 
@@ -280,7 +301,7 @@ export default function TaskList({
                     <span className="task-dropdown-icon">
                       <Icon name="clock" size={15} />
                     </span>
-                    <span>Reminders</span>
+                    <span>{t("reminders")}</span>
                   </button>
                 </div>
 
@@ -298,7 +319,7 @@ export default function TaskList({
                       <span className="task-dropdown-icon">
                         <Icon name="trash" size={15} />
                       </span>
-                      <span>Delete task</span>
+                      <span>{language === "vi" ? "Xóa task" : "Delete task"}</span>
                     </button>
                   </>
                 )}
@@ -330,7 +351,7 @@ export default function TaskList({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Icon name="paperclip" size={14} />
-                  <span>{task.attachment_name || "Attachment"}</span>
+                  <span>{task.attachment_name || t("attachment")}</span>
                 </a>
               )}
 
@@ -356,7 +377,7 @@ export default function TaskList({
 
               {task.priority && (
                 <div className={`task-priority task-priority-${task.priority}`}>
-                  <Icon name="flag" size={12} /> {task.priority}
+                  <Icon name="flag" size={12} /> {t(String(task.priority).toLowerCase())}
                 </div>
               )}
 
@@ -416,11 +437,11 @@ export default function TaskList({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="task-changes-header">
-              <h3>Request changes</h3>
+              <h3>{language === "vi" ? "Yêu cầu chỉnh sửa" : "Request changes"}</h3>
               <button
                 type="button"
                 className="task-changes-close"
-                aria-label="Close"
+                aria-label={language === "vi" ? "Đóng" : "Close"}
                 onClick={() => setChangesTask(null)}
               >
                 <Icon name="x" size={16} />
@@ -431,7 +452,7 @@ export default function TaskList({
               <textarea
                 value={changesReason}
                 onChange={(e) => setChangesReason(e.target.value)}
-                placeholder="Nhap ly do can sua..."
+                placeholder={language === "vi" ? "Nhập lý do cần sửa..." : "Enter the reason for changes..."}
                 autoFocus
               />
             </div>
@@ -441,7 +462,7 @@ export default function TaskList({
                 className="task-changes-secondary"
                 onClick={() => setChangesTask(null)}
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -457,7 +478,7 @@ export default function TaskList({
                   setChangesReason("");
                 }}
               >
-                Send changes
+                {language === "vi" ? "Gửi yêu cầu" : "Send changes"}
               </button>
             </div>
           </div>
